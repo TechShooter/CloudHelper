@@ -7,26 +7,34 @@ interface Props {
   setSelectedContexts: (contexts: string[]) => void;
   notes: {id: string, title: string, content: string}[];
   setNotes: (notes: {id: string, title: string, content: string}[]) => void;
+  sheetData: any;
 }
 
-export default function ContextSelector({ selectedContexts, setSelectedContexts, notes, setNotes }: Props) {
+export default function ContextSelector({ selectedContexts, setSelectedContexts, notes, setNotes, sheetData }: Props) {
   const [showAddNote, setShowAddNote] = useState(false);
   const [newNote, setNewNote] = useState({ title: '', content: '' });
-  const [sheetData, setSheetData] = useState<string[][] | null>(null);
-  const [loadingSheet, setLoadingSheet] = useState(false);
+  const [notionPages, setNotionPages] = useState<{id: string, title: string, content: string}[]>([]);
+  const [loadingNotion, setLoadingNotion] = useState(false);
 
-  const loadSheet = async () => {
-    setLoadingSheet(true);
+  const loadNotion = async () => {
+    setLoadingNotion(true);
     try {
-      const res = await fetch('/api/sheets');
+      const res = await fetch('/api/notion');
       const data = await res.json();
-      if (data.data) {
-        setSheetData(data.data);
+      if (data.error) {
+        alert(`Notion Error: ${data.error}`);
+        console.error('Notion error:', data.error);
+      } else if (data.pages) {
+        setNotionPages(data.pages);
+        if (data.pages.length === 0) {
+          alert('No Notion pages found. Make sure you shared your database with the integration.');
+        }
       }
     } catch (error) {
-      console.error('Failed to load sheet:', error);
+      console.error('Failed to load Notion:', error);
+      alert('Failed to load Notion pages. Check console for details.');
     }
-    setLoadingSheet(false);
+    setLoadingNotion(false);
   };
 
   const toggleContext = (id: string) => {
@@ -52,11 +60,11 @@ export default function ContextSelector({ selectedContexts, setSelectedContexts,
         <h2 className="text-sm font-medium text-gray-300">Select Context</h2>
         <div className="flex gap-2">
           <button
-            onClick={loadSheet}
-            disabled={loadingSheet}
-            className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 disabled:bg-gray-600"
+            onClick={loadNotion}
+            disabled={loadingNotion}
+            className="text-xs bg-purple-600 text-white px-3 py-1 rounded hover:bg-purple-700 disabled:bg-gray-600"
           >
-            {loadingSheet ? 'Loading...' : sheetData ? '✓ Sheet' : 'Load Sheet'}
+            {loadingNotion ? 'Loading...' : notionPages.length > 0 ? '✓ Notion' : 'Load Notion'}
           </button>
           <button
             onClick={() => setShowAddNote(!showAddNote)}
@@ -100,6 +108,16 @@ export default function ContextSelector({ selectedContexts, setSelectedContexts,
             <span>Google Sheet Database</span>
           </label>
         )}
+        {notionPages.map(page => (
+          <label key={page.id} className="flex items-center gap-1 text-sm text-purple-400">
+            <input
+              type="checkbox"
+              checked={selectedContexts.includes(`notion-${page.id}`)}
+              onChange={() => toggleContext(`notion-${page.id}`)}
+            />
+            <span>{page.title}</span>
+          </label>
+        ))}
         {notes.map(note => (
           <label key={note.id} className="flex items-center gap-1 text-sm text-gray-300">
             <input
@@ -110,8 +128,8 @@ export default function ContextSelector({ selectedContexts, setSelectedContexts,
             <span>{note.title}</span>
           </label>
         ))}
-        {notes.length === 0 && !sheetData && (
-          <p className="text-xs text-gray-500">Load your sheet or add notes to get started!</p>
+        {notes.length === 0 && !sheetData && notionPages.length === 0 && (
+          <p className="text-xs text-gray-500">Load your sheet, Notion pages, or add notes to get started!</p>
         )}
       </div>
     </div>

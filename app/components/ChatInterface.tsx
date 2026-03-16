@@ -12,9 +12,11 @@ interface Props {
   selectedContexts: string[];
   notes: {id: string, title: string, content: string}[];
   aiModel: 'gemini-flash' | 'gemini-2.5' | 'groq';
+  userProfile: any;
+  sheetData: any;
 }
 
-export default function ChatInterface({ selectedContexts, notes, aiModel }: Props) {
+export default function ChatInterface({ selectedContexts, notes, aiModel, userProfile, sheetData }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32,13 +34,20 @@ export default function ChatInterface({ selectedContexts, notes, aiModel }: Prop
     setInput('');
     setLoading(true);
 
+    // Add empty assistant message
+    const assistantIndex = messages.length + 1;
+    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+
     const contextData = notes.filter(n => selectedContexts.includes(n.id));
     
-    let sheetContext = null;
-    if (selectedContexts.includes('sheet')) {
-      const res = await fetch('/api/sheets');
+    let sheetContext = selectedContexts.includes('sheet') ? sheetData : null;
+
+    let notionContext = null;
+    const notionIds = selectedContexts.filter(c => c.startsWith('notion-'));
+    if (notionIds.length > 0) {
+      const res = await fetch('/api/notion');
       const data = await res.json();
-      sheetContext = data.data;
+      notionContext = data.pages?.filter((p: any) => notionIds.includes(`notion-${p.id}`));
     }
 
     try {
@@ -49,15 +58,46 @@ export default function ChatInterface({ selectedContexts, notes, aiModel }: Prop
           message: input, 
           context: contextData, 
           sheetData: sheetContext,
+          notionData: notionContext,
+          userProfile: userProfile,
           conversationHistory: messages.slice(-6),
-          aiModel: aiModel
+          aiModel: aiModel,
+          stream: true
         })
       });
 
-      const data = await res.json();
-      setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullText = '';
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const text = decoder.decode(value);
+          fullText += text;
+          
+          setMessages(prev => {
+            const newMessages = [...prev];
+            newMessages[assistantIndex] = { role: 'assistant', content: fullText };
+            return newMessages;
+          });
+        }
+      } else {
+        const data = await res.json();
+        setMessages(prev => {
+          const newMessages = [...prev];
+          newMessages[assistantIndex] = { role: 'assistant', content: data.response };
+          return newMessages;
+        });
+      }
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Error: Could not get response' }]);
+      setMessages(prev => {
+        const newMessages = [...prev];
+        newMessages[assistantIndex] = { role: 'assistant', content: 'Error: Could not get response' };
+        return newMessages;
+      });
     }
     setLoading(false);
   };
@@ -84,7 +124,13 @@ export default function ChatInterface({ selectedContexts, notes, aiModel }: Prop
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-gray-700 text-gray-100 px-4 py-2 rounded-lg">Thinking...</div>
+            <div className="bg-gray-700 text-gray-100 px-4 py-2 rounded-lg flex items-center gap-2">
+              <div className="flex gap-1">
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></span>
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></span>
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></span>
+              </div>
+            </div>
           </div>
         )}
         <div ref={messagesEndRef} />

@@ -2,19 +2,50 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, context, sheetData, conversationHistory, aiModel } = await req.json();
+    const { message, context, sheetData, notionData, userProfile, conversationHistory, aiModel, stream } = await req.json();
 
     let systemPrompt = '';
     
-    if (sheetData && sheetData.length > 0) {
-      systemPrompt = 'Google Sheet Database (showing first 50 rows):\n';
-      const headers = sheetData[0];
-      systemPrompt += headers.join(' | ') + '\n';
-      sheetData.slice(1).forEach((row: string[]) => {
-        systemPrompt += row.join(' | ') + '\n';
-      });
+    // Add current date and time
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const timeStr = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    systemPrompt += `Current Date & Time: ${dateStr}, ${timeStr}\n\n---\n\n`;
+    
+    if (userProfile && (userProfile.calories || userProfile.goal)) {
+      systemPrompt += 'User Profile & Goals:\n';
+      if (userProfile.calories) systemPrompt += `Daily Calories: ${userProfile.calories}\n`;
+      if (userProfile.protein) systemPrompt += `Protein: ${userProfile.protein}\n`;
+      if (userProfile.carbs) systemPrompt += `Carbs: ${userProfile.carbs}\n`;
+      if (userProfile.fats) systemPrompt += `Fats: ${userProfile.fats}\n`;
+      if (userProfile.goal) systemPrompt += `Goal: ${userProfile.goal}\n`;
+      if (userProfile.notes) systemPrompt += `Notes: ${userProfile.notes}\n`;
       systemPrompt += '\n---\n\n';
-      systemPrompt += 'Note: If you need to search for specific data in the database, ask the user to be more specific.\n\n';
+    }
+    
+    if (sheetData && Array.isArray(sheetData)) {
+      systemPrompt += 'Google Sheets Database (ALL SHEETS - COMPLETE DATA):\n\n';
+      
+      sheetData.forEach((sheet: any) => {
+        systemPrompt += `\n=== ${sheet.sheet} (${sheet.rows} rows) ===\n`;
+        if (sheet.data && sheet.data.length > 0) {
+          sheet.data.forEach((row: string[]) => {
+            systemPrompt += row.join(' | ') + '\n';
+          });
+        }
+        systemPrompt += '\n';
+      });
+      
+      systemPrompt += '---\n\n';
+      systemPrompt += 'IMPORTANT: You have access to ALL sheets and ALL rows. This is the complete database.\n\n';
+    }
+    
+    if (notionData && notionData.length > 0) {
+      systemPrompt += 'Notion Pages:\n\n';
+      notionData.forEach((page: any) => {
+        systemPrompt += `[${page.title}]\n${page.content}\n\n`;
+      });
+      systemPrompt += '---\n\n';
     }
     
     if (context && context.length > 0) {
@@ -42,7 +73,6 @@ export async function POST(req: NextRequest) {
     let response, data, aiResponse;
 
     if (aiModel === 'gemini-flash' || aiModel === 'gemini-2.5') {
-      // Google Gemini API
       const modelName = aiModel === 'gemini-2.5' ? 'gemini-2.5-flash' : 'gemini-flash-latest';
       
       let geminiPrompt = '';
@@ -54,6 +84,63 @@ export async function POST(req: NextRequest) {
       }
       geminiPrompt += `user: ${message}`;
 
+      if (stream) {
+        // Gemini streaming
+        response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: geminiPrompt }] }]
+            })
+          }
+        );
+
+        if (response.ok && response.body) {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          const encoder = new TextEncoder();
+
+          const stream = new ReadableStream({
+            async start(controller) {
+              try {
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+
+                  const chunk = decoder.decode(value);
+                  const lines = chunk.split('\n');
+
+                  for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                      const jsonStr = line.slice(6);
+                      try {
+                        const parsed = JSON.parse(jsonStr);
+                        const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (text) {
+                          controller.enqueue(encoder.encode(text));
+                        }
+                      } catch (e) {
+                        // Skip invalid JSON
+                      }
+                    }
+                  }
+                }
+                controller.close();
+              } catch (error) {
+                controller.error(error);
+              }
+            }
+          });
+
+          return new Response(stream, {
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+          });
+        }
+      }
+
+      // Non-streaming fallback
       response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${process.env.GEMINI_API_KEY}`,
         {
@@ -67,7 +154,6 @@ export async function POST(req: NextRequest) {
       data = await response.json();
       aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini';
     } else {
-      // Groq API
       response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {

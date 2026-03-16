@@ -3,12 +3,22 @@
 import { useState } from 'react';
 import ContextSelector from './components/ContextSelector';
 import ChatInterface from './components/ChatInterface';
+import UserProfile from './components/UserProfile';
+import SheetManager from './components/SheetManager';
 
 export default function Home() {
   const [selectedContexts, setSelectedContexts] = useState<string[]>([]);
   const [notes, setNotes] = useState<{id: string, title: string, content: string}[]>([]);
-  const [sheetData, setSheetData] = useState<string[][] | null>(null);
+  const [sheetData, setSheetData] = useState<any>(null);
   const [aiModel, setAiModel] = useState<'gemini-flash' | 'gemini-2.5' | 'groq'>('gemini-flash');
+  const [userProfile, setUserProfile] = useState<any>(null);
+
+  const handleSheetLoad = (data: any) => {
+    setSheetData(data);
+    if (!selectedContexts.includes('sheet')) {
+      setSelectedContexts([...selectedContexts, 'sheet']);
+    }
+  };
 
   return (
     <div className="flex flex-col h-screen bg-gray-900">
@@ -26,17 +36,24 @@ export default function Home() {
       </header>
       
       <div className="flex-1 flex flex-col overflow-hidden">
+        <UserProfile onProfileChange={setUserProfile} />
+        
+        <SheetManager onSheetLoad={handleSheetLoad} />
+        
         <ContextSelector 
           selectedContexts={selectedContexts}
           setSelectedContexts={setSelectedContexts}
           notes={notes}
           setNotes={setNotes}
+          sheetData={sheetData}
         />
         
         <ChatInterface 
           selectedContexts={selectedContexts}
           notes={notes}
           aiModel={aiModel}
+          userProfile={userProfile}
+          sheetData={sheetData}
         />
       </div>
     </div>
