@@ -5,15 +5,16 @@ import { useState, useEffect } from 'react';
 interface Props {
   selectedContexts: string[];
   setSelectedContexts: (contexts: string[]) => void;
-  notes: {id: string, title: string, content: string}[];
-  setNotes: (notes: {id: string, title: string, content: string}[]) => void;
+  notes: { id: string, title: string, content: string }[];
+  setNotes: (notes: { id: string, title: string, content: string }[]) => void;
   sheetData: any;
+  onNotionLoad: (pages: any[]) => void;
 }
 
-export default function ContextSelector({ selectedContexts, setSelectedContexts, notes, setNotes, sheetData }: Props) {
+export default function ContextSelector({ selectedContexts, setSelectedContexts, notes, setNotes, sheetData, onNotionLoad }: Props) {
   const [showAddNote, setShowAddNote] = useState(false);
   const [newNote, setNewNote] = useState({ title: '', content: '' });
-  const [notionPages, setNotionPages] = useState<{id: string, title: string, content: string}[]>([]);
+  const [notionPages, setNotionPages] = useState<{ id: string, title: string, content: string }[]>([]);
   const [loadingNotion, setLoadingNotion] = useState(false);
 
   const loadNotion = async () => {
@@ -26,8 +27,9 @@ export default function ContextSelector({ selectedContexts, setSelectedContexts,
         console.error('Notion error:', data.error);
       } else if (data.pages) {
         setNotionPages(data.pages);
+        onNotionLoad(data.pages);
         if (data.pages.length === 0) {
-          alert('No Notion pages found. Make sure you shared your database with the integration.');
+          alert('No Notion pages or databases found. Make sure you shared your pages and databases with the integration.');
         }
       }
     } catch (error) {

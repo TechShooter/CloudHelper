@@ -2,16 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, context, sheetData, notionData, userProfile, conversationHistory, aiModel, stream } = await req.json();
+    const { message, context, sheetData, notionData, userProfile, mealHistory, workspacePrompt, conversationHistory, aiModel, stream } = await req.json();
 
     let systemPrompt = '';
-    
+
+    // Add workspace-specific prompt first
+    if (workspacePrompt) {
+      systemPrompt += workspacePrompt + '\n\n---\n\n';
+    }
+
     // Add current date and time
     const now = new Date();
     const dateStr = now.toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     const timeStr = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
-    systemPrompt += `Current Date & Time: ${dateStr}, ${timeStr}\n\n---\n\n`;
-    
+    systemPrompt += `Current Date & Time: ${dateStr}, ore ${timeStr}\n\n---\n\n`;
+
     if (userProfile && (userProfile.calories || userProfile.goal)) {
       systemPrompt += 'User Profile & Goals:\n';
       if (userProfile.calories) systemPrompt += `Daily Calories: ${userProfile.calories}\n`;
@@ -22,10 +27,21 @@ export async function POST(req: NextRequest) {
       if (userProfile.notes) systemPrompt += `Notes: ${userProfile.notes}\n`;
       systemPrompt += '\n---\n\n';
     }
-    
+
+    if (mealHistory && mealHistory.length > 0) {
+      systemPrompt += 'Meal History (Last 7 Days):\n';
+      mealHistory.forEach((meal: any) => {
+        systemPrompt += `${meal.date} ${meal.time} - ${meal.type}: ${meal.food}`;
+        if (meal.calories) systemPrompt += ` (${meal.calories} kcal)`;
+        if (meal.notes) systemPrompt += ` - ${meal.notes}`;
+        systemPrompt += '\n';
+      });
+      systemPrompt += '\n---\n\n';
+    }
+
     if (sheetData && Array.isArray(sheetData)) {
       systemPrompt += 'Google Sheets Database (ALL SHEETS - COMPLETE DATA):\n\n';
-      
+
       sheetData.forEach((sheet: any) => {
         systemPrompt += `\n=== ${sheet.sheet} (${sheet.rows} rows) ===\n`;
         if (sheet.data && sheet.data.length > 0) {
@@ -35,11 +51,11 @@ export async function POST(req: NextRequest) {
         }
         systemPrompt += '\n';
       });
-      
+
       systemPrompt += '---\n\n';
       systemPrompt += 'IMPORTANT: You have access to ALL sheets and ALL rows. This is the complete database.\n\n';
     }
-    
+
     if (notionData && notionData.length > 0) {
       systemPrompt += 'Notion Pages:\n\n';
       notionData.forEach((page: any) => {
@@ -47,7 +63,7 @@ export async function POST(req: NextRequest) {
       });
       systemPrompt += '---\n\n';
     }
-    
+
     if (context && context.length > 0) {
       systemPrompt += 'My Notes:\n\n';
       context.forEach((note: any) => {
@@ -57,24 +73,26 @@ export async function POST(req: NextRequest) {
     }
 
     const messages = [];
-    
+
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
     }
-    
+
     if (conversationHistory && conversationHistory.length > 0) {
       conversationHistory.forEach((msg: any) => {
         messages.push({ role: msg.role, content: msg.content });
       });
     }
-    
+
     messages.push({ role: 'user', content: message });
 
     let response, data, aiResponse;
 
-    if (aiModel === 'gemini-flash' || aiModel === 'gemini-2.5') {
-      const modelName = aiModel === 'gemini-2.5' ? 'gemini-2.5-flash' : 'gemini-flash-latest';
-      
+    if (aiModel === 'gemini-flash' || aiModel === 'gemini-2.5' || aiModel === 'gemini-2.5-pro') {
+      const modelName = aiModel === 'gemini-2.5' ? 'gemini-2.5-flash' :
+        aiModel === 'gemini-2.5-pro' ? 'gemini-2.5-pro' :
+          'gemini-flash-latest';
+
       let geminiPrompt = '';
       if (systemPrompt) geminiPrompt += systemPrompt + '\n\n';
       if (conversationHistory && conversationHistory.length > 0) {
@@ -170,7 +188,7 @@ export async function POST(req: NextRequest) {
       data = await response.json();
       aiResponse = data.choices?.[0]?.message?.content || 'No response from Groq';
     }
-    
+
     if (!response.ok) {
       console.error('AI API Error:', data);
       return NextResponse.json({ response: `API Error: ${data.error?.message || 'Unknown error'}` }, { status: 500 });

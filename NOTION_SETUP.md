@@ -1,4 +1,4 @@
-# Notion Integration Setup (Pagine Normali)
+# Notion Integration Setup (Pagine e Database)
 
 ## 1. Create Notion Integration
 1. Go to https://www.notion.so/profile/integrations/internal
@@ -8,11 +8,11 @@
 5. Click "Submit"
 6. Copy "Internal Integration Secret"
 
-## 2. Share Pages with Integration
+## 2. Share Pages and Databases with Integration
 1. Apri ogni pagina Notion che vuoi usare
 2. Click "..." (top right) → "Add connections"
 3. Cerca "CloudHelper" e seleziona
-4. Ripeti per ogni pagina
+4. Ripeti per ogni pagina e database
 
 ## 3. Add to .env.local
 ```
@@ -24,4 +24,4 @@ NOTION_API_KEY=your_integration_token_here
 npm run dev
 ```
 
-Ora "Load Notion" troverà automaticamente tutte le pagine condivise!
+Ora "Load Notion" troverà automaticamente tutte le pagine e database condivisi!
