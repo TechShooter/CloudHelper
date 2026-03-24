@@ -58,6 +58,17 @@ const DEFAULT_WORKSPACES: Workspace[] = [
     autoLoadMeals: false,
     autoLoadProfile: false,
     systemPrompt: 'You are a research assistant. Focus on detailed analysis, data interpretation, and insights.'
+  },
+  {
+    id: 'entertainment',
+    name: 'Entertainment',
+    icon: '🎮',
+    description: 'Games, TV shows, music and entertainment',
+    autoLoadSheets: false,
+    autoLoadNotion: true,
+    autoLoadMeals: false,
+    autoLoadProfile: false,
+    systemPrompt: 'You are an entertainment expert. Focus on games, TV shows, music, movies, and entertainment recommendations. You have access to the Entertainment list page.'
   }
 ];
 
@@ -110,6 +121,12 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
         p.title.toLowerCase().includes('tasks') ||
         p.title.toLowerCase().includes('goal')
       );
+    } else if (currentWorkspace.id === 'entertainment') {
+      // Filter for Entertainment list
+      return allNotionPages.filter((p: any) =>
+        p.title.toLowerCase().includes('entertainment') ||
+        p.title.toLowerCase().includes('list')
+      );
     }
 
     return allNotionPages;
@@ -143,8 +160,8 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
                 key={workspace.id}
                 onClick={() => setActiveWorkspace(workspace.id)}
                 className={`w-full text-left px-3 py-2 rounded transition-colors ${activeWorkspace === workspace.id
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-300 hover:bg-gray-700'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-300 hover:bg-gray-700'
                   }`}
               >
                 <div className="flex items-center gap-2">
