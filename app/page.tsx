@@ -14,6 +14,7 @@ export default function Home() {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [mealHistory, setMealHistory] = useState<any[]>([]);
   const [notionPages, setNotionPages] = useState<any[]>([]);
+  const [hierarchicalNotionPages, setHierarchicalNotionPages] = useState<any[]>([]);
   const [showSettings, setShowSettings] = useState(false);
 
   // Auto-load default sheet on mount
@@ -43,11 +44,18 @@ export default function Home() {
   // Auto-load Notion pages on mount
   useEffect(() => {
     const loadNotionPages = async () => {
+      console.log('Loading Notion pages...');
       try {
         const res = await fetch('/api/notion');
+        console.log('Notion API response status:', res.status);
         const data = await res.json();
+        console.log('Notion API response data:', data);
         if (data.pages) {
           setNotionPages(data.pages);
+          setHierarchicalNotionPages(data.hierarchicalPages || []);
+          console.log('Set Notion pages:', data.pages.length);
+        } else if (data.error) {
+          console.error('Notion API error:', data.error);
         }
       } catch (error) {
         console.error('Failed to auto-load Notion:', error);
@@ -56,6 +64,20 @@ export default function Home() {
 
     loadNotionPages();
   }, []);
+
+  const reloadNotionPages = async () => {
+    try {
+      const res = await fetch('/api/notion');
+      const data = await res.json();
+      if (data.pages) {
+        setNotionPages(data.pages);
+        setHierarchicalNotionPages(data.hierarchicalPages || []);
+      }
+    } catch (error) {
+      console.error('Failed to reload Notion:', error);
+      throw error;
+    }
+  };
 
   const handleSheetLoad = (data: any) => {
     setSheetData(data);
@@ -109,6 +131,8 @@ export default function Home() {
         mealHistory={mealHistory}
         notionPages={notionPages}
         allNotionPages={notionPages}
+        hierarchicalNotionPages={hierarchicalNotionPages}
+        onReloadNotion={reloadNotionPages}
       />
     </div>
   );
