@@ -182,9 +182,55 @@ export async function POST(req: NextRequest) {
           model: 'llama-3.3-70b-versatile',
           messages: messages,
           temperature: 0.5,
-          max_tokens: 1024
+          max_tokens: 1024,
+          stream: stream
         })
       });
+
+      if (stream && response.body) {
+        // Handle Groq streaming
+        const encoder = new TextEncoder();
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        const stream = new ReadableStream({
+          async start(controller) {
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    const jsonStr = line.slice(6);
+                    if (jsonStr === '[DONE]') continue;
+                    try {
+                      const parsed = JSON.parse(jsonStr);
+                      const text = parsed.choices?.[0]?.delta?.content;
+                      if (text) {
+                        controller.enqueue(encoder.encode(text));
+                      }
+                    } catch (e) {
+                      // Skip invalid JSON
+                    }
+                  }
+                }
+              }
+              controller.close();
+            } catch (error) {
+              controller.error(error);
+            }
+          }
+        });
+
+        return new Response(stream, {
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+        });
+      }
+
       data = await response.json();
       aiResponse = data.choices?.[0]?.message?.content || 'No response from Groq';
     }

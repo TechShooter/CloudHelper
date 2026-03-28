@@ -69,6 +69,17 @@ const DEFAULT_WORKSPACES: Workspace[] = [
     autoLoadMeals: false,
     autoLoadProfile: false,
     systemPrompt: 'You are an entertainment expert. Focus on games, TV shows, music, movies, and entertainment recommendations. You have access to the Entertainment list page.'
+  },
+  {
+    id: 'emotion-regulation',
+    name: 'Regolazione emotiva',
+    icon: '💭',
+    description: 'Emotional regulation and well-being support',
+    autoLoadSheets: false,
+    autoLoadNotion: true,
+    autoLoadMeals: false,
+    autoLoadProfile: false,
+    systemPrompt: 'You are an emotional wellness expert. Focus on emotional regulation, stress management, coping strategies, and personal well-being. Provide compassionate, supportive guidance for emotional challenges.'
   }
 ];
 
@@ -90,56 +101,131 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
   const currentWorkspace = workspaces.find(w => w.id === activeWorkspace) || workspaces[0];
   const [selectedContexts, setSelectedContexts] = useState<string[]>([]);
   const [showContextModal, setShowContextModal] = useState(false);
+  const [defaultDocs, setDefaultDocs] = useState<{ [workspaceId: string]: string[] }>({});
 
-  // Auto-select contexts based on workspace
-  const getAutoContexts = () => {
-    const contexts: string[] = [];
-    if (currentWorkspace.autoLoadSheets && sheetData) contexts.push('sheet');
-
-    if (currentWorkspace.autoLoadNotion) {
-      const notionCandidates = getNotionPages();
-      notionCandidates.forEach((p: any) => contexts.push(`notion-${p.id}`));
+  // Load default docs from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('workspaceDefaultDocs');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setDefaultDocs(parsed);
+        // Then initialize missing workspaces
+        const updated = { ...parsed };
+        let changed = false;
+        workspaces.forEach(workspace => {
+          if (!updated[workspace.id]) {
+            const contexts: string[] = [];
+            if (workspace.autoLoadSheets && sheetData) contexts.push('sheet');
+            if (workspace.autoLoadNotion) {
+              const notionCandidates = getNotionPagesForWorkspace(workspace, allNotionPages);
+              notionCandidates.forEach((p: any) => contexts.push(`notion-${p.id}`));
+            }
+            updated[workspace.id] = contexts;
+            changed = true;
+          }
+        });
+        if (changed) {
+          setDefaultDocs(updated);
+        }
+      } catch (error) {
+        console.error('Failed to load default docs:', error);
+        // Initialize all workspaces
+        const initial: { [workspaceId: string]: string[] } = {};
+        workspaces.forEach(workspace => {
+          const contexts: string[] = [];
+          if (workspace.autoLoadSheets && sheetData) contexts.push('sheet');
+          if (workspace.autoLoadNotion) {
+            const notionCandidates = getNotionPagesForWorkspace(workspace, allNotionPages);
+            notionCandidates.forEach((p: any) => contexts.push(`notion-${p.id}`));
+          }
+          initial[workspace.id] = contexts;
+        });
+        setDefaultDocs(initial);
+      }
+    } else {
+      // Initialize all workspaces
+      const initial: { [workspaceId: string]: string[] } = {};
+      workspaces.forEach(workspace => {
+        const contexts: string[] = [];
+        if (workspace.autoLoadSheets && sheetData) contexts.push('sheet');
+        if (workspace.autoLoadNotion) {
+          const notionCandidates = getNotionPagesForWorkspace(workspace, allNotionPages);
+          notionCandidates.forEach((p: any) => contexts.push(`notion-${p.id}`));
+        }
+        initial[workspace.id] = contexts;
+      });
+      setDefaultDocs(initial);
     }
+  }, [allNotionPages, sheetData]);
 
-    return contexts;
+  // Save default docs to localStorage
+  useEffect(() => {
+    localStorage.setItem('workspaceDefaultDocs', JSON.stringify(defaultDocs));
+  }, [defaultDocs]);
+
+  // Helper function to get Notion pages for a workspace
+  const getNotionPagesForWorkspace = (workspace: Workspace, allPages: any[]) => {
+    if (!workspace.autoLoadNotion) return [];
+    if (workspace.id === 'nutrition' || workspace.id === 'general') {
+      return allPages.filter((p: any) =>
+        p.title.toLowerCase().includes('casa') ||
+        p.title.toLowerCase().includes('scorte')
+      );
+    } else if (workspace.id === 'goals') {
+      return allPages.filter((p: any) => {
+        const t = (p.title || '').toLowerCase();
+        return (
+          t.includes('timeline') ||
+          t.includes('tasks') ||
+          t.includes('task') ||
+          t.includes('todo') ||
+          t.includes('goal')
+        );
+      });
+    } else if (workspace.id === 'entertainment') {
+      return allPages.filter((p: any) =>
+        p.title.toLowerCase().includes('entertainment') ||
+        p.title.toLowerCase().includes('list')
+      );
+    } else if (workspace.id === 'emotion-regulation') {
+      return allPages;
+    }
+    return allPages;
+  };
+
+  // Auto-select contexts based on workspace defaults
+  const getAutoContexts = () => {
+    return defaultDocs[activeWorkspace] || [];
   };
 
   // Filter Notion pages based on workspace
   const getNotionPages = () => {
-    if (!currentWorkspace.autoLoadNotion) return [];
-
-    if (currentWorkspace.id === 'nutrition' || currentWorkspace.id === 'general') {
-      // Filter for home inventory
-      return allNotionPages.filter((p: any) =>
-        p.title.toLowerCase().includes('casa') ||
-        p.title.toLowerCase().includes('scorte')
-      );
-    } else if (currentWorkspace.id === 'goals') {
-      // Filter for Timeline, Tasks, Goals
-      return allNotionPages.filter((p: any) =>
-        p.title.toLowerCase().includes('timeline') ||
-        p.title.toLowerCase().includes('tasks') ||
-        p.title.toLowerCase().includes('goal')
-      );
-    } else if (currentWorkspace.id === 'entertainment') {
-      // Filter for Entertainment list
-      return allNotionPages.filter((p: any) =>
-        p.title.toLowerCase().includes('entertainment') ||
-        p.title.toLowerCase().includes('list')
-      );
-    }
-
-    return allNotionPages;
+    return getNotionPagesForWorkspace(currentWorkspace, allNotionPages);
   };
 
   useEffect(() => {
     setSelectedContexts(getAutoContexts());
-  }, [activeWorkspace, sheetData, allNotionPages]);
+  }, [activeWorkspace, defaultDocs]);
 
   const toggleContext = (id: string) => {
     setSelectedContexts(prev =>
       prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
     );
+  };
+
+  const toggleDefaultDoc = (id: string) => {
+    setDefaultDocs(prev => {
+      const current = prev[activeWorkspace] || [];
+      const updated = current.includes(id)
+        ? current.filter(docId => docId !== id)
+        : [...current, id];
+      return { ...prev, [activeWorkspace]: updated };
+    });
+  };
+
+  const isDefaultDoc = (id: string) => {
+    return (defaultDocs[activeWorkspace] || []).includes(id);
   };
 
   return (
@@ -212,15 +298,28 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
 
               <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
                 {sheetData ? (
-                  <label className="flex items-center gap-2 text-sm text-green-300">
-                    <input
-                      type="checkbox"
-                      checked={selectedContexts.includes('sheet')}
-                      onChange={() => toggleContext('sheet')}
-                      className="form-checkbox h-4 w-4"
-                    />
-                    Google Sheet Database (loaded)
-                  </label>
+                  <div className="flex items-center justify-between gap-2 text-sm text-green-300 p-2 bg-gray-800 rounded">
+                    <label className="flex items-center gap-2 flex-1">
+                      <input
+                        type="checkbox"
+                        checked={selectedContexts.includes('sheet')}
+                        onChange={() => toggleContext('sheet')}
+                        className="form-checkbox h-4 w-4"
+                      />
+                      Google Sheet Database (loaded)
+                    </label>
+                    <button
+                      onClick={() => toggleDefaultDoc('sheet')}
+                      className={`text-xs px-2 py-1 rounded ${
+                        isDefaultDoc('sheet')
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                      title="Mark as default for this chat"
+                    >
+                      {isDefaultDoc('sheet') ? '✓ Default' : 'Default'}
+                    </button>
+                  </div>
                 ) : (
                   <p className="text-xs text-gray-500">Google Sheet data is not loaded yet.</p>
                 )}
@@ -230,15 +329,28 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
                   {allNotionPages.length > 0 ? (
                     <div className="grid grid-cols-1 gap-2">
                       {allNotionPages.map((page: any) => (
-                        <label key={page.id} className="flex items-center gap-2 text-sm text-purple-300">
-                          <input
-                            type="checkbox"
-                            checked={selectedContexts.includes(`notion-${page.id}`)}
-                            onChange={() => toggleContext(`notion-${page.id}`)}
-                            className="form-checkbox h-4 w-4"
-                          />
-                          <span>{page.title}</span>
-                        </label>
+                        <div key={page.id} className="flex items-center justify-between gap-2 text-sm text-purple-300 p-2 bg-gray-800 rounded">
+                          <label className="flex items-center gap-2 flex-1">
+                            <input
+                              type="checkbox"
+                              checked={selectedContexts.includes(`notion-${page.id}`)}
+                              onChange={() => toggleContext(`notion-${page.id}`)}
+                              className="form-checkbox h-4 w-4"
+                            />
+                            <span>{page.title}</span>
+                          </label>
+                          <button
+                            onClick={() => toggleDefaultDoc(`notion-${page.id}`)}
+                            className={`text-xs px-2 py-1 rounded ${
+                              isDefaultDoc(`notion-${page.id}`)
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            }`}
+                            title="Mark as default for this chat"
+                          >
+                            {isDefaultDoc(`notion-${page.id}`) ? '✓ Default' : 'Default'}
+                          </button>
+                        </div>
                       ))}
                     </div>
                   ) : (
@@ -254,7 +366,7 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
                   }}
                   className="text-xs bg-gray-700 text-white px-3 py-1 rounded hover:bg-gray-600"
                 >
-                  Reset workspace context
+                  Reset to defaults
                 </button>
                 <button
                   onClick={() => setShowContextModal(false)}

@@ -1,12 +1,37 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
+
+interface MessageItemProps {
+  message: Message;
+  index: number;
+}
+
+// Separate component for individual messages to prevent re-renders
+const MessageItem = React.memo(({ message, index }: MessageItemProps) => (
+  <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+    <div className={`max-w-[80%] px-4 py-2 rounded-lg ${message.role === 'user'
+        ? 'bg-blue-600 text-white'
+        : 'bg-gray-700 text-gray-100 prose-chat'
+      }`}>
+      {message.role === 'assistant' ? (
+        <ReactMarkdown>
+          {message.content}
+        </ReactMarkdown>
+      ) : (
+        message.content
+      )}
+    </div>
+  </div>
+));
+
+MessageItem.displayName = 'MessageItem';
 
 interface Props {
   selectedContexts: string[];
@@ -27,7 +52,15 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const currentMessages = messages[workspaceId] || [];
+  // Memoize current messages to avoid recalculation on every render
+  const currentMessages = useMemo(() => messages[workspaceId] || [], [messages, workspaceId]);
+
+  // Debounced save to localStorage
+  const saveMessages = useCallback((messagesToSave: { [key: string]: Message[] }) => {
+    if (Object.keys(messagesToSave).length > 0) {
+      localStorage.setItem('chatMessages', JSON.stringify(messagesToSave));
+    }
+  }, []);
 
   // Load messages from localStorage on mount
   useEffect(() => {
@@ -41,26 +74,32 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
     }
   }, []);
 
-  // Save messages to localStorage whenever they change
+  // Save messages to localStorage with debounce
   useEffect(() => {
-    if (Object.keys(messages).length > 0) {
-      localStorage.setItem('chatMessages', JSON.stringify(messages));
-    }
-  }, [messages]);
+    const timeoutId = setTimeout(() => {
+      saveMessages(messages);
+    }, 500); // Debounce 500ms
+
+    return () => clearTimeout(timeoutId);
+  }, [messages, saveMessages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentMessages]);
 
-  const stopResponse = () => {
+  const stopResponse = useCallback(() => {
     if (abortController) {
       abortController.abort();
       setAbortController(null);
       setLoading(false);
     }
-  };
+  }, [abortController]);
 
-  const sendMessage = async () => {
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+  }, []);
+
+  const sendMessage = useCallback(async () => {
     if (!input.trim() || loading) return;
 
     const controller = new AbortController();
@@ -150,26 +189,20 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
       setLoading(false);
       setAbortController(null);
     }
-  };
+  }, [input, loading, currentMessages, messages, workspaceId, notes, selectedContexts, sheetData, notionPages, userProfile, mealHistory, workspacePrompt, aiModel]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }, [sendMessage]);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900">
         {currentMessages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] px-4 py-2 rounded-lg ${msg.role === 'user'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-700 text-gray-100 prose-chat'
-              }`}>
-              {msg.role === 'assistant' ? (
-                <ReactMarkdown>
-                  {msg.content}
-                </ReactMarkdown>
-              ) : (
-                msg.content
-              )}
-            </div>
-          </div>
+          <MessageItem key={`${workspaceId}-${i}`} message={msg} index={i} />
         ))}
         {loading && (
           <div className="flex justify-start">
@@ -195,13 +228,8 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
         <div className="flex gap-2">
           <textarea
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
             placeholder="Ask a question... (Shift+Enter for newline)"
             className="flex-1 px-4 py-2 border border-gray-600 bg-gray-900 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none h-24"
             disabled={loading}
