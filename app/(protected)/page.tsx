@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import UserProfile from './components/UserProfile';
-import SheetManager from './components/SheetManager';
-import MealTracker from './components/MealTracker';
-import ContextSelector from './components/ContextSelector';
-import WorkspaceManager from './components/WorkspaceManager';
+import UserProfile from '../components/UserProfile';
+import SheetManager from '../components/SheetManager';
+import MealTracker from '../components/MealTracker';
+import ContextSelector from '../components/ContextSelector';
+import WorkspaceManager from '../components/WorkspaceManager';
+import LogoutButton from '../components/LogoutButton';
 
 export default function Home() {
   const [notes, setNotes] = useState<{id: string, title: string, content: string}[]>([]);
@@ -104,6 +105,7 @@ export default function Home() {
           >
             ⚙️
           </button>
+          <LogoutButton />
         </div>
       </header>
       

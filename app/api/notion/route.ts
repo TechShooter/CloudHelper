@@ -64,12 +64,17 @@ async function extractBlockContent(blockId: string, apiKey: string, indent: stri
 
 export async function GET(req: NextRequest) {
   console.log('Notion API called');
+  
+  // Abort controller with 15 second timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  
   try {
     console.log('NOTION_API_KEY exists:', !!process.env.NOTION_API_KEY);
-    console.log('NOTION_API_KEY value:', process.env.NOTION_API_KEY?.substring(0, 10) + '...');
 
     if (!process.env.NOTION_API_KEY || process.env.NOTION_API_KEY === 'your_notion_integration_token_here') {
       console.log('API key not configured properly');
+      clearTimeout(timeoutId);
       return NextResponse.json({ error: 'Notion API key not configured' }, { status: 400 });
     }
 
@@ -80,8 +85,9 @@ export async function GET(req: NextRequest) {
         'Notion-Version': '2022-06-28',
         'Content-Type': 'application/json'
       },
+      signal: controller.signal,
       body: JSON.stringify({
-        page_size: 100  // Aumentato da 20 a 100 per ottenere più risultati
+        page_size: 50  // Reduced from 100 to 50 for faster response
       })
     });
 
@@ -481,6 +487,8 @@ export async function GET(req: NextRequest) {
 
     const hierarchicalPages = buildHierarchy(rootPages);
 
+    clearTimeout(timeoutId);
+    
     return NextResponse.json({
       pages: filteredPages, // Keep flat list for backward compatibility
       hierarchicalPages: hierarchicalPages, // New hierarchical structure
@@ -488,6 +496,12 @@ export async function GET(req: NextRequest) {
       specificDatabaseFound: specificDbFound
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    clearTimeout(timeoutId);
+    console.error('Notion API error:', error.message);
+    return NextResponse.json({ 
+      error: error.name === 'AbortError' ? 'Request timeout - Notion API taking too long' : error.message,
+      pages: [],
+      hierarchicalPages: []
+    }, { status: 500 });
   }
 }

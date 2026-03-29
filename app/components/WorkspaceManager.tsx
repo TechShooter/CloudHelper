@@ -649,7 +649,7 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
                           onChange={() => toggleContext('sheet')}
                           className="form-checkbox h-4 w-4"
                         />
-                        Google Sheet Database (loaded)
+                        Food I eat db (loaded)
                       </label>
                       <button
                         onClick={() => toggleDefaultDoc('sheet')}

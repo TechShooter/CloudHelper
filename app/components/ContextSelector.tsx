@@ -107,7 +107,7 @@ export default function ContextSelector({ selectedContexts, setSelectedContexts,
               checked={selectedContexts.includes('sheet')}
               onChange={() => toggleContext('sheet')}
             />
-            <span>Google Sheet Database</span>
+            <span>Food I eat db</span>
           </label>
         )}
         {notionPages.map(page => (
