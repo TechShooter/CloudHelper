@@ -407,6 +407,7 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
 
   // Render grouped pages
   const renderGroupedPages = (pages: any[]): JSX.Element => {
+    console.log('renderGroupedPages called with pages:', pages.length, pages);
     if (!groupByTags) {
       return <>{renderHierarchicalPages(pages)}</>;
     }
@@ -693,6 +694,11 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
                       </div>
                     ) : (
                       <div className="text-sm text-gray-500 p-3 bg-gray-800 rounded">
+                        {console.log('Notion pages debug:', { 
+                          hierarchicalNotionPages: hierarchicalNotionPages?.length,
+                          allNotionPages: allNotionPages?.length,
+                          loadingNotion 
+                        })}
                         No Notion pages found. Click "↻ Reload" to fetch them.
                       </div>
                     )}

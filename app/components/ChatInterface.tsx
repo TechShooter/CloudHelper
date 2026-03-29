@@ -200,7 +200,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900">
+      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-4 bg-gray-900">
         {currentMessages.map((msg, i) => (
           <MessageItem key={`${workspaceId}-${i}`} message={msg} index={i} />
         ))}
