@@ -11,25 +11,60 @@ interface Message {
 interface MessageItemProps {
   message: Message;
   index: number;
+  onDelete: (index: number) => void;
+  openMenuIndex: number | null;
+  setOpenMenuIndex: (index: number | null) => void;
 }
 
 // Separate component for individual messages to prevent re-renders
-const MessageItem = React.memo(({ message, index }: MessageItemProps) => (
-  <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-    <div className={`max-w-[80%] px-4 py-2 rounded-lg ${message.role === 'user'
-        ? 'bg-blue-600 text-white'
-        : 'bg-gray-700 text-gray-100 prose-chat'
-      }`}>
-      {message.role === 'assistant' ? (
-        <ReactMarkdown>
-          {message.content}
-        </ReactMarkdown>
-      ) : (
-        message.content
-      )}
+const MessageItem = React.memo(({ message, index, onDelete, openMenuIndex, setOpenMenuIndex }: MessageItemProps) => {
+  const isMenuOpen = openMenuIndex === index;
+
+  return (
+    <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} group`}>
+      <div className={`max-w-[80%] px-4 py-2 rounded-lg relative ${message.role === 'user'
+          ? 'bg-blue-600 text-white'
+          : 'bg-gray-700 text-gray-100 prose-chat'
+        }`}>
+        {!isMenuOpen ? (
+          <button
+            onClick={() => setOpenMenuIndex(index)}
+            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-gray-600 hover:bg-gray-700 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold"
+            title="More options"
+          >
+            ...
+          </button>
+        ) : (
+          <div className="absolute top-1 right-1 flex gap-1 bg-gray-800 rounded-lg p-1 shadow-lg">
+            <button
+              onClick={() => setOpenMenuIndex(null)}
+              className="bg-gray-600 hover:bg-gray-700 text-white rounded px-2 py-1 text-xs font-medium"
+              title="Cancel"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => onDelete(index)}
+              className="bg-red-600 hover:bg-red-700 text-white rounded px-2 py-1 text-xs font-medium"
+              title="Delete message"
+            >
+              Delete
+            </button>
+          </div>
+        )}
+        <div className={`pr-8 ${isMenuOpen ? 'pr-20' : ''}`}>
+          {message.role === 'assistant' ? (
+            <ReactMarkdown>
+              {message.content}
+            </ReactMarkdown>
+          ) : (
+            message.content
+          )}
+        </div>
+      </div>
     </div>
-  </div>
-));
+  );
+});
 
 MessageItem.displayName = 'MessageItem';
 
@@ -50,6 +85,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Memoize current messages to avoid recalculation on every render
@@ -198,11 +234,27 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
     }
   }, [sendMessage]);
 
+  const deleteMessage = useCallback((messageIndex: number) => {
+    setMessages(prev => {
+      const workspaceMessages = prev[workspaceId] || [];
+      const newMessages = workspaceMessages.filter((_, index) => index !== messageIndex);
+      return { ...prev, [workspaceId]: newMessages };
+    });
+    setOpenMenuIndex(null);
+  }, [workspaceId]);
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
       <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-4 bg-gray-900 h-full">
         {currentMessages.map((msg, i) => (
-          <MessageItem key={`${workspaceId}-${i}`} message={msg} index={i} />
+          <MessageItem 
+            key={`${workspaceId}-${i}`} 
+            message={msg} 
+            index={i} 
+            onDelete={deleteMessage} 
+            openMenuIndex={openMenuIndex}
+            setOpenMenuIndex={setOpenMenuIndex}
+          />
         ))}
         {loading && (
           <div className="flex justify-start">
