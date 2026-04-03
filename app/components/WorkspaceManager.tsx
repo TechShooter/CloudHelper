@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import type { ReactNode } from 'react';
 import ChatInterface from './ChatInterface';
 import CalendarView from './CalendarView';
 import NutrientTracker from './NutrientTracker';
@@ -108,13 +109,19 @@ interface Props {
   onReloadNotion?: () => Promise<void>;
 }
 
-export default function WorkspaceManager({ notes, aiModel, userProfile, sheetData, mealHistory, notionPages, allNotionPages, hierarchicalNotionPages, onReloadNotion }: Props) {
+export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfile, sheetData, mealHistory, notionPages, allNotionPages, hierarchicalNotionPages, onReloadNotion }: Props, ref) {
   const [activeWorkspace, setActiveWorkspace] = useState('general');
   const [activeTab, setActiveTab] = useState<'chat' | 'docs' | 'calendar' | 'nutrients'>('chat');
   const [workspaces] = useState<Workspace[]>(DEFAULT_WORKSPACES);
   const [showMenu, setShowMenu] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [nutrientEntries, setNutrientEntries] = useState<any[]>([]);
+
+  // Expose functions to parent component
+  useImperativeHandle(ref, () => ({
+    setActiveWorkspace,
+    setActiveTab
+  }));
 
   const currentWorkspace = workspaces.find(w => w.id === activeWorkspace) || workspaces[0];
   const [selectedContexts, setSelectedContexts] = useState<string[]>([]);
@@ -297,7 +304,7 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
   };
 
 // Enhanced hierarchical rendering with toggle functionality
-  const renderHierarchicalPages = (pages: any[], level = 0): JSX.Element[] => {
+  const renderHierarchicalPages = (pages: any[], level = 0): ReactNode[] => {
     // Sort pages based on current sort order
     const sortedPages = [...pages].sort((a, b) => {
       if (sortOrder === 'title') {
@@ -320,7 +327,7 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
       const bgColor = level === 0 ? 'bg-gray-800' : level === 1 ? 'bg-gray-750' : 'bg-gray-700';
       const borderLeft = level > 0 ? 'border-l-2 border-purple-500/30' : '';
       
-      const elements: JSX.Element[] = [];
+      const elements: ReactNode[] = [];
       
       elements.push(
         <div key={page.id} className={`flex items-center justify-between gap-2 text-sm p-2 rounded ${bgColor} ${borderLeft} ${level > 0 ? 'ml-4' : ''}`}>
@@ -510,7 +517,7 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
   };
 
   // Render grouped pages
-  const renderGroupedPages = (pages: any[]): JSX.Element => {
+  const renderGroupedPages = (pages: any[]): ReactNode => {
     console.log('renderGroupedPages called with pages:', pages.length, pages);
     if (!groupByTags) {
       return <>{renderHierarchicalPages(pages)}</>;
@@ -536,9 +543,9 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
   };
 
   return (
-    <div className="flex-1 flex overflow-hidden">
+    <div className="flex-1 flex flex-col sm:flex-row overflow-hidden">
       {/* Sidebar */}
-      <div className={`${showMenu ? 'w-64' : 'w-12'} bg-gray-800 border-r border-gray-700 transition-all duration-200`}>
+      <div className={`${showMenu ? 'w-full sm:w-64' : 'w-12 sm:w-12'} bg-gray-800 border-r border-gray-700 transition-all duration-200 flex-shrink-0`}>
         <button
           onClick={() => setShowMenu(!showMenu)}
           className="w-full p-3 text-gray-400 hover:text-white hover:bg-gray-700 text-left"
@@ -571,11 +578,11 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Tab Navigation */}
         <div className="bg-gray-800 border-b border-gray-700">
-          <div className="flex items-center px-4 py-2">
-            <div className="flex items-center gap-2 mr-6">
+          <div className="flex flex-col sm:flex-row sm:items-center px-4 py-2 gap-3">
+            <div className="flex items-center gap-2">
               <span className="text-2xl">{currentWorkspace.icon}</span>
               <div>
                 <h2 className="text-sm font-semibold text-white">{currentWorkspace.name}</h2>
@@ -583,10 +590,10 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
               </div>
             </div>
             
-            <div className="flex gap-1">
+            <div className="flex gap-1 flex-wrap">
               <button
                 onClick={() => setActiveTab('chat')}
-                className={`px-4 py-2 text-sm font-medium rounded-t ${
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-t ${
                   activeTab === 'chat'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
@@ -596,17 +603,17 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
               </button>
               <button
                 onClick={() => setActiveTab('docs')}
-                className={`px-4 py-2 text-sm font-medium rounded-t ${
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-t ${
                   activeTab === 'docs'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
                 }`}
               >
-                📄 Manage Docs
+                📄 Docs
               </button>
               <button
                 onClick={() => setActiveTab('calendar')}
-                className={`px-4 py-2 text-sm font-medium rounded-t ${
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-t ${
                   activeTab === 'calendar'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
@@ -616,7 +623,7 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
               </button>
               <button
                 onClick={() => setActiveTab('nutrients')}
-                className={`px-4 py-2 text-sm font-medium rounded-t ${
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-t ${
                   activeTab === 'nutrients'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
@@ -629,7 +636,7 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
         </div>
 
         {/* Tab Content */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-y-auto">
           {activeTab === 'chat' && (
             <ChatInterface
               selectedContexts={selectedContexts}
@@ -810,11 +817,6 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
                       </div>
                     ) : (
                       <div className="text-sm text-gray-500 p-3 bg-gray-800 rounded">
-                        {console.log('Notion pages debug:', { 
-                          hierarchicalNotionPages: hierarchicalNotionPages?.length,
-                          allNotionPages: allNotionPages?.length,
-                          loadingNotion 
-                        })}
                         No Notion pages found. Click "↻ Reload" to fetch them.
                       </div>
                     )}
@@ -850,4 +852,4 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
       </div>
     </div>
   );
-}
+});

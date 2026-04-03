@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import UserProfile from '../components/UserProfile';
 import SheetManager from '../components/SheetManager';
 import MealTracker from '../components/MealTracker';
@@ -17,6 +17,7 @@ export default function Home() {
   const [notionPages, setNotionPages] = useState<any[]>([]);
   const [hierarchicalNotionPages, setHierarchicalNotionPages] = useState<any[]>([]);
   const [showSettings, setShowSettings] = useState(false);
+  const workspaceManagerRef = useRef<any>(null);
 
   // Auto-load default sheet on mount
   useEffect(() => {
@@ -101,15 +102,28 @@ export default function Home() {
     setSheetData(data);
   };
 
+  const returnToGeneralChat = () => {
+    if (workspaceManagerRef.current) {
+      workspaceManagerRef.current.setActiveWorkspace('general');
+      workspaceManagerRef.current.setActiveTab('chat');
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gray-900">
-      <header className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-white">CloudHelper AI</h1>
-        <div className="flex items-center gap-3">
+      <header className="bg-gray-800 border-b border-gray-700 px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between">
+        <button
+          onClick={returnToGeneralChat}
+          className="text-lg sm:text-xl font-semibold text-white hover:text-blue-400 transition-colors cursor-pointer"
+          title="Return to General Chat"
+        >
+          ☁️ CloudHelper
+        </button>
+        <div className="flex items-center gap-2 sm:gap-3">
           <select 
             value={aiModel} 
             onChange={(e) => setAiModel(e.target.value as any)}
-            className="bg-gray-700 text-white px-3 py-1 rounded text-sm border border-gray-600"
+            className="bg-gray-700 text-white px-2 sm:px-3 py-1 rounded text-xs sm:text-sm border border-gray-600 min-w-0 flex-1 sm:flex-none"
           >
             <option value="gemini-flash">Gemini Flash Latest</option>
             <option value="gemini-2.5">Gemini 2.5 Flash</option>
@@ -118,7 +132,7 @@ export default function Home() {
           </select>
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className="text-gray-300 hover:text-white text-xl"
+            className="text-gray-300 hover:text-white text-lg sm:text-xl p-1"
           >
             ⚙️
           </button>
@@ -143,6 +157,7 @@ export default function Home() {
       )}
       
       <WorkspaceManager
+        ref={workspaceManagerRef}
         notes={notes}
         aiModel={aiModel}
         userProfile={userProfile}
