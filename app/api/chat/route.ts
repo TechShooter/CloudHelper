@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, context, sheetData, notionData, userProfile, mealHistory, workspacePrompt, conversationHistory, aiModel, stream } = await req.json();
+    const { message, context, sheetData, notionData, userProfile, mealHistory, workspacePrompt, conversationHistory, aiModel, stream, calendarEvents, nutrientEntries } = await req.json();
 
     let systemPrompt = '';
 
@@ -54,6 +54,38 @@ export async function POST(req: NextRequest) {
 
       systemPrompt += '---\n\n';
       systemPrompt += 'IMPORTANT: You have access to ALL sheets and ALL rows. This is the complete database.\n\n';
+    }
+
+    if (calendarEvents && calendarEvents.length > 0) {
+      systemPrompt += 'Calendar Events (Next 30 Days):\n';
+      calendarEvents.forEach((event: any) => {
+        const start = event.start.dateTime || event.start.date;
+        const end = event.end?.dateTime || event.end?.date;
+        systemPrompt += `- ${event.summary}`;
+        if (start) systemPrompt += ` | ${new Date(start).toLocaleString('it-IT')}`;
+        if (end && event.start.dateTime) systemPrompt += ` - ${new Date(end).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
+        if (event.location) systemPrompt += ` | Location: ${event.location}`;
+        if (event.description) systemPrompt += ` | ${event.description}`;
+        systemPrompt += '\n';
+      });
+      systemPrompt += '\n---\n\n';
+    }
+
+    if (nutrientEntries && nutrientEntries.length > 0) {
+      systemPrompt += 'Nutrient Tracker (Last 24 Hours):\n';
+      const totals = nutrientEntries.reduce((acc: any, entry: any) => ({
+        energy: acc.energy + entry.energy,
+        protein: acc.protein + entry.protein,
+        carbs: acc.carbs + entry.carbs,
+        fats: acc.fats + entry.fats
+      }), { energy: 0, protein: 0, carbs: 0, fats: 0 });
+      
+      systemPrompt += `Total: ${totals.energy.toFixed(0)} kJ | Protein: ${totals.protein.toFixed(1)}g | Carbs: ${totals.carbs.toFixed(1)}g | Fats: ${totals.fats.toFixed(1)}g\n\n`;
+      systemPrompt += 'Entries:\n';
+      nutrientEntries.forEach((entry: any) => {
+        systemPrompt += `- ${entry.food} (${entry.grams}g) at ${new Date(entry.time).toLocaleString('it-IT')}: ${entry.energy.toFixed(0)} kJ | P: ${entry.protein.toFixed(1)}g | C: ${entry.carbs.toFixed(1)}g | F: ${entry.fats.toFixed(1)}g\n`;
+      });
+      systemPrompt += '\n---\n\n';
     }
 
     if (notionData && notionData.length > 0) {

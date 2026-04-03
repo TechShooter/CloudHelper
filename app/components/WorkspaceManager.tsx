@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import ChatInterface from './ChatInterface';
+import CalendarView from './CalendarView';
+import NutrientTracker from './NutrientTracker';
 
 interface Workspace {
   id: string;
@@ -47,6 +49,17 @@ const DEFAULT_WORKSPACES: Workspace[] = [
     autoLoadMeals: true,
     autoLoadProfile: false,
     systemPrompt: 'You are a personal coach. Focus on goal setting, progress tracking, and motivation. You have access to Timeline, Tasks to do db, and Goals pages.'
+  },
+  {
+    id: 'calendar',
+    name: 'Calendar',
+    icon: '📅',
+    description: 'View and manage your schedule',
+    autoLoadSheets: false,
+    autoLoadNotion: false,
+    autoLoadMeals: false,
+    autoLoadProfile: false,
+    systemPrompt: 'You are a scheduling assistant. Help with calendar management, event planning, and time organization.'
   },
   {
     id: 'research',
@@ -97,18 +110,40 @@ interface Props {
 
 export default function WorkspaceManager({ notes, aiModel, userProfile, sheetData, mealHistory, notionPages, allNotionPages, hierarchicalNotionPages, onReloadNotion }: Props) {
   const [activeWorkspace, setActiveWorkspace] = useState('general');
-  const [activeTab, setActiveTab] = useState<'chat' | 'docs' | 'calendar'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'docs' | 'calendar' | 'nutrients'>('chat');
   const [workspaces] = useState<Workspace[]>(DEFAULT_WORKSPACES);
   const [showMenu, setShowMenu] = useState(false);
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
+  const [nutrientEntries, setNutrientEntries] = useState<any[]>([]);
 
   const currentWorkspace = workspaces.find(w => w.id === activeWorkspace) || workspaces[0];
   const [selectedContexts, setSelectedContexts] = useState<string[]>([]);
   const [loadingNotion, setLoadingNotion] = useState(false);
   const [sortOrder, setSortOrder] = useState<'title' | 'type' | 'hierarchy'>('hierarchy');
-  const [groupByTags, setGroupByTags] = useState(false);
+  const [groupByTags, setGroupByTags] = useState(true);
   const [defaultDocs, setDefaultDocs] = useState<{ [workspaceId: string]: string[] }>({});
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set());
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const [customTags, setCustomTags] = useState<{ [pageId: string]: string[] }>({});
+  const [editingTags, setEditingTags] = useState<string | null>(null);
+  const [tagInput, setTagInput] = useState('');
+
+  // Load custom tags from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('notionCustomTags');
+    if (saved) {
+      try {
+        setCustomTags(JSON.parse(saved));
+      } catch (error) {
+        console.error('Failed to load custom tags:', error);
+      }
+    }
+  }, []);
+
+  // Save custom tags to localStorage
+  useEffect(() => {
+    localStorage.setItem('notionCustomTags', JSON.stringify(customTags));
+  }, [customTags]);
 
   // Load default docs from localStorage on mount
   useEffect(() => {
@@ -285,7 +320,9 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
       const bgColor = level === 0 ? 'bg-gray-800' : level === 1 ? 'bg-gray-750' : 'bg-gray-700';
       const borderLeft = level > 0 ? 'border-l-2 border-purple-500/30' : '';
       
-      const elements = [
+      const elements: JSX.Element[] = [];
+      
+      elements.push(
         <div key={page.id} className={`flex items-center justify-between gap-2 text-sm p-2 rounded ${bgColor} ${borderLeft} ${level > 0 ? 'ml-4' : ''}`}>
           <label className="flex items-center gap-2 flex-1">
             {hasChildren && (
@@ -309,6 +346,17 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
               <span className={`${level > 0 ? 'text-xs' : ''} ${level > 1 ? 'text-gray-400' : 'text-purple-300'}`}>
                 {indent}{page.title}
               </span>
+              {page.url && (
+                <a
+                  href={page.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 hover:text-blue-300 text-xs"
+                  title="Open in Notion"
+                >
+                  🔗
+                </a>
+              )}
               {hasChildren && (
                 <span className="text-xs text-gray-500">
                   ({page.children.length})
@@ -316,19 +364,70 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
               )}
             </div>
           </label>
-          <button
-            onClick={() => toggleDefaultDoc(`notion-${page.id}`)}
-            className={`text-xs px-2 py-1 rounded ${
-              isDefaultDoc(`notion-${page.id}`)
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
-            title="Mark as default for this chat"
-          >
-            {isDefaultDoc(`notion-${page.id}`) ? '✓ Default' : 'Default'}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                if (editingTags === page.id) {
+                  setEditingTags(null);
+                  setTagInput('');
+                } else {
+                  setEditingTags(page.id);
+                  setTagInput((customTags[page.id] || []).join(', '));
+                }
+              }}
+              className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
+              title="Edit tags"
+            >
+              🏷️
+            </button>
+            <button
+              onClick={() => toggleDefaultDoc(`notion-${page.id}`)}
+              className={`text-xs px-2 py-1 rounded ${
+                isDefaultDoc(`notion-${page.id}`)
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+              title="Mark as default for this chat"
+            >
+              {isDefaultDoc(`notion-${page.id}`) ? '✓ Default' : 'Default'}
+            </button>
+          </div>
         </div>
-      ];
+      );
+      
+      if (editingTags === page.id) {
+        elements.push(
+          <div key={`${page.id}-tags`} className={`flex gap-2 p-2 bg-gray-750 rounded mt-1 ${level > 0 ? 'ml-4' : ''}`}>
+            <input
+              type="text"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              placeholder="Enter tags separated by commas"
+              className="flex-1 px-2 py-1 text-xs bg-gray-700 text-white rounded border border-gray-600"
+            />
+            <button
+              onClick={() => {
+                const tags = tagInput.split(',').map(t => t.trim()).filter(t => t);
+                setCustomTags(prev => ({ ...prev, [page.id]: tags }));
+                setEditingTags(null);
+                setTagInput('');
+              }}
+              className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+            >
+              Save
+            </button>
+            <button
+              onClick={() => {
+                setEditingTags(null);
+                setTagInput('');
+              }}
+              className="text-xs bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-700"
+            >
+              Cancel
+            </button>
+          </div>
+        );
+      }
 
       // Only render children if expanded
       if (hasChildren && isExpanded) {
@@ -341,6 +440,11 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
 
   // Extract tags from page content
   const extractTags = (page: any): string[] => {
+    // Check custom tags first
+    if (customTags[page.id] && customTags[page.id].length > 0) {
+      return customTags[page.id];
+    }
+
     const tags: string[] = [];
     const title = page.title?.toLowerCase() || '';
     
@@ -510,6 +614,16 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
               >
                 📅 Calendar
               </button>
+              <button
+                onClick={() => setActiveTab('nutrients')}
+                className={`px-4 py-2 text-sm font-medium rounded-t ${
+                  activeTab === 'nutrients'
+                    ? 'bg-gray-700 text-white border-b-2 border-blue-500'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                }`}
+              >
+                🥗 Nutrients
+              </button>
             </div>
           </div>
         </div>
@@ -527,6 +641,8 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
               notionPages={getNotionPages()}
               workspacePrompt={currentWorkspace.systemPrompt}
               workspaceId={currentWorkspace.id}
+              calendarEvents={calendarEvents}
+              nutrientEntries={currentWorkspace.id === 'nutrition' ? nutrientEntries : []}
             />
           )}
 
@@ -720,16 +836,15 @@ export default function WorkspaceManager({ notes, aiModel, userProfile, sheetDat
           )}
 
           {activeTab === 'calendar' && (
-            <div className="h-full overflow-y-auto p-4">
-              <div className="max-w-4xl mx-auto">
-                <h3 className="text-lg font-semibold text-white mb-4">Calendar</h3>
-                <div className="bg-gray-800 rounded-lg p-6 text-center">
-                  <div className="text-6xl mb-4">📅</div>
-                  <p className="text-gray-400">Calendar functionality coming soon...</p>
-                  <p className="text-sm text-gray-500 mt-2">This will show your schedule, events, and deadlines from Notion pages.</p>
-                </div>
-              </div>
-            </div>
+            <CalendarView onEventsChange={setCalendarEvents} />
+          )}
+
+          {activeTab === 'nutrients' && (
+            <NutrientTracker 
+              sheetData={sheetData} 
+              userProfile={userProfile} 
+              onEntriesChange={setNutrientEntries}
+            />
           )}
         </div>
       </div>

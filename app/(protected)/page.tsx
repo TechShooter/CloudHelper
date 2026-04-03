@@ -42,24 +42,41 @@ export default function Home() {
     loadDefaultSheet();
   }, []);
 
-  // Auto-load Notion pages on mount
+  // Auto-load Notion pages on mount with streaming
   useEffect(() => {
     const loadNotionPages = async () => {
       console.log('Loading Notion pages...');
       try {
-        const res = await fetch('/api/notion');
-        console.log('Notion API response status:', res.status);
-        const data = await res.json();
-        console.log('Notion API response data:', data);
-        if (data.pages) {
-          setNotionPages(data.pages);
-          setHierarchicalNotionPages(data.hierarchicalPages || []);
-          console.log('Set Notion pages:', data.pages.length);
-        } else if (data.error) {
-          console.error('Notion API error:', data.error);
+        const res = await fetch('/api/notion/stream');
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+        
+        if (reader) {
+          const pages: any[] = [];
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            const text = decoder.decode(value);
+            const lines = text.split('\n').filter(line => line.trim());
+            
+            for (const line of lines) {
+              try {
+                const page = JSON.parse(line);
+                if (page.error) {
+                  console.error('Notion error:', page.error);
+                } else {
+                  pages.push(page);
+                  setNotionPages([...pages]);
+                }
+              } catch (e) {
+                console.error('Parse error:', e);
+              }
+            }
+          }
         }
       } catch (error) {
-        console.error('Failed to auto-load Notion:', error);
+        console.error('Failed to load Notion:', error);
       }
     };
 

@@ -78,18 +78,27 @@ interface Props {
   notionPages: any[];
   workspacePrompt?: string;
   workspaceId: string;
+  calendarEvents?: any[];
+  nutrientEntries?: any[];
 }
 
-export default function ChatInterface({ selectedContexts, notes, aiModel, userProfile, sheetData, mealHistory, notionPages, workspacePrompt, workspaceId }: Props) {
+export default function ChatInterface({ selectedContexts, notes, aiModel, userProfile, sheetData, mealHistory, notionPages, workspacePrompt, workspaceId, calendarEvents, nutrientEntries }: Props) {
   const [messages, setMessages] = useState<{ [key: string]: Message[] }>({});
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null);
+  const [visibleMessageCount, setVisibleMessageCount] = useState(50);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Memoize current messages to avoid recalculation on every render
   const currentMessages = useMemo(() => messages[workspaceId] || [], [messages, workspaceId]);
+  const visibleMessages = useMemo(() => {
+    const total = currentMessages.length;
+    if (total <= visibleMessageCount) return currentMessages;
+    return currentMessages.slice(total - visibleMessageCount);
+  }, [currentMessages, visibleMessageCount]);
 
   // Debounced save to localStorage
   const saveMessages = useCallback((messagesToSave: { [key: string]: Message[] }) => {
@@ -122,6 +131,20 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentMessages]);
+
+  // Handle scroll to load more messages
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    if (target.scrollTop === 0 && visibleMessageCount < currentMessages.length) {
+      const prevHeight = target.scrollHeight;
+      setVisibleMessageCount(prev => Math.min(prev + 30, currentMessages.length));
+      
+      setTimeout(() => {
+        const newHeight = target.scrollHeight;
+        target.scrollTop = newHeight - prevHeight;
+      }, 0);
+    }
+  }, [visibleMessageCount, currentMessages.length]);
 
   const stopResponse = useCallback(() => {
     if (abortController) {
@@ -171,7 +194,9 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
           workspacePrompt: workspacePrompt,
           conversationHistory: currentMessages.slice(-6),
           aiModel: aiModel,
-          stream: true
+          stream: true,
+          calendarEvents: calendarEvents,
+          nutrientEntries: nutrientEntries
         }),
         signal: controller.signal
       });
@@ -225,7 +250,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
       setLoading(false);
       setAbortController(null);
     }
-  }, [input, loading, currentMessages, messages, workspaceId, notes, selectedContexts, sheetData, notionPages, userProfile, mealHistory, workspacePrompt, aiModel]);
+  }, [input, loading, currentMessages, messages, workspaceId, notes, selectedContexts, sheetData, notionPages, userProfile, mealHistory, workspacePrompt, aiModel, calendarEvents, nutrientEntries]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -245,17 +270,29 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
-      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-4 bg-gray-900 h-full">
-        {currentMessages.map((msg, i) => (
-          <MessageItem 
-            key={`${workspaceId}-${i}`} 
-            message={msg} 
-            index={i} 
-            onDelete={deleteMessage} 
-            openMenuIndex={openMenuIndex}
-            setOpenMenuIndex={setOpenMenuIndex}
-          />
-        ))}
+      <div 
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto min-h-0 p-4 space-y-4 bg-gray-900 h-full"
+      >
+        {currentMessages.length > visibleMessageCount && (
+          <div className="text-center text-gray-500 text-sm py-2">
+            Showing {visibleMessageCount} of {currentMessages.length} messages. Scroll up to load more.
+          </div>
+        )}
+        {visibleMessages.map((msg, i) => {
+          const actualIndex = currentMessages.length - visibleMessages.length + i;
+          return (
+            <MessageItem 
+              key={`${workspaceId}-${actualIndex}`} 
+              message={msg} 
+              index={actualIndex} 
+              onDelete={deleteMessage} 
+              openMenuIndex={openMenuIndex}
+              setOpenMenuIndex={setOpenMenuIndex}
+            />
+          );
+        })}
         {loading && (
           <div className="flex justify-start">
             <div className="bg-gray-700 text-gray-100 px-4 py-2 rounded-lg flex items-center gap-2">
