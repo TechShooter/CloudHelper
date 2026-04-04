@@ -1,28 +1,25 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import UserProfile from '../components/UserProfile';
-import SheetManager from '../components/SheetManager';
-import MealTracker from '../components/MealTracker';
-import ContextSelector from '../components/ContextSelector';
 import WorkspaceManager from '../components/WorkspaceManager';
+import ModelSelector from '../components/ModelSelector';
 import LogoutButton from '../components/LogoutButton';
 
 export default function Home() {
   const [notes, setNotes] = useState<{id: string, title: string, content: string}[]>([]);
   const [sheetData, setSheetData] = useState<any>(null);
-  const [aiModel, setAiModel] = useState<'gemini-flash' | 'gemini-2.5' | 'gemini-2.5-pro' | 'groq'>('gemini-flash');
+  const [aiModel, setAiModel] = useState<string>('gemini-flash');
   const [userProfile, setUserProfile] = useState<any>(null);
   const [mealHistory, setMealHistory] = useState<any[]>([]);
   const [notionPages, setNotionPages] = useState<any[]>([]);
   const [hierarchicalNotionPages, setHierarchicalNotionPages] = useState<any[]>([]);
-  const [showSettings, setShowSettings] = useState(false);
   const workspaceManagerRef = useRef<any>(null);
 
   // Auto-load default sheet on mount
   useEffect(() => {
     const loadDefaultSheet = async () => {
       try {
+        console.log('🔄 Loading default sheet...');
         const res = await fetch('/api/sheets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -32,11 +29,19 @@ export default function Home() {
           })
         });
         const data = await res.json();
+        console.log('📊 Sheets API response:', data);
+        
         if (data.sheets) {
+          console.log(`✅ Loaded ${data.sheets.length} sheets`);
+          data.sheets.forEach((sheet: any, idx: number) => {
+            console.log(`Sheet ${idx + 1}: ${sheet.sheet} - ${sheet.rows} rows`);
+          });
           setSheetData(data.sheets);
+        } else {
+          console.error('❌ No sheets data received:', data);
         }
       } catch (error) {
-        console.error('Failed to auto-load sheet:', error);
+        console.error('❌ Failed to auto-load sheet:', error);
       }
     };
 
@@ -84,24 +89,6 @@ export default function Home() {
     loadNotionPages();
   }, []);
 
-  const reloadNotionPages = async () => {
-    try {
-      const res = await fetch('/api/notion');
-      const data = await res.json();
-      if (data.pages) {
-        setNotionPages(data.pages);
-        setHierarchicalNotionPages(data.hierarchicalPages || []);
-      }
-    } catch (error) {
-      console.error('Failed to reload Notion:', error);
-      throw error;
-    }
-  };
-
-  const handleSheetLoad = (data: any) => {
-    setSheetData(data);
-  };
-
   const returnToGeneralChat = () => {
     if (workspaceManagerRef.current) {
       workspaceManagerRef.current.setActiveWorkspace('general');
@@ -120,41 +107,15 @@ export default function Home() {
           ☁️ CloudHelper
         </button>
         <div className="flex items-center gap-2 sm:gap-3">
-          <select 
-            value={aiModel} 
-            onChange={(e) => setAiModel(e.target.value as any)}
-            className="bg-gray-700 text-white px-2 sm:px-3 py-1 rounded text-xs sm:text-sm border border-gray-600 min-w-0 flex-1 sm:flex-none"
-          >
-            <option value="gemini-flash">Gemini Flash Latest</option>
-            <option value="gemini-2.5">Gemini 2.5 Flash</option>
-            <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-            <option value="groq">Groq (Llama 3.3 70B)</option>
-          </select>
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className="text-gray-300 hover:text-white text-lg sm:text-xl p-1"
-          >
-            ⚙️
-          </button>
+          <ModelSelector 
+            selectedModel={aiModel}
+            onModelSelect={setAiModel}
+          />
           <LogoutButton />
         </div>
       </header>
       
-      {showSettings && (
-        <div className="bg-gray-800 border-b border-gray-700 overflow-y-auto max-h-96">
-          <UserProfile onProfileChange={setUserProfile} />
-          <MealTracker onMealsChange={setMealHistory} />
-          <SheetManager onSheetLoad={handleSheetLoad} />
-          <ContextSelector 
-            selectedContexts={[]}
-            setSelectedContexts={() => {}}
-            notes={notes}
-            setNotes={setNotes}
-            sheetData={sheetData}
-            onNotionLoad={setNotionPages}
-          />
-        </div>
-      )}
+      <div className="flex-1 flex overflow-x-auto">
       
       <WorkspaceManager
         ref={workspaceManagerRef}
@@ -166,8 +127,8 @@ export default function Home() {
         notionPages={notionPages}
         allNotionPages={notionPages}
         hierarchicalNotionPages={hierarchicalNotionPages}
-        onReloadNotion={reloadNotionPages}
       />
+      </div>
     </div>
   );
 }

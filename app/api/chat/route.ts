@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, context, sheetData, notionData, userProfile, mealHistory, workspacePrompt, conversationHistory, aiModel, stream, calendarEvents, nutrientEntries } = await req.json();
+    const { context, sheetData, notionData, userProfile, mealHistory, workspacePrompt, conversationHistory, aiModel, stream, calendarEvents, nutrientEntries } = await req.json();
+
+    console.log('=== CHAT API DEBUG ===');
+    console.log('AI Model:', aiModel);
+    console.log('Stream:', stream);
+    console.log('GROQ_API_KEY exists:', !!process.env.GROQ_API_KEY);
+    console.log('GEMINI_API_KEY exists:', !!process.env.GEMINI_API_KEY);
 
     let systemPrompt = '';
 
@@ -116,7 +122,13 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    messages.push({ role: 'user', content: message });
+    messages.push({ role: 'user', content: conversationHistory[conversationHistory.length - 1]?.content || '' });
+
+    // Log prompt size for debugging
+    const promptSize = JSON.stringify(messages).length;
+    console.log('Prompt Size (characters):', promptSize);
+    console.log('Number of messages:', messages.length);
+    console.log('System Prompt Length:', systemPrompt.length);
 
     let response, data, aiResponse;
 
@@ -132,7 +144,7 @@ export async function POST(req: NextRequest) {
           geminiPrompt += `${msg.role}: ${msg.content}\n`;
         });
       }
-      geminiPrompt += `user: ${message}`;
+      geminiPrompt += `user: ${conversationHistory[conversationHistory.length - 1]?.content || ''}`;
 
       if (stream) {
         // Gemini streaming
@@ -204,6 +216,29 @@ export async function POST(req: NextRequest) {
       data = await response.json();
       aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini';
     } else {
+      // Groq models mapping
+      const groqModelMap: { [key: string]: string } = {
+        'groq-allam-2-7b': 'allam-2-7b',
+        'groq-compound': 'compound-beta',
+        'groq-compound-mini': 'compound-beta-mini',
+        'groq-llama-3.1-8b-instant': 'llama-3.1-8b-instant',
+        'groq-llama-3.3-70b-versatile': 'llama-3.3-70b-versatile',
+        'groq-llama-4-scout-17b': 'meta-llama/llama-4-scout-17b-16e-instruct',
+        'groq-llama-prompt-guard-2-22m': 'meta-llama/llama-prompt-guard-2-22m',
+        'groq-llama-prompt-guard-2-86m': 'meta-llama/llama-prompt-guard-2-86m',
+        'groq-kimi-k2-instruct': 'moonshotai/kimi-k2-instruct',
+        'groq-kimi-k2-instruct-0905': 'moonshotai/kimi-k2-instruct-0905',
+        'groq-gpt-oss-120b': 'openai/gpt-oss-120b',
+        'groq-gpt-oss-20b': 'openai/gpt-oss-20b',
+        'groq-gpt-oss-safeguard-20b': 'openai/gpt-oss-safeguard-20b',
+        'groq-qwen3-32b': 'qwen/qwen3-32b'
+      };
+
+      const selectedGroqModel = groqModelMap[aiModel] || 'llama-3.3-70b-versatile';
+      
+      console.log('Selected Groq Model:', selectedGroqModel);
+      console.log('Making Groq API call...');
+
       response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -211,13 +246,16 @@ export async function POST(req: NextRequest) {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
+          model: selectedGroqModel,
           messages: messages,
           temperature: 0.5,
           max_tokens: 1024,
           stream: stream
         })
       });
+
+      console.log('Groq API Response Status:', response.status);
+      console.log('Groq API Response Headers:', Object.fromEntries(response.headers.entries()));
 
       if (stream && response.body) {
         // Handle Groq streaming
@@ -264,17 +302,65 @@ export async function POST(req: NextRequest) {
       }
 
       data = await response.json();
+      console.log('Groq API Response Data:', data);
       aiResponse = data.choices?.[0]?.message?.content || 'No response from Groq';
     }
 
-    if (!response.ok) {
-      console.error('AI API Error:', data);
-      return NextResponse.json({ response: `API Error: ${data.error?.message || 'Unknown error'}` }, { status: 500 });
+    // Log response data regardless of status for debugging
+    if (!data) {
+      try {
+        data = await response.json();
+        console.log('Parsed Response Data:', data);
+      } catch (parseError) {
+        console.log('Failed to parse response as JSON');
+        const text = await response.text();
+        console.log('Raw Response Text:', text);
+        data = { error: text };
+      }
     }
 
+    if (!response.ok) {
+      console.error('=== AI API ERROR ===');
+      console.error('Response Status:', response.status);
+      console.error('Response Status Text:', response.statusText);
+      console.error('Error Data:', data);
+      console.error('Headers:', Object.fromEntries(response.headers.entries()));
+      
+      // Special handling for 413 (Payload Too Large)
+      if (response.status === 413) {
+        return NextResponse.json({ 
+          response: `Groq Error: Payload too large. Try reducing context or using a different model.`,
+          error: {
+            type: 'PAYLOAD_TOO_LARGE',
+            message: 'The prompt is too large for Groq API. Try using Gemini models or reduce the context.',
+            retryAfter: response.headers.get('retry-after'),
+            rateLimit: {
+              requests: response.headers.get('x-ratelimit-limit-requests'),
+              tokens: response.headers.get('x-ratelimit-limit-tokens')
+            }
+          },
+          status: response.status 
+        }, { status: 500 });
+      }
+      
+      return NextResponse.json({ 
+        response: `API Error: ${data.error?.message || data.message || 'Unknown error'}`,
+        error: data,
+        status: response.status 
+      }, { status: 500 });
+    }
+
+    console.log('=== API SUCCESS ===');
     return NextResponse.json({ response: aiResponse });
   } catch (error: any) {
-    console.error('Server Error:', error);
-    return NextResponse.json({ response: `Error: ${error.message}` }, { status: 500 });
+    console.error('=== SERVER ERROR ===');
+    console.error('Error:', error);
+    console.error('Error Message:', error.message);
+    console.error('Error Stack:', error.stack);
+    
+    return NextResponse.json({ 
+      response: `Error: ${error.message}`,
+      error: error.stack 
+    }, { status: 500 });
   }
 }

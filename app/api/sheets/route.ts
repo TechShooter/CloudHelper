@@ -30,15 +30,15 @@ export async function GET(req: NextRequest) {
         return row.some(cell => cell?.toLowerCase().includes(query.toLowerCase()));
       });
       rows = filtered;
-    } else if (!full && rows.length > 51) {
-      // Limit to 50 rows + header if not full request
-      rows = rows.slice(0, 51);
+    } else if (!full && rows.length > 150) {
+      // Limit to 150 rows + header if not full request
+      rows = rows.slice(0, 151);
     }
     
     return NextResponse.json({ 
       data: rows, 
       totalRows,
-      limited: !full && totalRows > 51,
+      limited: !full && totalRows > 151,
       searchResults: query ? rows.length - 1 : null
     });
   } catch (error: any) {

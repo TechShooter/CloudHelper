@@ -99,7 +99,7 @@ const DEFAULT_WORKSPACES: Workspace[] = [
 
 interface Props {
   notes: { id: string, title: string, content: string }[];
-  aiModel: 'gemini-flash' | 'gemini-2.5' | 'gemini-2.5-pro' | 'groq';
+  aiModel: string;
   userProfile: any;
   sheetData: any;
   mealHistory: any[];
@@ -116,6 +116,17 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
   const [showMenu, setShowMenu] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [nutrientEntries, setNutrientEntries] = useState<any[]>([]);
+  
+  // Prompt control state
+  const [promptSettings, setPromptSettings] = useState({
+    includeSheets: true,
+    includeNotion: true,
+    includeMealHistory: true,
+    includeChatHistory: true,
+    maxChatMessages: 6,
+    maxSheetRows: 100,
+    maxNotionPages: 50
+  });
 
   // Expose functions to parent component
   useImperativeHandle(ref, () => ({
@@ -543,31 +554,32 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
   };
 
   return (
-    <div className="flex-1 flex flex-col sm:flex-row overflow-hidden">
+    <div className="flex-1 flex min-w-[800px]">
       {/* Sidebar */}
-      <div className={`${showMenu ? 'w-full sm:w-64' : 'w-12 sm:w-12'} bg-gray-800 border-r border-gray-700 transition-all duration-200 flex-shrink-0`}>
+      <div className={`${showMenu ? 'w-64' : 'w-12 sm:w-16'} bg-gray-800 border-r border-gray-700 transition-all duration-200 flex-shrink-0`}>
         <button
           onClick={() => setShowMenu(!showMenu)}
-          className="w-full p-3 text-gray-400 hover:text-white hover:bg-gray-700 text-left"
+          className="w-full p-4 sm:p-3 text-gray-400 hover:text-white hover:bg-gray-700 text-left text-2xl sm:text-lg"
+          title={showMenu ? "Close menu" : "Open menu"}
         >
           {showMenu ? '←' : '☰'}
         </button>
 
         {showMenu && (
-          <div className="p-2 space-y-1">
+          <div className="p-2 space-y-1 max-h-screen overflow-y-auto">
             {workspaces.map(workspace => (
               <button
                 key={workspace.id}
                 onClick={() => setActiveWorkspace(workspace.id)}
-                className={`w-full text-left px-3 py-2 rounded transition-colors ${activeWorkspace === workspace.id
+                className={`w-full text-left px-3 sm:px-3 py-3 sm:py-2 rounded transition-colors ${activeWorkspace === workspace.id
                   ? 'bg-blue-600 text-white'
                   : 'text-gray-300 hover:bg-gray-700'
                   }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-lg">{workspace.icon}</span>
+                  <span className="text-lg sm:text-lg">{workspace.icon}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{workspace.name}</div>
+                    <div className="text-sm sm:text-sm font-medium truncate">{workspace.name}</div>
                     <div className="text-xs text-gray-400 truncate">{workspace.description}</div>
                   </div>
                 </div>
@@ -578,11 +590,11 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-x-auto">
         {/* Tab Navigation */}
-        <div className="bg-gray-800 border-b border-gray-700">
-          <div className="flex flex-col sm:flex-row sm:items-center px-4 py-2 gap-3">
-            <div className="flex items-center gap-2">
+        <div className="bg-gray-800 border-b border-gray-700 flex-shrink-0">
+          <div className="flex items-center px-4 py-2">
+            <div className="flex items-center gap-2 mr-6">
               <span className="text-2xl">{currentWorkspace.icon}</span>
               <div>
                 <h2 className="text-sm font-semibold text-white">{currentWorkspace.name}</h2>
@@ -590,10 +602,10 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
               </div>
             </div>
             
-            <div className="flex gap-1 flex-wrap">
+            <div className="flex gap-1">
               <button
                 onClick={() => setActiveTab('chat')}
-                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-t ${
+                className={`px-4 py-2 text-sm font-medium rounded-t ${
                   activeTab === 'chat'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
@@ -603,7 +615,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
               </button>
               <button
                 onClick={() => setActiveTab('docs')}
-                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-t ${
+                className={`px-4 py-2 text-sm font-medium rounded-t ${
                   activeTab === 'docs'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
@@ -613,7 +625,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
               </button>
               <button
                 onClick={() => setActiveTab('calendar')}
-                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-t ${
+                className={`px-4 py-2 text-sm font-medium rounded-t ${
                   activeTab === 'calendar'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
@@ -623,7 +635,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
               </button>
               <button
                 onClick={() => setActiveTab('nutrients')}
-                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-t ${
+                className={`px-4 py-2 text-sm font-medium rounded-t ${
                   activeTab === 'nutrients'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
@@ -636,7 +648,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
         </div>
 
         {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto min-w-[600px] sm:min-w-[800px]">
           {activeTab === 'chat' && (
             <ChatInterface
               selectedContexts={selectedContexts}
@@ -820,6 +832,162 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                         No Notion pages found. Click "↻ Reload" to fetch them.
                       </div>
                     )}
+                  </div>
+                </div>
+
+                {/* Prompt Control Section */}
+                <div className="mt-6 p-4 bg-gray-800 rounded">
+                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    🔍 Prompt Control
+                    <span className="text-sm text-gray-400">(Manage what gets sent to AI)</span>
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Data Sources */}
+                    <div className="space-y-3">
+                      <h4 className="text-white font-medium">Data Sources</h4>
+                      
+                      <label className="flex items-center gap-2 text-white">
+                        <input
+                          type="checkbox"
+                          checked={promptSettings.includeSheets}
+                          onChange={(e) => setPromptSettings(prev => ({ ...prev, includeSheets: e.target.checked }))}
+                          className="form-checkbox"
+                        />
+                        Google Sheets ({sheetData ? Array.isArray(sheetData) ? sheetData.length : 1 : 0} sheets)
+                      </label>
+                      
+                      {promptSettings.includeSheets && (
+                        <div className="ml-6">
+                          <label className="text-gray-300 text-sm">
+                            Max rows per sheet: 
+                            <input
+                              type="number"
+                              value={promptSettings.maxSheetRows}
+                              onChange={(e) => setPromptSettings(prev => ({ ...prev, maxSheetRows: parseInt(e.target.value) || 0 }))}
+                              className="ml-2 w-20 px-2 py-1 bg-gray-700 rounded text-white"
+                              min="1"
+                              max="1000"
+                            />
+                          </label>
+                        </div>
+                      )}
+                      
+                      <label className="flex items-center gap-2 text-white">
+                        <input
+                          type="checkbox"
+                          checked={promptSettings.includeNotion}
+                          onChange={(e) => setPromptSettings(prev => ({ ...prev, includeNotion: e.target.checked }))}
+                          className="form-checkbox"
+                        />
+                        Notion Pages ({allNotionPages.length} pages)
+                      </label>
+                      
+                      {promptSettings.includeNotion && (
+                        <div className="ml-6">
+                          <label className="text-gray-300 text-sm">
+                            Max pages: 
+                            <input
+                              type="number"
+                              value={promptSettings.maxNotionPages}
+                              onChange={(e) => setPromptSettings(prev => ({ ...prev, maxNotionPages: parseInt(e.target.value) || 0 }))}
+                              className="ml-2 w-20 px-2 py-1 bg-gray-700 rounded text-white"
+                              min="1"
+                              max="100"
+                            />
+                          </label>
+                        </div>
+                      )}
+                      
+                      <label className="flex items-center gap-2 text-white">
+                        <input
+                          type="checkbox"
+                          checked={promptSettings.includeMealHistory}
+                          onChange={(e) => setPromptSettings(prev => ({ ...prev, includeMealHistory: e.target.checked }))}
+                          className="form-checkbox"
+                        />
+                        Meal History ({mealHistory.length} meals)
+                      </label>
+                    </div>
+                    
+                    {/* Chat Control */}
+                    <div className="space-y-3">
+                      <h4 className="text-white font-medium">Chat Context</h4>
+                      
+                      <label className="flex items-center gap-2 text-white">
+                        <input
+                          type="checkbox"
+                          checked={promptSettings.includeChatHistory}
+                          onChange={(e) => setPromptSettings(prev => ({ ...prev, includeChatHistory: e.target.checked }))}
+                          className="form-checkbox"
+                        />
+                        Include Previous Messages
+                      </label>
+                      
+                      {promptSettings.includeChatHistory && (
+                        <div className="ml-6">
+                          <label className="text-gray-300 text-sm">
+                            Max previous messages: 
+                            <input
+                              type="number"
+                              value={promptSettings.maxChatMessages}
+                              onChange={(e) => setPromptSettings(prev => ({ ...prev, maxChatMessages: parseInt(e.target.value) || 0 }))}
+                              className="ml-2 w-20 px-2 py-1 bg-gray-700 rounded text-white"
+                              min="1"
+                              max="20"
+                            />
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Quick Actions */}
+                  <div className="mt-4 pt-4 border-t border-gray-700">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setPromptSettings({
+                          includeSheets: true,
+                          includeNotion: true,
+                          includeMealHistory: true,
+                          includeChatHistory: true,
+                          maxChatMessages: 6,
+                          maxSheetRows: 100,
+                          maxNotionPages: 50
+                        })}
+                        className="text-sm bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700"
+                      >
+                        ✅ Enable All
+                      </button>
+                      <button
+                        onClick={() => setPromptSettings({
+                          includeSheets: false,
+                          includeNotion: false,
+                          includeMealHistory: false,
+                          includeChatHistory: false,
+                          maxChatMessages: 6,
+                          maxSheetRows: 100,
+                          maxNotionPages: 50
+                        })}
+                        className="text-sm bg-red-600 text-white px-3 py-2 rounded hover:bg-red-700"
+                      >
+                        ❌ Disable All
+                      </button>
+                      <button
+                        onClick={() => setPromptSettings({
+                          includeSheets: false,
+                          includeNotion: false,
+                          includeMealHistory: false,
+                          includeChatHistory: true,
+                          maxChatMessages: 2,
+                          maxSheetRows: 100,
+                          maxNotionPages: 50
+                        })}
+                        className="text-sm bg-yellow-600 text-white px-3 py-2 rounded hover:bg-yellow-700"
+                      >
+                        ⚡ Groq Mode (Minimal)
+                      </button>
+                    </div>
                   </div>
                 </div>
 
