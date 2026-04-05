@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface Model {
   id: string;
@@ -16,17 +16,44 @@ interface Model {
   category: 'gemini' | 'groq' | 'auto';
 }
 
-const MODELS: Model[] = [
+const DEFAULT_MODELS: Model[] = [
+  // Gemini Models - Ordered by version
+  {
+    id: 'gemini-3.1-flash-lite',
+    name: 'Gemini 3.1 Flash Lite',
+    provider: 'Google',
+    description: 'Versione ultra-leggera, ottima per query semplici e veloci',
+    limits: {
+      requestsPerMinute: 15,
+      requestsPerDay: '250K',
+      tokensPerMinute: '250K',
+      tokensPerDay: '500'
+    },
+    category: 'gemini'
+  },
+  {
+    id: 'gemini-2.5-flash-lite',
+    name: 'Gemini 2.5 Flash Lite',
+    provider: 'Google',
+    description: 'Versione leggera e veloce per compiti quotidiani',
+    limits: {
+      requestsPerMinute: 10,
+      requestsPerDay: '250K',
+      tokensPerMinute: '250K',
+      tokensPerDay: '20'
+    },
+    category: 'gemini'
+  },
   {
     id: 'gemini-flash',
-    name: 'Gemini Flash Latest',
+    name: 'Gemini 3 Flash',
     provider: 'Google',
     description: 'Veloce, efficiente, ottimo per chat generiche',
     limits: {
-      requestsPerMinute: 15,
-      requestsPerDay: '1,500',
-      tokensPerMinute: '1M',
-      tokensPerDay: 'Unlimited'
+      requestsPerMinute: 5,
+      requestsPerDay: '250K',
+      tokensPerMinute: '250K',
+      tokensPerDay: '20'
     },
     category: 'gemini'
   },
@@ -262,12 +289,33 @@ interface ModelSelectorProps {
 export default function ModelSelector({ selectedModel, onModelSelect }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'gemini' | 'groq' | 'auto'>('all');
+  const [models, setModels] = useState<Model[]>(DEFAULT_MODELS);
+  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [editingModel, setEditingModel] = useState<Model | null>(null);
 
-  const selectedModelData = MODELS.find(m => m.id === selectedModel);
+  // Load models from localStorage on mount
+  useEffect(() => {
+    const savedModels = localStorage.getItem('customModels');
+    if (savedModels) {
+      try {
+        setModels(JSON.parse(savedModels));
+      } catch (error) {
+        console.error('Failed to load custom models:', error);
+      }
+    }
+  }, []);
+
+  // Save models to localStorage when they change
+  const saveModels = (newModels: Model[]) => {
+    setModels(newModels);
+    localStorage.setItem('customModels', JSON.stringify(newModels));
+  };
+
+  const selectedModelData = models.find(m => m.id === selectedModel);
 
   const filteredModels = selectedCategory === 'all' 
-    ? MODELS 
-    : MODELS.filter(m => m.category === selectedCategory);
+    ? models 
+    : models.filter(m => m.category === selectedCategory);
 
   return (
     <div className="relative">
@@ -290,13 +338,58 @@ export default function ModelSelector({ selectedModel, onModelSelect }: ModelSel
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-white">🤖 Select AI Model</h3>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="text-gray-400 hover:text-white text-xl"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsAdminMode(!isAdminMode)}
+                  className={`px-3 py-1 rounded text-sm ${
+                    isAdminMode 
+                      ? 'bg-orange-600 text-white hover:bg-orange-700' 
+                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                  }`}
+                >
+                  {isAdminMode ? '🔧 Admin' : '👤 User'}
+                </button>
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="text-gray-400 hover:text-white text-xl"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
+
+            {/* Admin Controls */}
+            {isAdminMode && (
+              <div className="mb-4 p-3 bg-gray-700 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold text-white">🛠️ Model Management</h4>
+                  <button
+                    onClick={() => setEditingModel({
+                      id: '',
+                      name: '',
+                      provider: '',
+                      description: '',
+                      limits: {
+                        requestsPerMinute: 0,
+                        requestsPerDay: '',
+                        tokensPerMinute: '',
+                        tokensPerDay: ''
+                      },
+                      category: 'gemini'
+                    })}
+                    className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+                  >
+                    + Add Model
+                  </button>
+                </div>
+                <button
+                  onClick={() => saveModels(DEFAULT_MODELS)}
+                  className="text-xs bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-700"
+                >
+                  Reset to Defaults
+                </button>
+              </div>
+            )}
 
             {/* Category Filter */}
             <div className="flex gap-2 mb-4 flex-wrap">
@@ -344,21 +437,23 @@ export default function ModelSelector({ selectedModel, onModelSelect }: ModelSel
 
             {/* Models List */}
             <div className="flex-1 overflow-y-auto space-y-3">
-              {filteredModels.map((model) => (
+              {filteredModels.map((model: Model) => (
                 <div
                   key={model.id}
-                  onClick={() => {
-                    onModelSelect(model.id);
-                    setIsOpen(false);
-                  }}
-                  className={`p-4 rounded-lg border cursor-pointer transition-colors ${
+                  className={`p-4 rounded-lg border transition-colors ${
                     selectedModel === model.id
                       ? 'bg-blue-600 border-blue-500'
                       : 'bg-gray-700 border-gray-600 hover:bg-gray-600'
                   }`}
                 >
                   <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                    <div 
+                      className="flex-1 cursor-pointer"
+                      onClick={() => {
+                        onModelSelect(model.id);
+                        setIsOpen(false);
+                      }}
+                    >
                       <div className="flex items-center gap-2 mb-1">
                         <h4 className="font-semibold text-white">{model.name}</h4>
                         <span className="text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded">
@@ -396,14 +491,198 @@ export default function ModelSelector({ selectedModel, onModelSelect }: ModelSel
                       </div>
                     </div>
                     
-                    {selectedModel === model.id && (
-                      <div className="ml-4">
+                    <div className="ml-4 flex items-center gap-2">
+                      {selectedModel === model.id && (
                         <div className="text-blue-400 text-xl">✓</div>
-                      </div>
-                    )}
+                      )}
+                      {isAdminMode && (
+                        <div className="flex gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingModel(model);
+                            }}
+                            className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const newModels = models.filter(m => m.id !== model.id);
+                              saveModels(newModels);
+                            }}
+                            className="text-xs bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Model Modal */}
+      {editingModel && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold text-white mb-4">
+              {editingModel.id ? 'Edit Model' : 'Add New Model'}
+            </h3>
+            
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Model ID</label>
+                  <input
+                    type="text"
+                    value={editingModel.id}
+                    onChange={(e) => setEditingModel({...editingModel, id: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
+                    placeholder="e.g., gemini-3.1-flash-lite"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Model Name</label>
+                  <input
+                    type="text"
+                    value={editingModel.name}
+                    onChange={(e) => setEditingModel({...editingModel, name: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
+                    placeholder="e.g., Gemini 3.1 Flash Lite"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Provider</label>
+                  <input
+                    type="text"
+                    value={editingModel.provider}
+                    onChange={(e) => setEditingModel({...editingModel, provider: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
+                    placeholder="e.g., Google"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Category</label>
+                  <select
+                    value={editingModel.category}
+                    onChange={(e) => setEditingModel({...editingModel, category: e.target.value as 'gemini' | 'groq' | 'auto'})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
+                  >
+                    <option value="gemini">Gemini</option>
+                    <option value="groq">Groq</option>
+                    <option value="auto">Auto</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Description</label>
+                <textarea
+                  value={editingModel.description}
+                  onChange={(e) => setEditingModel({...editingModel, description: e.target.value})}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
+                  rows={2}
+                  placeholder="e.g., Versione ultra-leggera, ottima per query semplici e veloci"
+                />
+              </div>
+
+              <div>
+                <h4 className="text-sm font-medium text-gray-300 mb-2">Limits</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Requests/Minute</label>
+                    <input
+                      type="number"
+                      value={editingModel.limits.requestsPerMinute}
+                      onChange={(e) => setEditingModel({
+                        ...editingModel, 
+                        limits: {...editingModel.limits, requestsPerMinute: parseInt(e.target.value) || 0}
+                      })}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
+                      placeholder="15"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Requests/Day</label>
+                    <input
+                      type="text"
+                      value={editingModel.limits.requestsPerDay}
+                      onChange={(e) => setEditingModel({
+                        ...editingModel, 
+                        limits: {...editingModel.limits, requestsPerDay: e.target.value}
+                      })}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
+                      placeholder="250K"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Tokens/Minute</label>
+                    <input
+                      type="text"
+                      value={editingModel.limits.tokensPerMinute}
+                      onChange={(e) => setEditingModel({
+                        ...editingModel, 
+                        limits: {...editingModel.limits, tokensPerMinute: e.target.value}
+                      })}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
+                      placeholder="250K"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Tokens/Day</label>
+                    <input
+                      type="text"
+                      value={editingModel.limits.tokensPerDay}
+                      onChange={(e) => setEditingModel({
+                        ...editingModel, 
+                        limits: {...editingModel.limits, tokensPerDay: e.target.value}
+                      })}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
+                      placeholder="500"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-6">
+              <button
+                onClick={() => {
+                  if (editingModel.id && editingModel.name) {
+                    if (models.find(m => m.id === editingModel.id && m.id !== editingModel.id)) {
+                      alert('Model ID already exists!');
+                      return;
+                    }
+                    
+                    const newModels = editingModel.id && models.find(m => m.id === editingModel.id)
+                      ? models.map(m => m.id === editingModel.id ? editingModel : m)
+                      : [...models, editingModel];
+                    
+                    saveModels(newModels);
+                    setEditingModel(null);
+                  } else {
+                    alert('Model ID and Name are required!');
+                  }
+                }}
+                className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+              >
+                {editingModel.id && models.find(m => m.id === editingModel.id) ? 'Update' : 'Add'} Model
+              </button>
+              <button
+                onClick={() => setEditingModel(null)}
+                className="flex-1 bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
