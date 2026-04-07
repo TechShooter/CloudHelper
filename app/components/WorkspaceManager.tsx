@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import ChatInterface from './ChatInterface';
 import CalendarView from './CalendarView';
 import NutrientTracker from './NutrientTracker';
+import ModelTesting from './ModelTesting';
 
 interface Workspace {
   id: string;
@@ -94,6 +95,17 @@ const DEFAULT_WORKSPACES: Workspace[] = [
     autoLoadMeals: false,
     autoLoadProfile: false,
     systemPrompt: 'You are an emotional wellness expert. Focus on emotional regulation, stress management, coping strategies, and personal well-being. Provide compassionate, supportive guidance for emotional challenges.'
+  },
+  {
+    id: 'model-testing',
+    name: 'Model Testing',
+    icon: '🧪',
+    description: 'Test multiple AI models simultaneously',
+    autoLoadSheets: false,
+    autoLoadNotion: false,
+    autoLoadMeals: false,
+    autoLoadProfile: false,
+    systemPrompt: 'You are a helpful AI assistant. Respond to the user\'s message clearly and concisely.'
   }
 ];
 
@@ -649,7 +661,17 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
 
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto min-w-[600px] sm:min-w-[800px]">
-          {activeTab === 'chat' && (
+          {activeTab === 'chat' && currentWorkspace.id === 'model-testing' && (
+            <ModelTesting
+              notes={notes}
+              userProfile={userProfile}
+              sheetData={sheetData}
+              mealHistory={mealHistory}
+              notionPages={notionPages}
+            />
+          )}
+
+          {activeTab === 'chat' && currentWorkspace.id !== 'model-testing' && (
             <ChatInterface
               selectedContexts={selectedContexts}
               notes={notes}
