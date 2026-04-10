@@ -11,19 +11,27 @@ interface Message {
 // Separate component for individual messages to prevent re-renders
 const MessageItem = React.memo(({ message, onDelete, index }: { message: Message; onDelete: (index: number) => void; index: number }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
-  
+  const [copied, setCopied] = React.useState(false);
+
   // Memoize the delete handler to prevent re-renders
   const handleDelete = React.useCallback(() => {
     onDelete(index);
   }, [onDelete, index]);
-  
+
+  // Copy message content
+  const handleCopy = React.useCallback(() => {
+    navigator.clipboard.writeText(message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [message.content]);
+
   return (
     <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} group`}>
       <div className={`max-w-[85%] sm:max-w-[80%] px-3 sm:px-4 py-2 rounded-lg relative ${message.role === 'user'
           ? 'bg-blue-600 text-white'
           : 'bg-gray-700 text-gray-100 prose-chat'
         }`}>
-        <div className="pr-8">
+        <div className="pr-16">
           {message.role === 'assistant' ? (
             <ReactMarkdown>
               {message.content}
@@ -32,21 +40,31 @@ const MessageItem = React.memo(({ message, onDelete, index }: { message: Message
             message.content
           )}
         </div>
-        
-        {/* Delete button with confirmation */}
-        <div className="absolute top-1 right-1">
+
+        {/* Action buttons */}
+        <div className="absolute top-1 right-1 flex gap-1">
+          {/* Copy button */}
+          <button
+            onClick={handleCopy}
+            className="text-gray-400 hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs p-1 rounded hover:bg-gray-600 cursor-pointer"
+            title="Copy message"
+          >
+            {copied ? 'Copied!' : '📋'}
+          </button>
+
+          {/* Delete button with confirmation */}
           {showDeleteConfirm ? (
             <div className="flex gap-1">
               <button
                 onClick={handleDelete}
-                className="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700"
+                className="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700 cursor-pointer"
                 title="Confirm delete"
               >
                 ✓
               </button>
               <button
                 onClick={() => setShowDeleteConfirm(false)}
-                className="bg-gray-600 text-white px-2 py-1 rounded text-xs hover:bg-gray-700"
+                className="bg-gray-600 text-white px-2 py-1 rounded text-xs hover:bg-gray-700 cursor-pointer"
                 title="Cancel"
               >
                 ✗
@@ -55,7 +73,7 @@ const MessageItem = React.memo(({ message, onDelete, index }: { message: Message
           ) : (
             <button
               onClick={() => setShowDeleteConfirm(true)}
-              className="text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-sm p-1 rounded hover:bg-gray-600"
+              className="text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-sm p-1 rounded hover:bg-gray-600 cursor-pointer"
               title="Delete message"
             >
               🗑️
