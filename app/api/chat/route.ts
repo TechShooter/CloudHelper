@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isGeminiModel } from '../../lib/models';
 
 export async function POST(req: NextRequest) {
   try {
@@ -133,11 +134,7 @@ export async function POST(req: NextRequest) {
 
     let response, data, aiResponse;
 
-    if (aiModel === 'gemini-flash' || aiModel === 'gemini-2.5' || aiModel === 'gemini-2.5-pro') {
-      const modelName = aiModel === 'gemini-2.5' ? 'gemini-2.5-flash' :
-        aiModel === 'gemini-2.5-pro' ? 'gemini-2.5-pro' :
-          'gemini-flash-latest';
-
+    if (isGeminiModel(aiModel)) {
       let geminiPrompt = '';
       if (systemPrompt) geminiPrompt += systemPrompt + '\n\n';
       if (conversationHistory && conversationHistory.length > 0) {
@@ -150,7 +147,7 @@ export async function POST(req: NextRequest) {
       if (stream) {
         // Gemini streaming
         response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -205,7 +202,7 @@ export async function POST(req: NextRequest) {
 
       // Non-streaming fallback
       response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${process.env.GEMINI_API_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -217,27 +214,8 @@ export async function POST(req: NextRequest) {
       data = await response.json();
       aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini';
     } else {
-      // Groq models mapping
-      const groqModelMap: { [key: string]: string } = {
-        'groq-allam-2-7b': 'allam-2-7b',
-        'groq-compound': 'compound-beta',
-        'groq-compound-mini': 'compound-beta-mini',
-        'groq-llama-3.1-8b-instant': 'llama-3.1-8b-instant',
-        'groq-llama-3.3-70b-versatile': 'llama-3.3-70b-versatile',
-        'groq-llama-4-scout-17b': 'meta-llama/llama-4-scout-17b-16e-instruct',
-        'groq-llama-prompt-guard-2-22m': 'meta-llama/llama-prompt-guard-2-22m',
-        'groq-llama-prompt-guard-2-86m': 'meta-llama/llama-prompt-guard-2-86m',
-        'groq-kimi-k2-instruct': 'moonshotai/kimi-k2-instruct',
-        'groq-kimi-k2-instruct-0905': 'moonshotai/kimi-k2-instruct-0905',
-        'groq-gpt-oss-120b': 'openai/gpt-oss-120b',
-        'groq-gpt-oss-20b': 'openai/gpt-oss-20b',
-        'groq-gpt-oss-safeguard-20b': 'openai/gpt-oss-safeguard-20b',
-        'groq-qwen3-32b': 'qwen/qwen3-32b'
-      };
-
-      const selectedGroqModel = groqModelMap[aiModel] || 'llama-3.3-70b-versatile';
-      
-      console.log('Selected Groq Model:', selectedGroqModel);
+      // Groq models - use aiModel directly since IDs are now API names
+      console.log('Selected Groq Model:', aiModel);
       console.log('Making Groq API call...');
 
       response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -247,7 +225,7 @@ export async function POST(req: NextRequest) {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: selectedGroqModel,
+          model: aiModel,
           messages: messages,
           temperature: 0.5,
           max_tokens: 1024,

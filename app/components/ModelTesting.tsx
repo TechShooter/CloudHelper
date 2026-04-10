@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import ChatInterface from './ChatInterface';
-import { MODELS } from './ModelSelector';
+import { MODELS } from '../lib/models';
 
 interface ModelChat {
   modelId: string;

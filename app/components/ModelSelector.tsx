@@ -1,88 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { MODELS, type Model } from '../lib/models';
 
-interface Model {
-  id: string;
-  name: string;
-  provider: string;
-  description: string;
-  limits: {
-    requestsPerMinute: number;
-    requestsPerDay: string;
-    tokensPerMinute: string;
-    tokensPerDay: string;
-  };
-  category: 'gemini' | 'groq' | 'auto';
-}
-
-const MODELS: Model[] = [
-  // Gemini Models - Ordered by version
-  {
-    id: 'gemini-3.1-flash-lite',
-    name: 'Gemini 3.1 Flash Lite',
-    provider: 'Google',
-    description: 'Versione ultra-leggera, ottima per query semplici e veloci',
-    limits: {
-      requestsPerMinute: 15,
-      requestsPerDay: '250K',
-      tokensPerMinute: '250K',
-      tokensPerDay: '500'
-    },
-    category: 'gemini'
-  },
-  {
-    id: 'gemini-2.5-flash-lite',
-    name: 'Gemini 2.5 Flash Lite',
-    provider: 'Google',
-    description: 'Versione leggera e veloce per compiti quotidiani',
-    limits: {
-      requestsPerMinute: 10,
-      requestsPerDay: '250K',
-      tokensPerMinute: '250K',
-      tokensPerDay: '20'
-    },
-    category: 'gemini'
-  },
-  {
-    id: 'gemini-flash',
-    name: 'Gemini Flash',
-    provider: 'Google',
-    description: 'Veloce, efficiente, ottimo per chat generiche',
-    limits: {
-      requestsPerMinute: 5,
-      requestsPerDay: '250K',
-      tokensPerMinute: '250K',
-      tokensPerDay: '20'
-    },
-    category: 'gemini'
-  },
-  {
-    id: 'gemini-3-flash-preview',
-    name: 'Gemini 3 Flash Preview',
-    provider: 'Google',
-    description: 'Veloce, efficiente, ottimo per chat generiche',
-    limits: {
-      requestsPerMinute: 5,
-      requestsPerDay: '250K',
-      tokensPerMinute: '250K',
-      tokensPerDay: '20'
-    },
-    category: 'gemini'
-  },
-  {
-    id: 'gemini-2.5',
-    name: 'Gemini 2.5 Flash',
-    provider: 'Google',
-    description: 'Più recente e potente di Flash',
-    limits: {
-      requestsPerMinute: 15,
-      requestsPerDay: '1,500',
-      tokensPerMinute: '1M',
-      tokensPerDay: 'Unlimited'
-    },
-    category: 'gemini'
-  },
+const LOCAL_MODELS: Model[] = [
   {
     id: 'auto',
     name: 'Auto Model',
@@ -94,194 +15,11 @@ const MODELS: Model[] = [
       tokensPerMinute: 'N/A',
       tokensPerDay: 'N/A'
     },
-    category: 'auto'
-  },
-  // Groq Models
-  {
-    id: 'groq-allam-2-7b',
-    name: 'Allam 2 7B',
-    provider: 'Groq',
-    description: 'Modello arabo bilanciato',
-    limits: {
-      requestsPerMinute: 30,
-      requestsPerDay: '7K',
-      tokensPerMinute: '6K',
-      tokensPerDay: '500K'
-    },
-    category: 'groq'
-  },
-  {
-    id: 'groq-compound',
-    name: 'Compound',
-    provider: 'Groq',
-    description: 'Modello versatile per compiti generici',
-    limits: {
-      requestsPerMinute: 30,
-      requestsPerDay: '250',
-      tokensPerMinute: '70K',
-      tokensPerDay: 'Unlimited'
-    },
-    category: 'groq'
-  },
-  {
-    id: 'groq-compound-mini',
-    name: 'Compound Mini',
-    provider: 'Groq',
-    description: 'Versione leggera di Compound',
-    limits: {
-      requestsPerMinute: 30,
-      requestsPerDay: '250',
-      tokensPerMinute: '70K',
-      tokensPerDay: 'Unlimited'
-    },
-    category: 'groq'
-  },
-  {
-    id: 'groq-llama-3.1-8b-instant',
-    name: 'Llama 3.1 8B Instant',
-    provider: 'Groq',
-    description: 'Velocità istantanea, ottimo per chat',
-    limits: {
-      requestsPerMinute: 30,
-      requestsPerDay: '14.4K',
-      tokensPerMinute: '6K',
-      tokensPerDay: '500K'
-    },
-    category: 'groq'
-  },
-  {
-    id: 'groq-llama-3.3-70b-versatile',
-    name: 'Llama 3.3 70B Versatile',
-    provider: 'Groq',
-    description: 'Il più potente di Groq, molto versatile',
-    limits: {
-      requestsPerMinute: 30,
-      requestsPerDay: '1K',
-      tokensPerMinute: '12K',
-      tokensPerDay: '100K'
-    },
-    category: 'groq'
-  },
-  {
-    id: 'groq-llama-4-scout-17b',
-    name: 'Llama 4 Scout 17B',
-    provider: 'Groq',
-    description: 'Modello scout di nuova generazione',
-    limits: {
-      requestsPerMinute: 30,
-      requestsPerDay: '1K',
-      tokensPerMinute: '30K',
-      tokensPerDay: '500K'
-    },
-    category: 'groq'
-  },
-  {
-    id: 'groq-llama-prompt-guard-2-22m',
-    name: 'Llama Prompt Guard 2 22M',
-    provider: 'Groq',
-    description: 'Specializzato in sicurezza dei prompt',
-    limits: {
-      requestsPerMinute: 30,
-      requestsPerDay: '14.4K',
-      tokensPerMinute: '15K',
-      tokensPerDay: '500K'
-    },
-    category: 'groq'
-  },
-  {
-    id: 'groq-llama-prompt-guard-2-86m',
-    name: 'Llama Prompt Guard 2 86M',
-    provider: 'Groq',
-    description: 'Sicurezza avanzata dei prompt',
-    limits: {
-      requestsPerMinute: 30,
-      requestsPerDay: '14.4K',
-      tokensPerMinute: '15K',
-      tokensPerDay: '500K'
-    },
-    category: 'groq'
-  },
-  {
-    id: 'groq-kimi-k2-instruct',
-    name: 'Kimi K2 Instruct',
-    provider: 'Groq',
-    description: 'Modello istruction-tuned veloce',
-    limits: {
-      requestsPerMinute: 60,
-      requestsPerDay: '1K',
-      tokensPerMinute: '10K',
-      tokensPerDay: '300K'
-    },
-    category: 'groq'
-  },
-  {
-    id: 'groq-kimi-k2-instruct-0905',
-    name: 'Kimi K2 Instruct 0905',
-    provider: 'Groq',
-    description: 'Versione aggiornata di Kimi K2',
-    limits: {
-      requestsPerMinute: 60,
-      requestsPerDay: '1K',
-      tokensPerMinute: '10K',
-      tokensPerDay: '300K'
-    },
-    category: 'groq'
-  },
-  {
-    id: 'groq-gpt-oss-120b',
-    name: 'GPT-OSS 120B',
-    provider: 'Groq',
-    description: 'Modello open source di grandi dimensioni',
-    limits: {
-      requestsPerMinute: 30,
-      requestsPerDay: '1K',
-      tokensPerMinute: '8K',
-      tokensPerDay: '200K'
-    },
-    category: 'groq'
-  },
-  {
-    id: 'groq-gpt-oss-20b',
-    name: 'GPT-OSS 20B',
-    provider: 'Groq',
-    description: 'Modello open source bilanciato',
-    limits: {
-      requestsPerMinute: 30,
-      requestsPerDay: '1K',
-      tokensPerMinute: '8K',
-      tokensPerDay: '200K'
-    },
-    category: 'groq'
-  },
-  {
-    id: 'groq-gpt-oss-safeguard-20b',
-    name: 'GPT-OSS Safeguard 20B',
-    provider: 'Groq',
-    description: 'Modello con sicurezza integrata',
-    limits: {
-      requestsPerMinute: 30,
-      requestsPerDay: '1K',
-      tokensPerMinute: '8K',
-      tokensPerDay: '200K'
-    },
-    category: 'groq'
-  },
-  {
-    id: 'groq-qwen3-32b',
-    name: 'Qwen3 32B',
-    provider: 'Groq',
-    description: 'Modello cinese versatile',
-    limits: {
-      requestsPerMinute: 60,
-      requestsPerDay: '1K',
-      tokensPerMinute: '6K',
-      tokensPerDay: '500K'
-    },
-    category: 'groq'
+    category: 'auto' as const
   }
 ];
 
-export { MODELS };
+const ALL_MODELS = [...LOCAL_MODELS, ...MODELS];
 
 interface ModelSelectorProps {
   selectedModel: string;
@@ -292,11 +30,11 @@ export default function ModelSelector({ selectedModel, onModelSelect }: ModelSel
   const [isOpen, setIsOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'gemini' | 'groq' | 'auto'>('all');
 
-  const selectedModelData = MODELS.find(m => m.id === selectedModel);
+  const selectedModelData = ALL_MODELS.find(m => m.id === selectedModel);
 
-  const filteredModels = selectedCategory === 'all' 
-    ? MODELS 
-    : MODELS.filter(m => m.category === selectedCategory);
+  const filteredModels = selectedCategory === 'all'
+    ? ALL_MODELS
+    : ALL_MODELS.filter(m => m.category === selectedCategory);
 
   return (
     <div className="relative">
@@ -400,26 +138,23 @@ export default function ModelSelector({ selectedModel, onModelSelect }: ModelSel
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                         <div className="bg-gray-800 rounded p-2">
                           <div className="text-gray-400">Req/min</div>
-                          <div className="text-white font-medium">
-                            {model.limits.requestsPerMinute || 'N/A'}
-                          </div>
-                        </div>
-                        <div className="bg-gray-800 rounded p-2">
-                          <div className="text-gray-400">Req/day</div>
-                          <div className="text-white font-medium">
-                            {model.limits.requestsPerDay}
+                          <div className="text-xs text-gray-400 mt-1">
+                            <div>📊 {model.limits?.requestsPerMinute} req/min</div>
+                            <div>📅 {model.limits?.requestsPerDay} req/day</div>
+                            <div>🔢 {model.limits?.tokensPerMinute} tokens/min</div>
+                            <div>💾 {model.limits?.tokensPerDay} tokens/day</div>
                           </div>
                         </div>
                         <div className="bg-gray-800 rounded p-2">
                           <div className="text-gray-400">Tokens/min</div>
                           <div className="text-white font-medium">
-                            {model.limits.tokensPerMinute}
+                            {model.limits?.tokensPerMinute}
                           </div>
                         </div>
                         <div className="bg-gray-800 rounded p-2">
                           <div className="text-gray-400">Tokens/day</div>
                           <div className="text-white font-medium">
-                            {model.limits.tokensPerDay}
+                            {model.limits?.tokensPerDay}
                           </div>
                         </div>
                       </div>

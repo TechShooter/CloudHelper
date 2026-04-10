@@ -238,9 +238,25 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
             return { ...prev, [workspaceId]: newMessages };
           });
         }
+
+        // Check if response is empty after streaming
+        if (!fullText || fullText.trim() === '') {
+          setMessages(prev => {
+            const workspaceMessages = prev[workspaceId] || [];
+            const newMessages = [...workspaceMessages];
+            newMessages[assistantIndex] = { role: 'assistant', content: 'No response from the AI model. This could be due to:\n• Invalid model name\n• API error or rate limit\n• Network issue\n\nPlease try again or use a different model.' };
+            return { ...prev, [workspaceId]: newMessages };
+          });
+        }
       } else {
         const data = await res.json();
         fullText = data.response;
+
+        // Check if response is empty
+        if (!fullText || fullText.trim() === '') {
+          fullText = 'No response from the AI model. This could be due to:\n• Invalid model name\n• API error or rate limit\n• Network issue\n\nPlease try again or use a different model.';
+        }
+
         setMessages(prev => {
           const workspaceMessages = prev[workspaceId] || [];
           const newMessages = [...workspaceMessages];

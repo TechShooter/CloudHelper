@@ -8,7 +8,7 @@ import LogoutButton from '../components/LogoutButton';
 export default function Home() {
   const [notes, setNotes] = useState<{id: string, title: string, content: string}[]>([]);
   const [sheetData, setSheetData] = useState<any>(null);
-  const [aiModel, setAiModel] = useState<string>('gemini-flash');
+  const [aiModel, setAiModel] = useState<string>('gemini-flash-latest');
   const [userProfile, setUserProfile] = useState<any>(null);
   const [mealHistory, setMealHistory] = useState<any[]>([]);
   const [notionPages, setNotionPages] = useState<any[]>([]);
