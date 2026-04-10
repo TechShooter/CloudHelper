@@ -9,6 +9,7 @@ export async function POST(req: NextRequest) {
     console.log('Stream:', stream);
     console.log('GROQ_API_KEY exists:', !!process.env.GROQ_API_KEY);
     console.log('GEMINI_API_KEY exists:', !!process.env.GEMINI_API_KEY);
+    console.log('Notion Data received:', notionData);
 
     let systemPrompt = '';
 

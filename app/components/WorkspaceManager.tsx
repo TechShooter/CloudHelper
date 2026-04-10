@@ -271,10 +271,48 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
     return defaultDocs[activeWorkspace] || [];
   };
 
-  // Filter Notion pages based on workspace
+  // Filter Notion pages based on selected contexts (prioritize user selection over workspace rules)
   const getNotionPages = () => {
-    return getNotionPagesForWorkspace(currentWorkspace, allNotionPages);
+    // Get pages that match workspace rules
+    const workspacePages = getNotionPagesForWorkspace(currentWorkspace, allNotionPages);
+    // Also include any pages that are explicitly selected by the user
+    const selectedPages = allNotionPages.filter((page: any) =>
+      selectedContexts.includes(`notion-${page.id}`)
+    );
+    // Combine and deduplicate
+    const allRelevantPages = [...workspacePages];
+    selectedPages.forEach((page: any) => {
+      if (!allRelevantPages.find((p: any) => p.id === page.id)) {
+        allRelevantPages.push(page);
+      }
+    });
+
+    console.log('=== WorkspaceManager.getNotionPages() ===');
+    console.log('selectedContexts:', selectedContexts);
+    console.log('workspacePages count:', workspacePages.length);
+    console.log('selectedPages count:', selectedPages.length);
+    console.log('allRelevantPages count:', allRelevantPages.length);
+    console.log('allRelevantPages:', allRelevantPages.map((p: any) => ({ id: p.id, title: p.title, contentLength: p.content?.length || 0 })));
+
+    return allRelevantPages;
   };
+
+  // Clean up stale page IDs from selectedContexts when pages are loaded
+  useEffect(() => {
+    if (allNotionPages.length > 0) {
+      const validNotionIds = new Set(allNotionPages.map((p: any) => p.id));
+      setSelectedContexts(prev =>
+        prev.filter(ctx => {
+          if (ctx === 'sheet') return true;
+          if (ctx.startsWith('notion-')) {
+            const pageId = ctx.replace('notion-', '');
+            return validNotionIds.has(pageId);
+          }
+          return false;
+        })
+      );
+    }
+  }, [allNotionPages]);
 
   useEffect(() => {
     setSelectedContexts(getAutoContexts());
@@ -1009,6 +1047,60 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                       >
                         ⚡ Groq Mode (Minimal)
                       </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Prompt Preview Section */}
+                <div className="mt-6 p-4 bg-gray-800 rounded">
+                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    📋 Prompt Preview
+                    <span className="text-sm text-gray-400">(What will be sent to AI)</span>
+                  </h3>
+
+                  <div className="space-y-4">
+                    {/* Selected Contexts Summary */}
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-300 mb-2">Selected Contexts ({selectedContexts.length})</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedContexts.map(ctx => (
+                          <span key={ctx} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">
+                            {ctx === 'sheet' ? '📊 Google Sheets' : ctx.startsWith('notion-') ? `📄 ${allNotionPages.find((p: any) => p.id === ctx.replace('notion-', ''))?.title || ctx}` : ctx}
+                          </span>
+                        ))}
+                        {selectedContexts.length === 0 && (
+                          <span className="text-sm text-gray-500">No contexts selected</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Content Preview */}
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-300 mb-2">Content Preview</h4>
+                      <div className="bg-gray-900 rounded p-3 max-h-96 overflow-y-auto text-xs font-mono text-gray-300">
+                        {selectedContexts.includes('sheet') && sheetData && (
+                          <div className="mb-3">
+                            <div className="text-green-400 font-bold mb-1">Google Sheets Data:</div>
+                            <div className="text-gray-400">
+                              {Array.isArray(sheetData) ? `${sheetData.length} sheets loaded` : '1 sheet loaded'}
+                            </div>
+                          </div>
+                        )}
+
+                        {getNotionPages().map((page: any) => (
+                          <div key={page.id} className="mb-3">
+                            <div className="text-purple-400 font-bold mb-1">{page.title}:</div>
+                            <div className="text-gray-400 whitespace-pre-wrap max-h-32 overflow-y-auto">
+                              {page.content?.substring(0, 500)}
+                              {page.content?.length > 500 && '...'}
+                            </div>
+                          </div>
+                        ))}
+
+                        {selectedContexts.filter(ctx => ctx.startsWith('notion-')).length === 0 && !selectedContexts.includes('sheet') && (
+                          <div className="text-gray-500">No content will be sent to AI</div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

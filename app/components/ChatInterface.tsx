@@ -179,7 +179,13 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
 
     const contextNotes = notes.filter(n => selectedContexts.includes(n.id));
     let sheetContext = selectedContexts.includes('sheet') ? sheetData : null;
+    // notionPages is already filtered by WorkspaceManager's getNotionPages()
     let notionContext = notionPages || [];
+
+    console.log('=== CHAT CONTEXT DEBUG ===');
+    console.log('selectedContexts:', selectedContexts);
+    console.log('notionPages received:', notionPages?.length || 0);
+    console.log('notionContext being sent:', notionContext.map((p: any) => ({ id: p.id, title: p.title, contentLength: p.content?.length || 0 })));
 
     let fullText = '';
     const requestStartTime = new Date();
@@ -188,7 +194,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
     const contextData = {
       notes: contextNotes,
       sheetData: sheetContext,
-      notionPages: notionContext,
+      notionData: notionContext,
       mealHistory: mealHistory,
       userProfile: userProfile,
       workspacePrompt: workspacePrompt,

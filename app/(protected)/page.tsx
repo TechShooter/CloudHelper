@@ -56,16 +56,16 @@ export default function Home() {
         const res = await fetch('/api/notion/stream');
         const reader = res.body?.getReader();
         const decoder = new TextDecoder();
-        
+
         if (reader) {
           const pages: any[] = [];
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
+
             const text = decoder.decode(value);
             const lines = text.split('\n').filter(line => line.trim());
-            
+
             for (const line of lines) {
               try {
                 const page = JSON.parse(line);
@@ -80,14 +80,53 @@ export default function Home() {
               }
             }
           }
+          console.log(`✅ Loaded ${pages.length} Notion pages`);
         }
       } catch (error) {
-        console.error('Failed to load Notion:', error);
+        console.error('❌ Failed to load Notion:', error);
       }
     };
 
     loadNotionPages();
   }, []);
+
+  const reloadNotion = async () => {
+    console.log('Reloading Notion pages...');
+    try {
+      const res = await fetch('/api/notion/stream');
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (reader) {
+        const pages: any[] = [];
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const text = decoder.decode(value);
+          const lines = text.split('\n').filter(line => line.trim());
+
+          for (const line of lines) {
+            try {
+              const page = JSON.parse(line);
+              if (page.error) {
+                console.error('Notion error:', page.error);
+              } else {
+                pages.push(page);
+              }
+            } catch (e) {
+              console.error('Parse error:', e);
+            }
+          }
+        }
+        console.log(`✅ Reloaded ${pages.length} Notion pages`);
+        setNotionPages(pages);
+        setHierarchicalNotionPages([]);
+      }
+    } catch (error) {
+      console.error('❌ Failed to reload Notion:', error);
+    }
+  };
 
   const returnToGeneralChat = () => {
     if (workspaceManagerRef.current) {
@@ -127,6 +166,7 @@ export default function Home() {
         notionPages={notionPages}
         allNotionPages={notionPages}
         hierarchicalNotionPages={hierarchicalNotionPages}
+        onReloadNotion={reloadNotion}
       />
       </div>
     </div>
