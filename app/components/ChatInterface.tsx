@@ -13,6 +13,9 @@ const MessageItem = React.memo(({ message, onDelete, index }: { message: Message
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
 
+  // Guard clause to prevent crash if message becomes undefined during deletion
+  if (!message) return null;
+
   // Memoize the delete handler to prevent re-renders
   const handleDelete = React.useCallback(() => {
     onDelete(index);
@@ -329,7 +332,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
       <div 
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto min-h-0 p-2 sm:p-4 space-y-3 sm:space-y-4 bg-gray-900 h-full"
+        className="flex-1 overflow-y-auto min-h-0 px-3 sm:px-4 py-2 sm:py-4 space-y-3 sm:space-y-4 bg-gray-900 h-full"
       >
         {currentMessages.length > visibleMessageCount && (
           <div className="text-center text-gray-500 text-sm py-2">
@@ -373,7 +376,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="border-t border-gray-700 bg-gray-800 p-3 sm:p-4">
+      <div className="border-t border-gray-700 bg-gray-800 px-3 sm:px-4 py-3 sm:py-4">
         <div className="flex gap-2 flex-col sm:flex-row">
           <textarea
             value={input}
