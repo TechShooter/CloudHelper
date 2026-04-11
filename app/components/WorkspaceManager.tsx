@@ -97,6 +97,17 @@ const DEFAULT_WORKSPACES: Workspace[] = [
     systemPrompt: 'You are an emotional wellness expert. Focus on emotional regulation, stress management, coping strategies, and personal well-being. Provide compassionate, supportive guidance for emotional challenges.'
   },
   {
+    id: 'impersonal',
+    name: 'Impersonal',
+    icon: '🤖',
+    description: 'Generic AI chat without personal data',
+    autoLoadSheets: false,
+    autoLoadNotion: false,
+    autoLoadMeals: false,
+    autoLoadProfile: false,
+    systemPrompt: 'You are a helpful, objective AI assistant. Provide generic, factual information without referencing any personal data, user-specific context, or personalized information. Keep responses neutral and universally applicable.'
+  },
+  {
     id: 'model-testing',
     name: 'Model Testing',
     icon: '🧪',
