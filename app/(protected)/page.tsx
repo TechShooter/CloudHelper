@@ -103,6 +103,10 @@ export default function Home() {
                   console.error('Notion error:', page.error);
                 } else {
                   pages.push(page);
+                  // Update state incrementally for progressive visualization
+                  setNotionPages([...pages]);
+                  const hierarchical = buildHierarchy(pages);
+                  setHierarchicalNotionPages(hierarchical);
                 }
               } catch (e) {
                 console.error('Parse error:', e);
@@ -110,13 +114,6 @@ export default function Home() {
             }
           }
           console.log(`✅ Loaded ${pages.length} Notion pages`);
-          
-          // Build hierarchy
-          const hierarchical = buildHierarchy(pages);
-          console.log(`✅ Built hierarchy with ${hierarchical.length} root items`);
-          
-          setNotionPages(pages);
-          setHierarchicalNotionPages(hierarchical);
         }
       } catch (error) {
         console.error('❌ Failed to load Notion:', error);
@@ -149,6 +146,10 @@ export default function Home() {
                 console.error('Notion error:', page.error);
               } else {
                 pages.push(page);
+                // Update state incrementally for progressive visualization
+                setNotionPages([...pages]);
+                const hierarchical = buildHierarchy(pages);
+                setHierarchicalNotionPages(hierarchical);
               }
             } catch (e) {
               console.error('Parse error:', e);
@@ -156,13 +157,6 @@ export default function Home() {
           }
         }
         console.log(`✅ Reloaded ${pages.length} Notion pages`);
-        
-        // Build hierarchy
-        const hierarchical = buildHierarchy(pages);
-        console.log(`✅ Built hierarchy with ${hierarchical.length} root items`);
-        
-        setNotionPages(pages);
-        setHierarchicalNotionPages(hierarchical);
       }
     } catch (error) {
       console.error('❌ Failed to reload Notion:', error);

@@ -604,9 +604,9 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
   };
 
   return (
-    <div className="flex-1 flex min-w-[800px]">
+    <div className="flex-1 flex min-w-0 sm:min-w-[800px]">
       {/* Sidebar */}
-      <div className={`${showMenu ? 'w-64' : 'w-12 sm:w-16'} bg-gray-800 border-r border-gray-700 transition-all duration-200 flex-shrink-0`}>
+      <div className={`${showMenu ? 'w-64' : 'w-0 sm:w-16'} bg-gray-800 border-r border-gray-700 transition-all duration-200 flex-shrink-0 overflow-hidden`}>
         <button
           onClick={() => setShowMenu(!showMenu)}
           className="w-full p-4 sm:p-3 text-gray-400 hover:text-white hover:bg-gray-700 text-left text-2xl sm:text-lg"
@@ -644,6 +644,14 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
         {/* Tab Navigation */}
         <div className="bg-gray-800 border-b border-gray-700 flex-shrink-0">
           <div className="flex items-center px-4 py-2">
+            {/* Mobile burger button */}
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="sm:hidden p-2 text-gray-400 hover:text-white hover:bg-gray-700 mr-2"
+              title={showMenu ? "Close menu" : "Open menu"}
+            >
+              {showMenu ? '←' : '☰'}
+            </button>
             <div className="flex items-center gap-2 mr-6">
               <span className="text-2xl">{currentWorkspace.icon}</span>
               <div>
@@ -698,7 +706,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
         </div>
 
         {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto min-w-[600px] sm:min-w-[800px]">
+        <div className="flex-1 overflow-y-auto min-w-0 sm:min-w-[800px]">
           {activeTab === 'chat' && currentWorkspace.id === 'model-testing' && (
             <ModelTesting
               notes={notes}
@@ -878,15 +886,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                         (hierarchical: {hierarchicalNotionPages?.length || 0}, flat: {allNotionPages?.length || 0})
                       </span>
                     </h4>
-                    {console.log('Rendering Notion section:', { hierarchicalNotionPages, allNotionPages, hierarchicalLength: hierarchicalNotionPages?.length, flatLength: allNotionPages?.length })}
                     {hierarchicalNotionPages && hierarchicalNotionPages.length > 0 ? (
                       <div className="space-y-1">
-                        {console.log('Rendering hierarchical pages')}
                         {renderGroupedPages(filterPagesByTags(hierarchicalNotionPages))}
                       </div>
                     ) : allNotionPages && allNotionPages.length > 0 ? (
                       <div className="space-y-1">
-                        {console.log('Rendering flat pages as hierarchy')}
                         {renderGroupedPages(filterPagesByTags(allNotionPages.map(page => ({ ...page, children: [] }))))}
                       </div>
                     ) : loadingNotion ? (

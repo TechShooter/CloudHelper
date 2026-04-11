@@ -27,6 +27,7 @@
 html, body {
   width: 100%;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 body {
@@ -42,7 +43,7 @@ body {
   * {
     -webkit-overflow-scrolling: touch;
   }
-  
+
   body {
     overscroll-behavior: none;
   }
