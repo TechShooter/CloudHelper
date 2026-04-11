@@ -1,6 +1,4 @@
-'use server';
-
-import { getCurrentUser } from '@/lib/auth';
+import { createClient } from '@/utils/supabase/server';
 import { redirect } from 'next/navigation';
 
 export default async function ProtectedLayout({
@@ -8,11 +6,10 @@ export default async function ProtectedLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Verifica autenticazione lato server
-  const user = await getCurrentUser();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
   
   if (!user) {
-    // Se non autenticato, redirect a login
     redirect('/login');
   }
 
