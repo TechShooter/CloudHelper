@@ -139,86 +139,17 @@ export async function GET(req: NextRequest) {
       data.results.map(async (item: any) => {
         try {
           if (item.object === 'database') {
-            // Handle database
+            // Handle database - just return the database itself
             const databaseId = item.id;
             let title = item.title?.[0]?.plain_text || 'Untitled Database';
 
-            // Query the database to get pages
-            const queryResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-                'Notion-Version': '2022-06-28',
-                'Content-Type': 'application/json'
-              }
-            });
-
-            const queryData = await queryResponse.json();
-            let content = '';
-
-            if (queryData.results && queryData.results.length > 0) {
-              for (const page of queryData.results.slice(0, 5)) { // Limit to 5 pages for performance
-                const properties = page.properties;
-                let pageContent = '';
-
-                // Extract properties as text
-                Object.keys(properties).forEach(key => {
-                  const prop = properties[key];
-                  if (prop.title && prop.title.length > 0) {
-                    pageContent += `${key}: ${prop.title.map((t: any) => t.plain_text).join('')}\n`;
-                  } else if (prop.rich_text && prop.rich_text.length > 0) {
-                    pageContent += `${key}: ${prop.rich_text.map((t: any) => t.plain_text).join('')}\n`;
-                  } else if (prop.select) {
-                    pageContent += `${key}: ${prop.select.name}\n`;
-                  } else if (prop.multi_select) {
-                    pageContent += `${key}: ${prop.multi_select.map((s: any) => s.name).join(', ')}\n`;
-                  } else if (prop.number !== null && prop.number !== undefined) {
-                    pageContent += `${key}: ${prop.number}\n`;
-                  } else if (prop.date) {
-                    pageContent += `${key}: ${prop.date.start}${prop.date.end ? ' to ' + prop.date.end : ''}\n`;
-                  } else if (prop.checkbox !== null && prop.checkbox !== undefined) {
-                    pageContent += `${key}: ${prop.checkbox ? 'Yes' : 'No'}\n`;
-                  }
-                });
-
-                // Also extract page content blocks if available
-                try {
-                  const pageBlocksResponse = await fetch(`https://api.notion.com/v1/blocks/${page.id}/children?page_size=50`, {
-                    headers: {
-                      'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-                      'Notion-Version': '2022-06-28'
-                    }
-                  });
-                  const pageBlocksData = await pageBlocksResponse.json();
-
-                  if (pageBlocksData.results && pageBlocksData.results.length > 0) {
-                    pageContent += '\nPage Content:\n';
-                    pageBlocksData.results.forEach((block: any) => {
-                      if (block.type === 'paragraph') {
-                        pageContent += block.paragraph?.rich_text?.map((t: any) => t.plain_text).join('') + '\n';
-                      } else if (block.type === 'bulleted_list_item') {
-                        pageContent += '- ' + block.bulleted_list_item?.rich_text?.map((t: any) => t.plain_text).join('') + '\n';
-                      } else if (block.type === 'numbered_list_item') {
-                        pageContent += '1. ' + block.numbered_list_item?.rich_text?.map((t: any) => t.plain_text).join('') + '\n';
-                      }
-                    });
-                  }
-                } catch (blockError) {
-                  console.log('Could not fetch page blocks for database item:', blockError);
-                }
-
-                content += pageContent + '\n---\n';
-              }
-            } else {
-              content = 'No items in this database.';
-            }
-
             return {
               id: databaseId,
-              title: `${title} (Database)`,
-              content,
+              title: title,
+              content: `Database: ${title}`,
               parent: item.parent,
-              object: 'database'
+              object: 'database',
+              children: [] // Will be populated in hierarchy building
             };
           } else {
             // Handle regular page
@@ -352,7 +283,7 @@ export async function GET(req: NextRequest) {
     console.log('Successfully processed pages:', filteredPages.length);
     console.log('Processed pages:', filteredPages.map(p => ({ id: p.id, title: p.title, object: p.object })));
 
-    // Collect all parent IDs that need to be fetched
+    // Collect all parent IDs that need to be fetched (including databases)
     const parentIdsToFetch = new Set<string>();
     filteredPages.forEach(page => {
       if (page.parent?.page_id && !filteredPages.find(p => p.id === page.parent.page_id)) {
@@ -363,10 +294,34 @@ export async function GET(req: NextRequest) {
       }
     });
 
-    // Fetch missing parent pages
-    const parentPromises = Array.from(parentIdsToFetch).map(async (parentId) => {
+    console.log('Parent IDs to fetch:', Array.from(parentIdsToFetch));
+
+    // Fetch missing parent pages/databases
+    const parentPromises = Array.from(parentIdsToFetch).slice(0, 10).map(async (parentId) => {
       try {
-        // Try to fetch as page first
+        // Try to fetch as database first
+        const dbResponse = await fetch(`https://api.notion.com/v1/databases/${parentId}`, {
+          headers: {
+            'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+            'Notion-Version': '2022-06-28'
+          }
+        });
+
+        if (dbResponse.ok) {
+          const dbData = await dbResponse.json();
+          const title = dbData.title?.[0]?.plain_text || 'Untitled Database';
+
+          return {
+            id: parentId,
+            title: title,
+            content: `Database: ${title}`,
+            parent: dbData.parent,
+            object: 'database',
+            children: []
+          };
+        }
+
+        // Try to fetch as page
         const pageResponse = await fetch(`https://api.notion.com/v1/pages/${parentId}`, {
           headers: {
             'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
@@ -384,53 +339,14 @@ export async function GET(req: NextRequest) {
             title = pageData.properties.Name.title[0].plain_text;
           }
 
-          // Get content for parent page
-          const blocksResponse = await fetch(`https://api.notion.com/v1/blocks/${parentId}/children?page_size=50`, {
-            headers: {
-              'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-              'Notion-Version': '2022-06-28'
-            }
-          });
-
-          const blocksData = await blocksResponse.json();
-          let content = '';
-
-          for (const block of blocksData.results || []) {
-            if (block.type === 'paragraph') {
-              content += block.paragraph?.rich_text?.map((t: any) => t.plain_text).join('') + '\n';
-            } else if (block.type === 'heading_1') {
-              content += '# ' + block.heading_1?.rich_text?.map((t: any) => t.plain_text).join('') + '\n';
-            }
-          }
-
           return {
             id: parentId,
             title,
-            content,
+            content: '',
             parent: pageData.parent,
-            object: 'page'
+            object: 'page',
+            children: []
           };
-        } else {
-          // Try to fetch as database
-          const dbResponse = await fetch(`https://api.notion.com/v1/databases/${parentId}`, {
-            headers: {
-              'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-              'Notion-Version': '2022-06-28'
-            }
-          });
-
-          if (dbResponse.ok) {
-            const dbData = await dbResponse.json();
-            const title = dbData.title?.[0]?.plain_text || 'Untitled Database';
-
-            return {
-              id: parentId,
-              title: `${title} (Database)`,
-              content: 'Database content not fetched for hierarchy',
-              parent: dbData.parent,
-              object: 'database'
-            };
-          }
         }
       } catch (error) {
         console.log('Could not fetch parent:', parentId, error);
@@ -447,45 +363,44 @@ export async function GET(req: NextRequest) {
     // Build hierarchical structure
     const pageMap = new Map();
     const rootPages: any[] = [];
-    const childPages: any[] = [];
 
-    // First pass: create map and separate root vs child pages
+    // First pass: create map with children arrays
     allPages.forEach(page => {
       pageMap.set(page.id, { ...page, children: [] });
-
-      if (page.parent?.type === 'workspace' || !page.parent) {
-        rootPages.push(page);
-      } else {
-        childPages.push(page);
-      }
     });
 
     // Second pass: build hierarchy
-    childPages.forEach(child => {
-      const parentId = child.parent?.page_id || child.parent?.database_id;
-      if (parentId && pageMap.has(parentId)) {
+    allPages.forEach(page => {
+      const parentId = page.parent?.page_id || page.parent?.database_id;
+      
+      if (!parentId || page.parent?.type === 'workspace') {
+        // Root level page
+        rootPages.push(pageMap.get(page.id));
+      } else if (pageMap.has(parentId)) {
+        // Has a parent in our map
         const parent = pageMap.get(parentId);
-        if (parent) {
-          parent.children.push(pageMap.get(child.id));
-        }
+        parent.children.push(pageMap.get(page.id));
       } else {
-        // If parent not found in our results, treat as root
-        rootPages.push(child);
+        // Parent not found, treat as root
+        rootPages.push(pageMap.get(page.id));
       }
     });
 
-    // Convert to hierarchical structure
-    const buildHierarchy = (pages: any[]): any[] => {
-      return pages.map(page => {
-        const pageWithChildren = pageMap.get(page.id);
-        return {
-          ...page,
-          children: buildHierarchy(pageWithChildren.children)
-        };
-      });
+    // Aggregate content for databases
+    const aggregateContent = (page: any): any => {
+      if (page.object === 'database' && page.children && page.children.length > 0) {
+        let aggregatedContent = page.content || '';
+        aggregatedContent += '\n\n=== Database Items ===\n\n';
+        page.children.forEach((child: any, idx: number) => {
+          const processedChild = aggregateContent(child);
+          aggregatedContent += `Item ${idx + 1}: ${processedChild.title}\n${processedChild.content}\n\n---\n\n`;
+        });
+        return { ...page, content: aggregatedContent, children: page.children.map(aggregateContent) };
+      }
+      return { ...page, children: page.children.map(aggregateContent) };
     };
 
-    const hierarchicalPages = buildHierarchy(rootPages);
+    const hierarchicalPages = rootPages.map(aggregateContent);
 
     clearTimeout(timeoutId);
     

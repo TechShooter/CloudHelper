@@ -385,8 +385,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
       const hasChildren = page.children && page.children.length > 0;
       const isExpanded = expandedPages.has(page.id);
       const indent = level > 0 ? '  '.repeat(level) : '';
-      const bgColor = level === 0 ? 'bg-gray-800' : level === 1 ? 'bg-gray-750' : 'bg-gray-700';
-      const borderLeft = level > 0 ? 'border-l-2 border-purple-500/30' : '';
+      const bgColor = isDatabase ? 'bg-purple-900/30' : level === 0 ? 'bg-gray-800' : level === 1 ? 'bg-gray-750' : 'bg-gray-700';
+      const borderLeft = level > 0 ? 'border-l-2 border-purple-500/30' : isDatabase ? 'border-l-4 border-purple-500' : '';
       
       const elements: ReactNode[] = [];
       
@@ -396,7 +396,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
             {hasChildren && (
               <button
                 onClick={() => toggleExpanded(page.id)}
-                className="text-gray-400 hover:text-white mr-1"
+                className="text-gray-400 hover:text-white mr-1 font-bold"
                 title={isExpanded ? 'Collapse' : 'Expand'}
               >
                 {isExpanded ? '▼' : '▶'}
@@ -410,8 +410,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
               className="form-checkbox h-4 w-4"
             />
             <div className="flex items-center gap-2 flex-1">
-              {isDatabase && <span className="text-xs bg-purple-600 text-white px-1 py-0.5 rounded">DB</span>}
-              <span className={`${level > 0 ? 'text-xs' : ''} ${level > 1 ? 'text-gray-400' : 'text-purple-300'}`}>
+              {isDatabase && <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded font-bold">DATABASE</span>}
+              <span className={`${isDatabase ? 'font-bold text-purple-200' : level > 0 ? 'text-xs' : ''} ${level > 1 ? 'text-gray-400' : 'text-purple-300'}`}>
                 {indent}{page.title}
               </span>
               {page.url && (
@@ -427,7 +427,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
               )}
               {hasChildren && (
                 <span className="text-xs text-gray-500">
-                  ({page.children.length})
+                  ({page.children.length} {isDatabase ? 'items' : 'pages'})
                 </span>
               )}
             </div>
@@ -595,7 +595,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
               {tag} ({groups[tag].length})
             </h5>
             <div className="space-y-1 ml-2">
-              <>{renderHierarchicalPages(groups[tag].map(page => ({ ...page, children: [] })))}</>
+              <>{renderHierarchicalPages(groups[tag])}</>
             </div>
           </div>
         ))}
@@ -874,13 +874,19 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                           (filtered by {selectedTags.size} tag{selectedTags.size > 1 ? 's' : ''})
                         </span>
                       )}
+                      <span className="text-xs text-gray-500">
+                        (hierarchical: {hierarchicalNotionPages?.length || 0}, flat: {allNotionPages?.length || 0})
+                      </span>
                     </h4>
+                    {console.log('Rendering Notion section:', { hierarchicalNotionPages, allNotionPages, hierarchicalLength: hierarchicalNotionPages?.length, flatLength: allNotionPages?.length })}
                     {hierarchicalNotionPages && hierarchicalNotionPages.length > 0 ? (
                       <div className="space-y-1">
+                        {console.log('Rendering hierarchical pages')}
                         {renderGroupedPages(filterPagesByTags(hierarchicalNotionPages))}
                       </div>
-                    ) : allNotionPages.length > 0 ? (
+                    ) : allNotionPages && allNotionPages.length > 0 ? (
                       <div className="space-y-1">
+                        {console.log('Rendering flat pages as hierarchy')}
                         {renderGroupedPages(filterPagesByTags(allNotionPages.map(page => ({ ...page, children: [] }))))}
                       </div>
                     ) : loadingNotion ? (

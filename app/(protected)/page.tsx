@@ -15,6 +15,36 @@ export default function Home() {
   const [hierarchicalNotionPages, setHierarchicalNotionPages] = useState<any[]>([]);
   const workspaceManagerRef = useRef<any>(null);
 
+  // Helper function to build hierarchy from flat list
+  const buildHierarchy = (pages: any[]) => {
+    const pageMap = new Map();
+    const rootPages: any[] = [];
+
+    // First pass: create map with children arrays
+    pages.forEach(page => {
+      pageMap.set(page.id, { ...page, children: [] });
+    });
+
+    // Second pass: build hierarchy
+    pages.forEach(page => {
+      const parentId = page.parent?.page_id || page.parent?.database_id;
+      
+      if (!parentId || page.parent?.type === 'workspace') {
+        // Root level page
+        rootPages.push(pageMap.get(page.id));
+      } else if (pageMap.has(parentId)) {
+        // Has a parent in our map
+        const parent = pageMap.get(parentId);
+        parent.children.push(pageMap.get(page.id));
+      } else {
+        // Parent not found, treat as root
+        rootPages.push(pageMap.get(page.id));
+      }
+    });
+
+    return rootPages;
+  };
+
   // Auto-load default sheet on mount
   useEffect(() => {
     const loadDefaultSheet = async () => {
@@ -51,7 +81,7 @@ export default function Home() {
   // Auto-load Notion pages on mount with streaming
   useEffect(() => {
     const loadNotionPages = async () => {
-      console.log('Loading Notion pages...');
+      console.log('🔄 Loading Notion pages via stream...');
       try {
         const res = await fetch('/api/notion/stream');
         const reader = res.body?.getReader();
@@ -73,7 +103,6 @@ export default function Home() {
                   console.error('Notion error:', page.error);
                 } else {
                   pages.push(page);
-                  setNotionPages([...pages]);
                 }
               } catch (e) {
                 console.error('Parse error:', e);
@@ -81,6 +110,13 @@ export default function Home() {
             }
           }
           console.log(`✅ Loaded ${pages.length} Notion pages`);
+          
+          // Build hierarchy
+          const hierarchical = buildHierarchy(pages);
+          console.log(`✅ Built hierarchy with ${hierarchical.length} root items`);
+          
+          setNotionPages(pages);
+          setHierarchicalNotionPages(hierarchical);
         }
       } catch (error) {
         console.error('❌ Failed to load Notion:', error);
@@ -91,7 +127,7 @@ export default function Home() {
   }, []);
 
   const reloadNotion = async () => {
-    console.log('Reloading Notion pages...');
+    console.log('Reloading Notion pages via stream...');
     try {
       const res = await fetch('/api/notion/stream');
       const reader = res.body?.getReader();
@@ -120,8 +156,13 @@ export default function Home() {
           }
         }
         console.log(`✅ Reloaded ${pages.length} Notion pages`);
+        
+        // Build hierarchy
+        const hierarchical = buildHierarchy(pages);
+        console.log(`✅ Built hierarchy with ${hierarchical.length} root items`);
+        
         setNotionPages(pages);
-        setHierarchicalNotionPages([]);
+        setHierarchicalNotionPages(hierarchical);
       }
     } catch (error) {
       console.error('❌ Failed to reload Notion:', error);

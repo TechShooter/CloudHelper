@@ -83,12 +83,30 @@ export async function GET(req: NextRequest) {
           return;
         }
 
+        // Process all items (pages and databases)
         for (const item of data.results) {
           if (item.object === 'page') {
             const page = await processPage(item, apiKey);
             if (page) {
               controller.enqueue(encoder.encode(JSON.stringify(page) + '\n'));
             }
+          } else if (item.object === 'database') {
+            // Process database
+            const databaseId = item.id;
+            const title = item.title?.[0]?.plain_text || 'Untitled Database';
+            const url = `https://www.notion.so/${databaseId.replace(/-/g, '')}`;
+            
+            const database = {
+              id: databaseId,
+              title: title,
+              content: `Database: ${title}`,
+              parent: item.parent,
+              object: 'database',
+              url,
+              children: []
+            };
+            
+            controller.enqueue(encoder.encode(JSON.stringify(database) + '\n'));
           }
         }
 
