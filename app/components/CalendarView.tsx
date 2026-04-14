@@ -18,9 +18,24 @@ interface Props {
 export default function CalendarView({ onEventsChange }: Props) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
-  const [daysBack, setDaysBack] = useState(30);
-  const [daysForward, setDaysForward] = useState(30);
+  
+  // Load saved settings from localStorage during initialization
+  const [daysBack, setDaysBack] = useState(() => {
+    const saved = localStorage.getItem('calendarDaysBack');
+    return saved ? parseInt(saved) : 30;
+  });
+  const [daysForward, setDaysForward] = useState(() => {
+    const saved = localStorage.getItem('calendarDaysForward');
+    return saved ? parseInt(saved) : 30;
+  });
+  
   const calendarId = 'cb6cdb21570e9e868a7d76f47035cb71be5eb96eca6c9a47763093a587e106e7@group.calendar.google.com';
+
+  // Save settings to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('calendarDaysBack', daysBack.toString());
+    localStorage.setItem('calendarDaysForward', daysForward.toString());
+  }, [daysBack, daysForward]);
 
   useEffect(() => {
     loadEvents();
@@ -90,7 +105,7 @@ export default function CalendarView({ onEventsChange }: Props) {
           <button
             onClick={loadEvents}
             disabled={loading}
-            className="text-xs bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 disabled:bg-gray-600"
+            className="text-xs bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 disabled:bg-gray-600 cursor-pointer"
           >
             {loading ? 'Loading...' : '🔄 Refresh'}
           </button>
@@ -116,13 +131,13 @@ export default function CalendarView({ onEventsChange }: Props) {
           </div>
           <button
             onClick={() => { setDaysBack(daysBack + 30); }}
-            className="text-xs bg-gray-700 text-white px-3 py-1 rounded hover:bg-gray-600"
+            className="text-xs bg-gray-700 text-white px-3 py-1 rounded hover:bg-gray-600 cursor-pointer"
           >
             Load 30 more back
           </button>
           <button
             onClick={() => { setDaysForward(daysForward + 30); }}
-            className="text-xs bg-gray-700 text-white px-3 py-1 rounded hover:bg-gray-600"
+            className="text-xs bg-gray-700 text-white px-3 py-1 rounded hover:bg-gray-600 cursor-pointer"
           >
             Load 30 more forward
           </button>

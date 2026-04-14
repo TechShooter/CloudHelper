@@ -90,14 +90,14 @@ const FoodEntryItem = React.memo(({ entry, onDelete, onEdit, onHide, hidden }: {
               <div className="flex gap-1">
                 <button
                   onClick={handleDelete}
-                  className="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700"
+                  className="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700 cursor-pointer"
                   title="Confirm delete"
                 >
                   ✓
                 </button>
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="bg-gray-600 text-white px-2 py-1 rounded text-xs hover:bg-gray-700"
+                  className="bg-gray-600 text-white px-2 py-1 rounded text-xs hover:bg-gray-700 cursor-pointer"
                   title="Cancel"
                 >
                   ✗
@@ -795,7 +795,7 @@ export default function NutrientTracker({ sheetData, userProfile, onEntriesChang
                 setEditingGoals(!editingGoals);
                 if (!editingGoals) setTempGoals(goals);
               }}
-              className="text-xs bg-purple-600 text-white px-2 sm:px-3 py-2 rounded hover:bg-purple-700"
+              className="text-xs bg-purple-600 text-white px-2 sm:px-3 py-2 rounded hover:bg-purple-700 cursor-pointer"
             >
               {editingGoals ? 'Cancel' : '⚙️ Goals'}
             </button>
@@ -806,7 +806,7 @@ export default function NutrientTracker({ sheetData, userProfile, onEntriesChang
                   weightSection.classList.toggle('hidden');
                 }
               }}
-              className="text-xs bg-blue-600 text-white px-2 sm:px-3 py-2 rounded hover:bg-blue-700"
+              className="text-xs bg-blue-600 text-white px-2 sm:px-3 py-2 rounded hover:bg-blue-700 cursor-pointer"
             >
               ⚖️ Weight
             </button>
@@ -1023,7 +1023,7 @@ export default function NutrientTracker({ sheetData, userProfile, onEntriesChang
             
             <button
               onClick={saveGoals}
-              className="mt-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm"
+              className="mt-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm cursor-pointer"
             >
               Save Goals
             </button>
@@ -1126,13 +1126,13 @@ export default function NutrientTracker({ sheetData, userProfile, onEntriesChang
                       <span className="text-gray-400 text-sm">g</span>
                       <button
                         onClick={() => updateEntry(entry.id, editGrams, editTime)}
-                        className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 text-sm"
+                        className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 text-sm cursor-pointer"
                       >
                         Save
                       </button>
                       <button
                         onClick={() => setEditingEntry(null)}
-                        className="bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-700 text-sm"
+                        className="bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-700 text-sm cursor-pointer"
                       >
                         Cancel
                       </button>

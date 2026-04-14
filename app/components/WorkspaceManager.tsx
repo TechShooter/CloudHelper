@@ -407,7 +407,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
             {hasChildren && (
               <button
                 onClick={() => toggleExpanded(page.id)}
-                className="text-gray-400 hover:text-white mr-1 font-bold"
+                className="text-gray-400 hover:text-white mr-1 font-bold cursor-pointer"
                 title={isExpanded ? 'Collapse' : 'Expand'}
               >
                 {isExpanded ? '▼' : '▶'}
@@ -454,14 +454,14 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                   setTagInput((customTags[page.id] || []).join(', '));
                 }
               }}
-              className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
+              className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 cursor-pointer"
               title="Edit tags"
             >
               🏷️
             </button>
             <button
               onClick={() => toggleDefaultDoc(`notion-${page.id}`)}
-              className={`text-xs px-2 py-1 rounded ${
+              className={`text-xs px-2 py-1 rounded cursor-pointer ${
                 isDefaultDoc(`notion-${page.id}`)
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -491,7 +491,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                 setEditingTags(null);
                 setTagInput('');
               }}
-              className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+              className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 cursor-pointer"
             >
               Save
             </button>
@@ -500,7 +500,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                 setEditingTags(null);
                 setTagInput('');
               }}
-              className="text-xs bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-700"
+              className="text-xs bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-700 cursor-pointer"
             >
               Cancel
             </button>
@@ -620,7 +620,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
       <div className={`${showMenu ? 'w-64' : 'w-0 sm:w-16'} bg-gray-800 border-r border-gray-700 transition-all duration-200 flex-shrink-0 overflow-hidden`}>
         <button
           onClick={() => setShowMenu(!showMenu)}
-          className="w-full p-4 sm:p-3 text-gray-400 hover:text-white hover:bg-gray-700 text-left text-2xl sm:text-lg"
+          className="w-full p-4 sm:p-3 text-gray-400 hover:text-white hover:bg-gray-700 text-left text-2xl sm:text-lg cursor-pointer"
           title={showMenu ? "Close menu" : "Open menu"}
         >
           {showMenu ? '←' : '☰'}
@@ -632,7 +632,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
               <button
                 key={workspace.id}
                 onClick={() => setActiveWorkspace(workspace.id)}
-                className={`w-full text-left px-3 sm:px-3 py-3 sm:py-2 rounded transition-colors ${activeWorkspace === workspace.id
+                className={`w-full text-left px-3 sm:px-3 py-3 sm:py-2 rounded transition-colors cursor-pointer ${activeWorkspace === workspace.id
                   ? 'bg-blue-600 text-white'
                   : 'text-gray-300 hover:bg-gray-700'
                   }`}
@@ -658,7 +658,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
             {/* Mobile burger button */}
             <button
               onClick={() => setShowMenu(!showMenu)}
-              className="sm:hidden p-2 text-gray-400 hover:text-white hover:bg-gray-700 mr-2"
+              className="sm:hidden p-2 text-gray-400 hover:text-white hover:bg-gray-700 mr-2 cursor-pointer"
               title={showMenu ? "Close menu" : "Open menu"}
             >
               {showMenu ? '←' : '☰'}
@@ -674,7 +674,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
             <div className="flex gap-1">
               <button
                 onClick={() => setActiveTab('chat')}
-                className={`px-4 py-2 text-sm font-medium rounded-t ${
+                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${
                   activeTab === 'chat'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
@@ -684,7 +684,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
               </button>
               <button
                 onClick={() => setActiveTab('docs')}
-                className={`px-4 py-2 text-sm font-medium rounded-t ${
+                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${
                   activeTab === 'docs'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
@@ -694,7 +694,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
               </button>
               <button
                 onClick={() => setActiveTab('calendar')}
-                className={`px-4 py-2 text-sm font-medium rounded-t ${
+                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${
                   activeTab === 'calendar'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
@@ -704,7 +704,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
               </button>
               <button
                 onClick={() => setActiveTab('nutrients')}
-                className={`px-4 py-2 text-sm font-medium rounded-t ${
+                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${
                   activeTab === 'nutrients'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
@@ -752,7 +752,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                   <button
                     onClick={reloadNotionPages}
                     disabled={loadingNotion}
-                    className="text-sm bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 disabled:bg-gray-600"
+                    className="text-sm bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 disabled:bg-gray-600 cursor-pointer"
                   >
                     {loadingNotion ? 'Loading...' : '↻ Reload'}
                   </button>
@@ -800,13 +800,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                             findPagesWithChildren(allPages);
                             setExpandedPages(pagesWithChildren);
                           }}
-                          className="text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+                          className="text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 cursor-pointer"
                         >
                           Expand All
                         </button>
                         <button
                           onClick={() => setExpandedPages(new Set())}
-                          className="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                          className="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 cursor-pointer"
                         >
                           Collapse All
                         </button>
@@ -821,7 +821,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                         <label className="text-sm text-gray-300">Filter by tags:</label>
                         <button
                           onClick={() => setSelectedTags(new Set())}
-                          className="text-xs bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-500"
+                          className="text-xs bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-500 cursor-pointer"
                         >
                           Clear All
                         </button>
@@ -830,7 +830,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                             const allTags = getAllTags(hierarchicalNotionPages || allNotionPages);
                             setSelectedTags(new Set(allTags));
                           }}
-                          className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
+                          className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 cursor-pointer"
                         >
                           Select All
                         </button>
@@ -840,7 +840,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                           <button
                             key={tag}
                             onClick={() => toggleTag(tag)}
-                            className={`text-xs px-3 py-1 rounded transition-colors ${
+                            className={`text-xs px-3 py-1 rounded transition-colors cursor-pointer ${
                               selectedTags.has(tag)
                                 ? 'bg-purple-600 text-white'
                                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -868,7 +868,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                       </label>
                       <button
                         onClick={() => toggleDefaultDoc('sheet')}
-                        className={`text-xs px-2 py-1 rounded ${
+                        className={`text-xs px-2 py-1 rounded cursor-pointer ${
                           isDefaultDoc('sheet')
                             ? 'bg-blue-600 text-white'
                             : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
