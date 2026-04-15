@@ -140,35 +140,9 @@ export async function GET(req: NextRequest) {
             const title = item.title?.[0]?.plain_text || 'Untitled Database';
             const url = `https://www.notion.so/${databaseId.replace(/-/g, '')}`;
 
-            // If this is a data_source with a database parent, fetch and send the parent database first
-            if (item.object === 'data_source' && item.parent?.type === 'database_id') {
-              try {
-                const parentDbResponse = await fetch(`https://api.notion.com/v1/databases/${item.parent.database_id}`, {
-                  headers: {
-                    'Authorization': `Bearer ${apiKey}`,
-                    'Notion-Version': '2026-03-11'
-                  }
-                });
-                const parentDbData = await parentDbResponse.json();
-                
-                if (parentDbData.id) {
-                  const parentDatabase = {
-                    id: parentDbData.id,
-                    title: parentDbData.title?.[0]?.plain_text || 'Parent Database',
-                    content: `Database: ${parentDbData.title?.[0]?.plain_text || 'Parent Database'}\n\n`,
-                    parent: parentDbData.parent,
-                    object: 'database',
-                    url: `https://www.notion.so/${parentDbData.id.replace(/-/g, '')}`,
-                    children: []
-                  };
-                  controller.enqueue(encoder.encode(JSON.stringify(parentDatabase) + '\n'));
-                }
-              } catch (error) {
-                console.error('Error fetching parent database:', error);
-              }
-            }
+            console.log('Sending database/data_source:', item.object, databaseId, title, 'parent:', item.parent);
 
-            // Then, send the data_source object
+            // Send the database/data_source object
             const database = {
               id: databaseId,
               title: title,
