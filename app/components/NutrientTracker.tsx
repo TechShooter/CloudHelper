@@ -330,6 +330,13 @@ export default function NutrientTracker({ sheetData, userProfile, onEntriesChang
     localStorage.setItem('nutrientGoals', JSON.stringify(goals));
   }, [goals]);
 
+  // Sync tempGoals with goals whenever goals changes, but only when Goals modal is not open
+  useEffect(() => {
+    if (!editingGoals) {
+      setTempGoals(goals);
+    }
+  }, [goals, editingGoals]);
+
   useEffect(() => {
     localStorage.setItem('weightHistory', JSON.stringify(weightHistory));
   }, [weightHistory]);
@@ -735,13 +742,21 @@ export default function NutrientTracker({ sheetData, userProfile, onEntriesChang
       ...prev,
       [nutrientEditState.nutrientKey]: tempGoalValue
     }));
-    
+
+    // Also update tempGoals if Goals modal is open
+    if (editingGoals) {
+      setTempGoals(prev => ({
+        ...prev,
+        [nutrientEditState.nutrientKey]: tempGoalValue
+      }));
+    }
+
     // Update note
     setNutrientNotes(prev => ({
       ...prev,
       [nutrientEditState.nutrientKey]: tempNoteValue
     }));
-    
+
     // Close modal
     setNutrientEditState({
       isOpen: false,
@@ -797,18 +812,7 @@ export default function NutrientTracker({ sheetData, userProfile, onEntriesChang
               }}
               className="text-xs bg-purple-600 text-white px-2 sm:px-3 py-2 rounded hover:bg-purple-700 cursor-pointer"
             >
-              {editingGoals ? 'Cancel' : '⚙️ Goals'}
-            </button>
-            <button
-              onClick={() => {
-                const weightSection = document.getElementById('weight-tracker');
-                if (weightSection) {
-                  weightSection.classList.toggle('hidden');
-                }
-              }}
-              className="text-xs bg-blue-600 text-white px-2 sm:px-3 py-2 rounded hover:bg-blue-700 cursor-pointer"
-            >
-              ⚖️ Weight
+              {editingGoals ? 'Cancel' : '⚙️ Goals & Settings'}
             </button>
           </div>
         </div>
@@ -998,7 +1002,63 @@ export default function NutrientTracker({ sheetData, userProfile, onEntriesChang
                 />
               </div>
             </div>
-            
+
+            {/* Weight Tracker Section */}
+            <div className="mt-4 pt-4 border-t border-gray-600">
+              <h3 className="text-sm font-semibold text-white mb-3">⚖️ Weight Tracker</h3>
+              {currentWeight && (
+                <div className="text-sm text-gray-300 mb-3">
+                  Current: <span className="font-bold text-white">{currentWeight} kg</span>
+                </div>
+              )}
+              <div className="flex gap-2 flex-wrap mb-3">
+                <input
+                  type="date"
+                  value={weightDate}
+                  onChange={(e) => setWeightDate(e.target.value)}
+                  className="px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm"
+                />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={newWeight || ''}
+                  onChange={(e) => setNewWeight(parseFloat(e.target.value) || 0)}
+                  placeholder="Weight (kg)"
+                  className="w-32 px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm"
+                />
+                <button
+                  onClick={addWeight}
+                  disabled={!newWeight || !weightDate}
+                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:bg-gray-600 text-sm"
+                >
+                  Add Weight
+                </button>
+              </div>
+              {weightHistory.length > 0 && (
+                <div className="max-h-32 overflow-y-auto">
+                  <div className="space-y-1">
+                    {weightHistory.slice(0, 10).map((entry, idx) => (
+                      <div key={entry.date} className="flex items-center justify-between text-sm bg-gray-800 rounded px-3 py-2">
+                        <span className="text-gray-300">
+                          {new Date(entry.date).toLocaleDateString()}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white">{entry.weight} kg</span>
+                          <button
+                            onClick={() => deleteWeight(entry.date)}
+                            className="text-red-400 hover:text-red-300 text-xs cursor-pointer"
+                            title="Delete weight entry"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Text areas for Goals and Notes */}
             <div className="mt-4 space-y-3">
               <div>
@@ -1210,54 +1270,7 @@ export default function NutrientTracker({ sheetData, userProfile, onEntriesChang
             </div>
           )}
         </div>
-        
-        {/* Weight Tracker - MOVED TO TOP */}
-        <div id="weight-tracker" className="bg-gray-700 rounded-lg p-4 mb-4 hidden">
-          <h3 className="text-sm font-semibold text-white mb-3">⚖️ Weight Tracker</h3>
-          {currentWeight && (
-            <div className="text-sm text-gray-300 mb-3">
-              Current: <span className="font-bold text-white">{currentWeight} kg</span>
-            </div>
-          )}
-          <div className="flex gap-2 flex-wrap mb-3">
-            <input
-              type="date"
-              value={weightDate}
-              onChange={(e) => setWeightDate(e.target.value)}
-              className="px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm"
-            />
-            <input
-              type="number"
-              step="0.1"
-              value={newWeight || ''}
-              onChange={(e) => setNewWeight(parseFloat(e.target.value) || 0)}
-              placeholder="Weight (kg)"
-              className="w-32 px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm"
-            />
-            <button
-              onClick={addWeight}
-              disabled={!newWeight || !weightDate}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:bg-gray-600 text-sm"
-            >
-              Add Weight
-            </button>
-          </div>
-          {weightHistory.length > 0 && (
-            <div className="max-h-32 overflow-y-auto">
-              <div className="space-y-1">
-                {weightHistory.slice(0, 10).map((entry, idx) => (
-                  <div key={entry.date} className="flex items-center justify-between text-sm bg-gray-800 rounded px-3 py-2">
-                    <span className="text-gray-300">
-                      {new Date(entry.date).toLocaleDateString()}
-                    </span>
-                    <span className="font-bold text-white">{entry.weight} kg</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-        
+
         {/* Summary Cards */}
         <div className="space-y-3 mb-4">
           {/* Daily Cost Summary */}
