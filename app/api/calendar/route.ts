@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
-import path from 'path';
-import fs from 'fs';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,17 +9,16 @@ export async function GET(req: NextRequest) {
     const calendarId = searchParams.get('calendarId') || 'primary';
     const daysBack = parseInt(searchParams.get('daysBack') || '30');
     const daysForward = parseInt(searchParams.get('daysForward') || '30');
-    
-    // Load service account credentials
-    const serviceAccountPath = path.join(process.cwd(), 'service-account.json');
-    
-    if (!fs.existsSync(serviceAccountPath)) {
-      return NextResponse.json({ 
-        error: 'Service account file not found. Make sure service-account.json is in the project root.' 
+
+    // Load service account credentials from environment variables
+    const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+    if (!serviceAccountJson) {
+      return NextResponse.json({
+        error: 'Google service account credentials not found. Set GOOGLE_SERVICE_ACCOUNT_JSON environment variable.'
       }, { status: 500 });
     }
-    
-    const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+
+    const serviceAccount = JSON.parse(serviceAccountJson);
     
     // Create auth client
     const auth = new google.auth.GoogleAuth({
@@ -67,18 +64,17 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const { action } = await req.json();
-    
+
     if (action === 'listCalendars') {
-      // Load service account credentials
-      const serviceAccountPath = path.join(process.cwd(), 'service-account.json');
-      
-      if (!fs.existsSync(serviceAccountPath)) {
-        return NextResponse.json({ 
-          error: 'Service account file not found' 
+      // Load service account credentials from environment variables
+      const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+      if (!serviceAccountJson) {
+        return NextResponse.json({
+          error: 'Google service account credentials not found. Set GOOGLE_SERVICE_ACCOUNT_JSON environment variable.'
         }, { status: 500 });
       }
-      
-      const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+
+      const serviceAccount = JSON.parse(serviceAccountJson);
       
       const auth = new google.auth.GoogleAuth({
         credentials: serviceAccount,
