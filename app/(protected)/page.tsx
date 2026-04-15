@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import WorkspaceManager from '../components/WorkspaceManager';
 import ModelSelector from '../components/ModelSelector';
+
+export const runtime = 'edge';
 import LogoutButton from '../components/LogoutButton';
 
 export default function Home() {

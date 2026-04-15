@@ -3,6 +3,8 @@ import { google } from 'googleapis';
 import path from 'path';
 import fs from 'fs';
 
+export const runtime = 'edge';
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);

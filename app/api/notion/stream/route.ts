@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 
+export const runtime = 'edge';
+
 function extractProperty(prop: any): string {
   if (!prop) return '';
   

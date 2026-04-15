@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyPassword, setAuthCookie, clearAuthCookie } from '@/lib/auth';
 
+export const runtime = 'edge';
+
 export async function POST(req: NextRequest) {
   try {
     const { email, password, action } = await req.json();

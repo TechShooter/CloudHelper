@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isGeminiModel } from '../../lib/models';
 
+export const runtime = 'edge';
+
 export async function POST(req: NextRequest) {
   try {
     const { context, sheetData, notionData, userProfile, mealHistory, workspacePrompt, conversationHistory, aiModel, stream, calendarEvents, nutrientEntries } = await req.json();
