@@ -168,6 +168,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
   const [customTags, setCustomTags] = useState<{ [pageId: string]: string[] }>({});
   const [editingTags, setEditingTags] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState('');
+  const [expandedPreviewPages, setExpandedPreviewPages] = useState<Set<string>>(new Set());
 
   // Load custom tags from localStorage
   useEffect(() => {
@@ -282,23 +283,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
     return defaultDocs[activeWorkspace] || [];
   };
 
-  // Filter Notion pages based on selected contexts (prioritize user selection over workspace rules)
+  // Filter Notion pages based on selected contexts (user has total control)
   const getNotionPages = () => {
-    // Get pages that match workspace rules
-    const workspacePages = getNotionPagesForWorkspace(currentWorkspace, allNotionPages);
-    // Also include any pages that are explicitly selected by the user
-    const selectedPages = allNotionPages.filter((page: any) =>
+    // Only return pages that are explicitly selected by the user
+    return allNotionPages.filter((page: any) =>
       selectedContexts.includes(`notion-${page.id}`)
     );
-    // Combine and deduplicate
-    const allRelevantPages = [...workspacePages];
-    selectedPages.forEach((page: any) => {
-      if (!allRelevantPages.find((p: any) => p.id === page.id)) {
-        allRelevantPages.push(page);
-      }
-    });
-
-    return allRelevantPages;
   };
 
   // Clean up stale page IDs from selectedContexts when pages are loaded
@@ -318,6 +308,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
     }
   }, [allNotionPages]);
 
+  // Auto-select default docs when workspace changes or on initial load
   useEffect(() => {
     setSelectedContexts(getAutoContexts());
   }, [activeWorkspace, defaultDocs]);
@@ -340,6 +331,18 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
 
   const isDefaultDoc = (id: string) => {
     return (defaultDocs[activeWorkspace] || []).includes(id);
+  };
+
+  const toggleExpandedPreview = (pageId: string) => {
+    setExpandedPreviewPages(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(pageId)) {
+        newSet.delete(pageId);
+      } else {
+        newSet.add(pageId);
+      }
+      return newSet;
+    });
   };
 
   // Toggle expanded state for a page
@@ -738,396 +741,418 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
 
           {activeTab === 'docs' && (
             <div className="h-full overflow-y-auto p-4">
-              <div className="max-w-4xl mx-auto">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-white">Manage accessible documents</h3>
-                  <button
-                    onClick={reloadNotionPages}
-                    disabled={loadingNotion}
-                    className="text-sm bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 disabled:bg-gray-600 cursor-pointer"
-                  >
-                    {loadingNotion ? 'Loading...' : '↻ Reload'}
-                  </button>
-                </div>
-
-                {/* Controls */}
-                <div className="mb-4 space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-gray-800 rounded">
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm text-gray-300">Sort:</label>
-                        <select
-                          value={sortOrder}
-                          onChange={(e) => setSortOrder(e.target.value as any)}
-                          className="text-sm bg-gray-700 text-white px-3 py-1 rounded border border-gray-600"
-                        >
-                          <option value="hierarchy">Hierarchy</option>
-                          <option value="title">Title</option>
-                          <option value="type">Type</option>
-                        </select>
-                      </div>
-                      <label className="flex items-center gap-2 text-sm text-gray-300">
-                        <input
-                          type="checkbox"
-                          checked={groupByTags}
-                          onChange={(e) => setGroupByTags(!groupByTags)}
-                          className="form-checkbox h-4 w-4"
-                        />
-                        Group by tags
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            // Expand all pages that have children
-                            const allPages = hierarchicalNotionPages || allNotionPages.map(p => ({ ...p, children: [] }));
-                            const pagesWithChildren = new Set<string>();
-                            const findPagesWithChildren = (pages: any[]) => {
-                              pages.forEach(page => {
-                                if (page.children && page.children.length > 0) {
-                                  pagesWithChildren.add(page.id);
-                                  findPagesWithChildren(page.children);
-                                }
-                              });
-                            };
-                            findPagesWithChildren(allPages);
-                            setExpandedPages(pagesWithChildren);
-                          }}
-                          className="text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 cursor-pointer"
-                        >
-                          Expand All
-                        </button>
-                        <button
-                          onClick={() => setExpandedPages(new Set())}
-                          className="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 cursor-pointer"
-                        >
-                          Collapse All
-                        </button>
-                      </div>
-                    </div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Left Column - Main Content */}
+                <div className="lg:col-span-2">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-white">Manage accessible documents</h3>
+                    <button
+                      onClick={reloadNotionPages}
+                      disabled={loadingNotion}
+                      className="text-sm bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 disabled:bg-gray-600 cursor-pointer"
+                    >
+                      {loadingNotion ? 'Loading...' : '↻ Reload'}
+                    </button>
                   </div>
 
-                  {/* Tag Filter */}
-                  {(hierarchicalNotionPages || allNotionPages) && (
-                    <div className="p-3 bg-gray-800 rounded">
-                      <div className="flex items-center gap-2 mb-2">
-                        <label className="text-sm text-gray-300">Filter by tags:</label>
-                        <button
-                          onClick={() => setSelectedTags(new Set())}
-                          className="text-xs bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-500 cursor-pointer"
-                        >
-                          Clear All
-                        </button>
-                        <button
-                          onClick={() => {
-                            const allTags = getAllTags(hierarchicalNotionPages || allNotionPages);
-                            setSelectedTags(new Set(allTags));
-                          }}
-                          className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 cursor-pointer"
-                        >
-                          Select All
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {getAllTags(hierarchicalNotionPages || allNotionPages).map(tag => (
-                          <button
-                            key={tag}
-                            onClick={() => toggleTag(tag)}
-                            className={`text-xs px-3 py-1 rounded transition-colors cursor-pointer ${
-                              selectedTags.has(tag)
-                                ? 'bg-purple-600 text-white'
-                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                            }`}
+                  {/* Controls */}
+                  <div className="mb-4 space-y-3">
+                    <div className="flex items-center justify-between p-3 bg-gray-800 rounded">
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm text-gray-300">Sort:</label>
+                          <select
+                            value={sortOrder}
+                            onChange={(e) => setSortOrder(e.target.value as any)}
+                            className="text-sm bg-gray-700 text-white px-3 py-1 rounded border border-gray-600"
                           >
-                            {tag}
+                            <option value="hierarchy">Hierarchy</option>
+                            <option value="title">Title</option>
+                            <option value="type">Type</option>
+                          </select>
+                        </div>
+                        <label className="flex items-center gap-2 text-sm text-gray-300">
+                          <input
+                            type="checkbox"
+                            checked={groupByTags}
+                            onChange={(e) => setGroupByTags(!groupByTags)}
+                            className="form-checkbox h-4 w-4"
+                          />
+                          Group by tags
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              // Expand all pages that have children
+                              const allPages = hierarchicalNotionPages || allNotionPages.map(p => ({ ...p, children: [] }));
+                              const pagesWithChildren = new Set<string>();
+                              const findPagesWithChildren = (pages: any[]) => {
+                                pages.forEach(page => {
+                                  if (page.children && page.children.length > 0) {
+                                    pagesWithChildren.add(page.id);
+                                    findPagesWithChildren(page.children);
+                                  }
+                                });
+                              };
+                              findPagesWithChildren(allPages);
+                              setExpandedPages(pagesWithChildren);
+                            }}
+                            className="text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 cursor-pointer"
+                          >
+                            Expand All
                           </button>
-                        ))}
+                          <button
+                            onClick={() => setExpandedPages(new Set())}
+                            className="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 cursor-pointer"
+                          >
+                            Collapse All
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  )}
-                </div>
 
-                <div className="space-y-3">
-                  {sheetData ? (
-                    <div className="flex items-center justify-between gap-2 text-sm text-green-300 p-3 bg-gray-800 rounded">
-                      <label className="flex items-center gap-2 flex-1">
-                        <input
-                          type="checkbox"
-                          checked={selectedContexts.includes('sheet')}
-                          onChange={() => toggleContext('sheet')}
-                          className="form-checkbox h-4 w-4"
-                        />
-                        Food I eat db (loaded)
-                      </label>
-                      <button
-                        onClick={() => toggleDefaultDoc('sheet')}
-                        className={`text-xs px-2 py-1 rounded cursor-pointer ${
-                          isDefaultDoc('sheet')
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                        }`}
-                        title="Mark as default for this chat"
-                      >
-                        {isDefaultDoc('sheet') ? '✓ Default' : 'Default'}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-500 p-3 bg-gray-800 rounded">
-                      Google Sheet data is not loaded yet.
-                    </div>
-                  )}
-
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
-                      Notion Pages
-                      {loadingNotion && <span className="text-sm text-purple-400">(Loading...)</span>}
-                      {selectedTags.size > 0 && (
-                        <span className="text-xs text-purple-400">
-                          (filtered by {selectedTags.size} tag{selectedTags.size > 1 ? 's' : ''})
-                        </span>
-                      )}
-                      <span className="text-xs text-gray-500">
-                        (hierarchical: {hierarchicalNotionPages?.length || 0}, flat: {allNotionPages?.length || 0})
-                      </span>
-                    </h4>
-                    {hierarchicalNotionPages && hierarchicalNotionPages.length > 0 ? (
-                      <div className="space-y-1">
-                        {renderGroupedPages(filterPagesByTags(hierarchicalNotionPages))}
-                      </div>
-                    ) : allNotionPages && allNotionPages.length > 0 ? (
-                      <div className="space-y-1">
-                        {renderGroupedPages(filterPagesByTags(allNotionPages.map(page => ({ ...page, children: [] }))))}
-                      </div>
-                    ) : loadingNotion ? (
-                      <div className="text-sm text-gray-500 p-3 bg-gray-800 rounded">
-                        Loading Notion pages...
-                      </div>
-                    ) : (
-                      <div className="text-sm text-gray-500 p-3 bg-gray-800 rounded">
-                        No Notion pages found. Click "↻ Reload" to fetch them.
+                    {/* Tag Filter */}
+                    {(hierarchicalNotionPages || allNotionPages) && (
+                      <div className="p-3 bg-gray-800 rounded">
+                        <div className="flex items-center gap-2 mb-2">
+                          <label className="text-sm text-gray-300">Filter by tags:</label>
+                          <button
+                            onClick={() => setSelectedTags(new Set())}
+                            className="text-xs bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-500 cursor-pointer"
+                          >
+                            Clear All
+                          </button>
+                          <button
+                            onClick={() => {
+                              const allTags = getAllTags(hierarchicalNotionPages || allNotionPages);
+                              setSelectedTags(new Set(allTags));
+                            }}
+                            className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 cursor-pointer"
+                          >
+                            Select All
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {getAllTags(hierarchicalNotionPages || allNotionPages).map(tag => (
+                            <button
+                              key={tag}
+                              onClick={() => toggleTag(tag)}
+                              className={`text-xs px-3 py-1 rounded transition-colors cursor-pointer ${
+                                selectedTags.has(tag)
+                                  ? 'bg-purple-600 text-white'
+                                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                              }`}
+                            >
+                              {tag}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
-                </div>
 
-                {/* Prompt Control Section */}
-                <div className="mt-6 p-4 bg-gray-800 rounded">
-                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                    🔍 Prompt Control
-                    <span className="text-sm text-gray-400">(Manage what gets sent to AI)</span>
-                  </h3>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Data Sources */}
-                    <div className="space-y-3">
-                      <h4 className="text-white font-medium">Data Sources</h4>
-                      
-                      <label className="flex items-center gap-2 text-white">
-                        <input
-                          type="checkbox"
-                          checked={promptSettings.includeSheets}
-                          onChange={(e) => setPromptSettings(prev => ({ ...prev, includeSheets: e.target.checked }))}
-                          className="form-checkbox"
-                        />
-                        Google Sheets ({sheetData ? Array.isArray(sheetData) ? sheetData.length : 1 : 0} sheets)
-                      </label>
-                      
-                      {promptSettings.includeSheets && (
-                        <div className="ml-6">
-                          <label className="text-gray-300 text-sm">
-                            Max rows per sheet: 
-                            <input
-                              type="number"
-                              value={promptSettings.maxSheetRows}
-                              onChange={(e) => setPromptSettings(prev => ({ ...prev, maxSheetRows: parseInt(e.target.value) || 0 }))}
-                              className="ml-2 w-20 px-2 py-1 bg-gray-700 rounded text-white"
-                              min="1"
-                              max="1000"
-                            />
-                          </label>
+                  <div className="space-y-3">
+                    {sheetData ? (
+                      <div className="flex items-center justify-between gap-2 text-sm text-green-300 p-3 bg-gray-800 rounded">
+                        <label className="flex items-center gap-2 flex-1">
+                          <input
+                            type="checkbox"
+                            checked={selectedContexts.includes('sheet')}
+                            onChange={() => toggleContext('sheet')}
+                            className="form-checkbox h-4 w-4"
+                          />
+                          Food I eat db (loaded)
+                        </label>
+                        <button
+                          onClick={() => toggleDefaultDoc('sheet')}
+                          className={`text-xs px-2 py-1 rounded cursor-pointer ${
+                            isDefaultDoc('sheet')
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          }`}
+                          title="Mark as default for this chat"
+                        >
+                          {isDefaultDoc('sheet') ? '✓ Default' : 'Default'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500 p-3 bg-gray-800 rounded">
+                        Google Sheet data is not loaded yet.
+                      </div>
+                    )}
+
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+                        Notion Pages
+                        {loadingNotion && <span className="text-sm text-purple-400">(Loading...)</span>}
+                        {selectedTags.size > 0 && (
+                          <span className="text-xs text-purple-400">
+                            (filtered by {selectedTags.size} tag{selectedTags.size > 1 ? 's' : ''})
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-500">
+                          (hierarchical: {hierarchicalNotionPages?.length || 0}, flat: {allNotionPages?.length || 0})
+                        </span>
+                      </h4>
+                      {hierarchicalNotionPages && hierarchicalNotionPages.length > 0 ? (
+                        <div className="space-y-1">
+                          {renderGroupedPages(filterPagesByTags(hierarchicalNotionPages))}
+                        </div>
+                      ) : allNotionPages && allNotionPages.length > 0 ? (
+                        <div className="space-y-1">
+                          {renderGroupedPages(filterPagesByTags(allNotionPages.map(page => ({ ...page, children: [] }))))}
+                        </div>
+                      ) : loadingNotion ? (
+                        <div className="text-sm text-gray-500 p-3 bg-gray-800 rounded">
+                          Loading Notion pages...
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-500 p-3 bg-gray-800 rounded">
+                          No Notion pages found. Click "↻ Reload" to fetch them.
                         </div>
                       )}
+                    </div>
+                  </div>
+
+                  {/* Prompt Control Section */}
+                  <div className="mt-6 p-4 bg-gray-800 rounded">
+                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                      🔍 Prompt Control
+                      <span className="text-sm text-gray-400">(Manage what gets sent to AI)</span>
+                    </h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Data Sources */}
+                      <div className="space-y-3">
+                        <h4 className="text-white font-medium">Data Sources</h4>
+                        
+                        <label className="flex items-center gap-2 text-white">
+                          <input
+                            type="checkbox"
+                            checked={promptSettings.includeSheets}
+                            onChange={(e) => setPromptSettings(prev => ({ ...prev, includeSheets: e.target.checked }))}
+                            className="form-checkbox"
+                          />
+                          Google Sheets ({sheetData ? Array.isArray(sheetData) ? sheetData.length : 1 : 0} sheets)
+                        </label>
+                        
+                        {promptSettings.includeSheets && (
+                          <div className="ml-6">
+                            <label className="text-gray-300 text-sm">
+                              Max rows per sheet: 
+                              <input
+                                type="number"
+                                value={promptSettings.maxSheetRows}
+                                onChange={(e) => setPromptSettings(prev => ({ ...prev, maxSheetRows: parseInt(e.target.value) || 0 }))}
+                                className="ml-2 w-20 px-2 py-1 bg-gray-700 rounded text-white"
+                                min="1"
+                                max="1000"
+                              />
+                            </label>
+                          </div>
+                        )}
+                        
+                        <label className="flex items-center gap-2 text-white">
+                          <input
+                            type="checkbox"
+                            checked={promptSettings.includeNotion}
+                            onChange={(e) => setPromptSettings(prev => ({ ...prev, includeNotion: e.target.checked }))}
+                            className="form-checkbox"
+                          />
+                          Notion Pages ({allNotionPages.length} pages)
+                        </label>
+                        
+                        {promptSettings.includeNotion && (
+                          <div className="ml-6">
+                            <label className="text-gray-300 text-sm">
+                              Max pages: 
+                              <input
+                                type="number"
+                                value={promptSettings.maxNotionPages}
+                                onChange={(e) => setPromptSettings(prev => ({ ...prev, maxNotionPages: parseInt(e.target.value) || 0 }))}
+                                className="ml-2 w-20 px-2 py-1 bg-gray-700 rounded text-white"
+                                min="1"
+                                max="100"
+                              />
+                            </label>
+                          </div>
+                        )}
+                        
+                        <label className="flex items-center gap-2 text-white">
+                          <input
+                            type="checkbox"
+                            checked={promptSettings.includeMealHistory}
+                            onChange={(e) => setPromptSettings(prev => ({ ...prev, includeMealHistory: e.target.checked }))}
+                            className="form-checkbox"
+                          />
+                          Meal History ({mealHistory.length} meals)
+                        </label>
+                      </div>
                       
-                      <label className="flex items-center gap-2 text-white">
-                        <input
-                          type="checkbox"
-                          checked={promptSettings.includeNotion}
-                          onChange={(e) => setPromptSettings(prev => ({ ...prev, includeNotion: e.target.checked }))}
-                          className="form-checkbox"
-                        />
-                        Notion Pages ({allNotionPages.length} pages)
-                      </label>
-                      
-                      {promptSettings.includeNotion && (
-                        <div className="ml-6">
-                          <label className="text-gray-300 text-sm">
-                            Max pages: 
-                            <input
-                              type="number"
-                              value={promptSettings.maxNotionPages}
-                              onChange={(e) => setPromptSettings(prev => ({ ...prev, maxNotionPages: parseInt(e.target.value) || 0 }))}
-                              className="ml-2 w-20 px-2 py-1 bg-gray-700 rounded text-white"
-                              min="1"
-                              max="100"
-                            />
-                          </label>
-                        </div>
-                      )}
-                      
-                      <label className="flex items-center gap-2 text-white">
-                        <input
-                          type="checkbox"
-                          checked={promptSettings.includeMealHistory}
-                          onChange={(e) => setPromptSettings(prev => ({ ...prev, includeMealHistory: e.target.checked }))}
-                          className="form-checkbox"
-                        />
-                        Meal History ({mealHistory.length} meals)
-                      </label>
+                      {/* Chat Control */}
+                      <div className="space-y-3">
+                        <h4 className="text-white font-medium">Chat Context</h4>
+                        
+                        <label className="flex items-center gap-2 text-white">
+                          <input
+                            type="checkbox"
+                            checked={promptSettings.includeChatHistory}
+                            onChange={(e) => setPromptSettings(prev => ({ ...prev, includeChatHistory: e.target.checked }))}
+                            className="form-checkbox"
+                          />
+                          Include Previous Messages
+                        </label>
+                        
+                        {promptSettings.includeChatHistory && (
+                          <div className="ml-6">
+                            <label className="text-gray-300 text-sm">
+                              Max previous messages: 
+                              <input
+                                type="number"
+                                value={promptSettings.maxChatMessages}
+                                onChange={(e) => setPromptSettings(prev => ({ ...prev, maxChatMessages: parseInt(e.target.value) || 0 }))}
+                                className="ml-2 w-20 px-2 py-1 bg-gray-700 rounded text-white"
+                                min="1"
+                                max="20"
+                              />
+                            </label>
+                          </div>
+                        )}
+                      </div>
                     </div>
                     
-                    {/* Chat Control */}
-                    <div className="space-y-3">
-                      <h4 className="text-white font-medium">Chat Context</h4>
-                      
-                      <label className="flex items-center gap-2 text-white">
-                        <input
-                          type="checkbox"
-                          checked={promptSettings.includeChatHistory}
-                          onChange={(e) => setPromptSettings(prev => ({ ...prev, includeChatHistory: e.target.checked }))}
-                          className="form-checkbox"
-                        />
-                        Include Previous Messages
-                      </label>
-                      
-                      {promptSettings.includeChatHistory && (
-                        <div className="ml-6">
-                          <label className="text-gray-300 text-sm">
-                            Max previous messages: 
-                            <input
-                              type="number"
-                              value={promptSettings.maxChatMessages}
-                              onChange={(e) => setPromptSettings(prev => ({ ...prev, maxChatMessages: parseInt(e.target.value) || 0 }))}
-                              className="ml-2 w-20 px-2 py-1 bg-gray-700 rounded text-white"
-                              min="1"
-                              max="20"
-                            />
-                          </label>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Quick Actions */}
-                  <div className="mt-4 pt-4 border-t border-gray-700">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => setPromptSettings({
-                          includeSheets: true,
-                          includeNotion: true,
-                          includeMealHistory: true,
-                          includeChatHistory: true,
-                          maxChatMessages: 6,
-                          maxSheetRows: 100,
-                          maxNotionPages: 50
-                        })}
-                        className="text-sm bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700"
-                      >
-                        ✅ Enable All
-                      </button>
-                      <button
-                        onClick={() => setPromptSettings({
-                          includeSheets: false,
-                          includeNotion: false,
-                          includeMealHistory: false,
-                          includeChatHistory: false,
-                          maxChatMessages: 6,
-                          maxSheetRows: 100,
-                          maxNotionPages: 50
-                        })}
-                        className="text-sm bg-red-600 text-white px-3 py-2 rounded hover:bg-red-700"
-                      >
-                        ❌ Disable All
-                      </button>
-                      <button
-                        onClick={() => setPromptSettings({
-                          includeSheets: false,
-                          includeNotion: false,
-                          includeMealHistory: false,
-                          includeChatHistory: true,
-                          maxChatMessages: 2,
-                          maxSheetRows: 100,
-                          maxNotionPages: 50
-                        })}
-                        className="text-sm bg-yellow-600 text-white px-3 py-2 rounded hover:bg-yellow-700"
-                      >
-                        ⚡ Groq Mode (Minimal)
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Prompt Preview Section */}
-                <div className="mt-6 p-4 bg-gray-800 rounded">
-                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                    📋 Prompt Preview
-                    <span className="text-sm text-gray-400">(What will be sent to AI)</span>
-                  </h3>
-
-                  <div className="space-y-4">
-                    {/* Selected Contexts Summary */}
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-300 mb-2">Selected Contexts ({selectedContexts.length})</h4>
+                    {/* Quick Actions */}
+                    <div className="mt-4 pt-4 border-t border-gray-700">
                       <div className="flex flex-wrap gap-2">
-                        {selectedContexts.map(ctx => (
-                          <span key={ctx} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">
-                            {ctx === 'sheet' ? '📊 Google Sheets' : ctx.startsWith('notion-') ? `📄 ${allNotionPages.find((p: any) => p.id === ctx.replace('notion-', ''))?.title || ctx}` : ctx}
-                          </span>
-                        ))}
-                        {selectedContexts.length === 0 && (
-                          <span className="text-sm text-gray-500">No contexts selected</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Content Preview */}
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-300 mb-2">Content Preview</h4>
-                      <div className="bg-gray-900 rounded p-3 max-h-96 overflow-y-auto text-xs font-mono text-gray-300">
-                        {selectedContexts.includes('sheet') && sheetData && (
-                          <div className="mb-3">
-                            <div className="text-green-400 font-bold mb-1">Google Sheets Data:</div>
-                            <div className="text-gray-400">
-                              {Array.isArray(sheetData) ? `${sheetData.length} sheets loaded` : '1 sheet loaded'}
-                            </div>
-                          </div>
-                        )}
-
-                        {getNotionPages().map((page: any) => (
-                          <div key={page.id} className="mb-3">
-                            <div className="text-purple-400 font-bold mb-1">{page.title}:</div>
-                            <div className="text-gray-400 whitespace-pre-wrap max-h-32 overflow-y-auto">
-                              {page.content?.substring(0, 500)}
-                              {page.content?.length > 500 && '...'}
-                            </div>
-                          </div>
-                        ))}
-
-                        {selectedContexts.filter(ctx => ctx.startsWith('notion-')).length === 0 && !selectedContexts.includes('sheet') && (
-                          <div className="text-gray-500">No content will be sent to AI</div>
-                        )}
+                        <button
+                          onClick={() => setPromptSettings({
+                            includeSheets: true,
+                            includeNotion: true,
+                            includeMealHistory: true,
+                            includeChatHistory: true,
+                            maxChatMessages: 6,
+                            maxSheetRows: 100,
+                            maxNotionPages: 50
+                          })}
+                          className="text-sm bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700"
+                        >
+                          ✅ Enable All
+                        </button>
+                        <button
+                          onClick={() => setPromptSettings({
+                            includeSheets: false,
+                            includeNotion: false,
+                            includeMealHistory: false,
+                            includeChatHistory: false,
+                            maxChatMessages: 6,
+                            maxSheetRows: 100,
+                            maxNotionPages: 50
+                          })}
+                          className="text-sm bg-red-600 text-white px-3 py-2 rounded hover:bg-red-700"
+                        >
+                          ❌ Disable All
+                        </button>
+                        <button
+                          onClick={() => setPromptSettings({
+                            includeSheets: false,
+                            includeNotion: false,
+                            includeMealHistory: false,
+                            includeChatHistory: true,
+                            maxChatMessages: 2,
+                            maxSheetRows: 100,
+                            maxNotionPages: 50
+                          })}
+                          className="text-sm bg-yellow-600 text-white px-3 py-2 rounded hover:bg-yellow-700"
+                        >
+                          ⚡ Groq Mode (Minimal)
+                        </button>
                       </div>
                     </div>
                   </div>
+
+                  <div className="mt-6 flex justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setSelectedContexts(getAutoContexts());
+                      }}
+                      className="text-sm bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-600"
+                    >
+                      Reset to defaults
+                    </button>
+                  </div>
                 </div>
 
-                <div className="mt-6 flex justify-end gap-2">
-                  <button
-                    onClick={() => {
-                      setSelectedContexts(getAutoContexts());
-                    }}
-                    className="text-sm bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-600"
-                  >
-                    Reset to defaults
-                  </button>
+                {/* Right Column - Prompt Preview */}
+                <div className="lg:col-span-1">
+                  <div className="sticky top-4">
+                    {/* Prompt Preview Section */}
+                    <div className="p-4 bg-gray-800 rounded">
+                      <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        📋 Prompt Preview
+                        <span className="text-sm text-gray-400">(What will be sent to AI)</span>
+                      </h3>
+
+                      <div className="space-y-4">
+                        {/* Selected Contexts Summary */}
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-300 mb-2">Selected Contexts ({selectedContexts.length})</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedContexts.map(ctx => (
+                              <span key={ctx} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">
+                                {ctx === 'sheet' ? '📊 Google Sheets' : ctx.startsWith('notion-') ? `📄 ${allNotionPages.find((p: any) => p.id === ctx.replace('notion-', ''))?.title || ctx}` : ctx}
+                              </span>
+                            ))}
+                            {selectedContexts.length === 0 && (
+                              <span className="text-sm text-gray-500">No contexts selected</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Content Preview */}
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-300 mb-2">Content Preview</h4>
+                          <div className="bg-gray-900 rounded p-3 max-h-96 overflow-y-auto text-xs font-mono text-gray-300">
+                            {selectedContexts.includes('sheet') && sheetData && (
+                              <div className="mb-3">
+                                <div className="text-green-400 font-bold mb-1">Google Sheets Data:</div>
+                                <div className="text-gray-400">
+                                  {Array.isArray(sheetData) ? `${sheetData.length} sheets loaded` : '1 sheet loaded'}
+                                </div>
+                              </div>
+                            )}
+
+                            {getNotionPages().map((page: any) => {
+                              const isExpanded = expandedPreviewPages.has(page.id);
+                              const displayContent = isExpanded ? page.content : page.content?.substring(0, 500);
+                              const needsTruncation = page.content?.length > 500;
+                              
+                              return (
+                                <div key={page.id} className="mb-3">
+                                  <div className="text-purple-400 font-bold mb-1">{page.title}:</div>
+                                  <div className="text-gray-400 whitespace-pre-wrap">
+                                    {displayContent}
+                                    {needsTruncation && !isExpanded && '...'}
+                                  </div>
+                                  {needsTruncation && (
+                                    <button
+                                      onClick={() => toggleExpandedPreview(page.id)}
+                                      className="mt-1 text-xs text-blue-400 hover:text-blue-300"
+                                    >
+                                      {isExpanded ? 'Show less' : 'More'}
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+
+                            {selectedContexts.filter(ctx => ctx.startsWith('notion-')).length === 0 && !selectedContexts.includes('sheet') && (
+                              <div className="text-gray-500">No content will be sent to AI</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
