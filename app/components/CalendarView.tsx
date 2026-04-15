@@ -20,15 +20,16 @@ export default function CalendarView({ onEventsChange }: Props) {
   const [loading, setLoading] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
 
-  // Load saved settings from localStorage during initialization
-  const [daysBack, setDaysBack] = useState(() => {
-    const saved = localStorage.getItem('calendarDaysBack');
-    return saved ? parseInt(saved) : 30;
-  });
-  const [daysForward, setDaysForward] = useState(() => {
-    const saved = localStorage.getItem('calendarDaysForward');
-    return saved ? parseInt(saved) : 30;
-  });
+  const [daysBack, setDaysBack] = useState(30);
+  const [daysForward, setDaysForward] = useState(30);
+
+  // Load saved settings from localStorage on mount (client-side only)
+  useEffect(() => {
+    const savedDaysBack = localStorage.getItem('calendarDaysBack');
+    const savedDaysForward = localStorage.getItem('calendarDaysForward');
+    if (savedDaysBack) setDaysBack(parseInt(savedDaysBack));
+    if (savedDaysForward) setDaysForward(parseInt(savedDaysForward));
+  }, []);
 
   const calendarId = 'cb6cdb21570e9e868a7d76f47035cb71be5eb96eca6c9a47763093a587e106e7@group.calendar.google.com';
 
