@@ -5,13 +5,6 @@ export async function POST(req: NextRequest) {
   try {
     const { context, sheetData, notionData, userProfile, mealHistory, workspacePrompt, conversationHistory, aiModel, stream, calendarEvents, nutrientEntries } = await req.json();
 
-    console.log('=== CHAT API DEBUG ===');
-    console.log('AI Model:', aiModel);
-    console.log('Stream:', stream);
-    console.log('GROQ_API_KEY exists:', !!process.env.GROQ_API_KEY);
-    console.log('GEMINI_API_KEY exists:', !!process.env.GEMINI_API_KEY);
-    console.log('Notion Data received:', notionData);
-
     let systemPrompt = '';
 
     // Add workspace-specific prompt first
@@ -126,12 +119,6 @@ export async function POST(req: NextRequest) {
 
     messages.push({ role: 'user', content: conversationHistory[conversationHistory.length - 1]?.content || '' });
 
-    // Log prompt size for debugging
-    const promptSize = JSON.stringify(messages).length;
-    console.log('Prompt Size (characters):', promptSize);
-    console.log('Number of messages:', messages.length);
-    console.log('System Prompt Length:', systemPrompt.length);
-
     let response, data, aiResponse;
 
     if (isGeminiModel(aiModel)) {
@@ -215,9 +202,6 @@ export async function POST(req: NextRequest) {
       aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini';
     } else {
       // Groq models - use aiModel directly since IDs are now API names
-      console.log('Selected Groq Model:', aiModel);
-      console.log('Making Groq API call...');
-
       response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -232,9 +216,6 @@ export async function POST(req: NextRequest) {
           stream: stream
         })
       });
-
-      console.log('Groq API Response Status:', response.status);
-      console.log('Groq API Response Headers:', Object.fromEntries(response.headers.entries()));
 
       if (stream && response.body) {
         // Handle Groq streaming
@@ -281,21 +262,7 @@ export async function POST(req: NextRequest) {
       }
 
       data = await response.json();
-      console.log('Groq API Response Data:', data);
       aiResponse = data.choices?.[0]?.message?.content || 'No response from Groq';
-    }
-
-    // Log response data regardless of status for debugging
-    if (!data) {
-      try {
-        data = await response.json();
-        console.log('Parsed Response Data:', data);
-      } catch (parseError) {
-        console.log('Failed to parse response as JSON');
-        const text = await response.text();
-        console.log('Raw Response Text:', text);
-        data = { error: text };
-      }
     }
 
     if (!response.ok) {
@@ -329,7 +296,6 @@ export async function POST(req: NextRequest) {
       }, { status: 500 });
     }
 
-    console.log('=== API SUCCESS ===');
     return NextResponse.json({ response: aiResponse });
   } catch (error: any) {
     console.error('=== SERVER ERROR ===');

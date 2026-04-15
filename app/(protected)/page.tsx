@@ -59,7 +59,6 @@ export default function Home() {
   useEffect(() => {
     const loadDefaultSheet = async () => {
       try {
-        console.log('🔄 Loading default sheet...');
         const res = await fetch('/api/sheets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -69,16 +68,10 @@ export default function Home() {
           })
         });
         const data = await res.json();
-        console.log('📊 Sheets API response:', data);
         
         if (data.sheets) {
           console.log(`✅ Loaded ${data.sheets.length} sheets`);
-          data.sheets.forEach((sheet: any, idx: number) => {
-            console.log(`Sheet ${idx + 1}: ${sheet.sheet} - ${sheet.rows} rows`);
-          });
           setSheetData(data.sheets);
-        } else {
-          console.error('❌ No sheets data received:', data);
         }
       } catch (error) {
         console.error('❌ Failed to auto-load sheet:', error);
@@ -91,7 +84,6 @@ export default function Home() {
   // Auto-load Notion pages on mount with streaming
   useEffect(() => {
     const loadNotionPages = async () => {
-      console.log('🔄 Loading Notion pages via stream...');
       try {
         const res = await fetch('/api/notion/stream');
         const reader = res.body?.getReader();
@@ -134,7 +126,6 @@ export default function Home() {
   }, []);
 
   const reloadNotion = async () => {
-    console.log('Reloading Notion pages via stream...');
     try {
       const res = await fetch('/api/notion/stream');
       const reader = res.body?.getReader();

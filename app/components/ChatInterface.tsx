@@ -379,6 +379,8 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
       <div className="border-t border-gray-700 bg-gray-800 px-3 sm:px-4 py-3 sm:py-4">
         <div className="flex gap-2 flex-col sm:flex-row">
           <textarea
+            id="chat-input"
+            name="chat-input"
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
