@@ -3,7 +3,7 @@ import { google } from 'googleapis';
 import path from 'path';
 import fs from 'fs';
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
   try {
@@ -47,7 +47,9 @@ export async function GET(req: NextRequest) {
       orderBy: 'startTime',
       maxResults: 250
     });
-    
+
+    console.log('Calendar API response status:', response.status);
+    console.log('Calendar API response data:', response.data);
     console.log('Calendar events fetched:', response.data.items?.length || 0);
     return NextResponse.json({ 
       events: response.data.items || [], 
