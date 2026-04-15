@@ -140,25 +140,58 @@ export async function GET(req: NextRequest) {
             const title = item.title?.[0]?.plain_text || 'Untitled Database';
             const url = `https://www.notion.so/${databaseId.replace(/-/g, '')}`;
 
-            console.log('Sending database/data_source:', item.object, databaseId, title, 'parent:', item.parent);
+            // Fetch database entries to include their content in the database object for chat context
+            let databaseContent = `Database: ${title}\n\n`;
 
-            // Send the database/data_source object
-            const database = {
-              id: databaseId,
-              title: title,
-              content: `Database: ${title}\n\n`,
-              parent: item.parent,
-              object: item.object || 'database',
-              url,
-              children: []
-            };
-
-            controller.enqueue(encoder.encode(JSON.stringify(database) + '\n'));
-
-            // Then, fetch and send database entries as separate page objects
             try {
-              // Try new data sources API first (2026-03-11)
-              if (item.data_sources && item.data_sources.length > 0) {
+              // If this is a data_source object, query it directly
+              if (item.object === 'data_source') {
+                try {
+                  const queryResponse = await fetch(`https://api.notion.com/v1/data_sources/${databaseId}/query`, {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${apiKey}`,
+                      'Notion-Version': '2026-03-11',
+                      'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ page_size: 100 })
+                  });
+
+                  const queryData = await queryResponse.json();
+                  console.log('Data source query response:', queryData.results?.length, 'entries');
+
+                  if (queryData.results && queryData.results.length > 0) {
+                    for (const entry of queryData.results) {
+                      let entryTitle = 'Untitled';
+                      let entryProps: string[] = [];
+
+                      if (entry.properties) {
+                        for (const [propName, propValue] of Object.entries(entry.properties)) {
+                          const value = extractProperty(propValue as any);
+                          if (value) {
+                            if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
+                              entryTitle = value;
+                            } else {
+                              entryProps.push(`${propName}: ${value}`);
+                            }
+                          }
+                        }
+                      }
+
+                      let entryContent = `Entry: ${entryTitle}\n`;
+                      if (entryProps.length > 0) {
+                        entryContent += entryProps.join('\n') + '\n';
+                      }
+
+                      // Add entry content to database content for prompt preview/chat AI
+                      databaseContent += entryContent;
+                    }
+                  }
+                } catch (error) {
+                  console.error('Error fetching data source entries:', databaseId, error);
+                }
+              } else if (item.data_sources && item.data_sources.length > 0) {
+                // If this is a database object with data_sources, query each data source
                 for (const dataSource of item.data_sources) {
                   try {
                     const queryResponse = await fetch(`https://api.notion.com/v1/data_sources/${dataSource.id}/query`, {
@@ -183,7 +216,7 @@ export async function GET(req: NextRequest) {
                             const value = extractProperty(propValue as any);
                             if (value) {
                               if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
-                                entryTitle = value;
+                              entryTitle = value;
                               } else {
                                 entryProps.push(`${propName}: ${value}`);
                               }
@@ -196,21 +229,8 @@ export async function GET(req: NextRequest) {
                           entryContent += entryProps.join('\n') + '\n';
                         }
 
-                        // Send entry as a page object with its actual parent from Notion API
-                        const entryPage = {
-                          id: entry.id,
-                          title: entryTitle,
-                          content: entryContent,
-                          parent: entry.parent || {
-                            type: 'database_id',
-                            database_id: databaseId
-                          },
-                          object: 'page',
-                          url: entry.url || `https://www.notion.so/${entry.id.replace(/-/g, '')}`,
-                          children: []
-                        };
-
-                        controller.enqueue(encoder.encode(JSON.stringify(entryPage) + '\n'));
+                        // Add entry content to database content for prompt preview/chat AI
+                        databaseContent += entryContent;
                       }
                     }
                   } catch (error) {
@@ -254,27 +274,27 @@ export async function GET(req: NextRequest) {
                       entryContent += entryProps.join('\n') + '\n';
                     }
 
-                    // Send entry as a page object with its actual parent from Notion API
-                    const entryPage = {
-                      id: entry.id,
-                      title: entryTitle,
-                      content: entryContent,
-                      parent: entry.parent || {
-                        type: 'database_id',
-                        database_id: databaseId
-                      },
-                      object: 'page',
-                      url: entry.url || `https://www.notion.so/${entry.id.replace(/-/g, '')}`,
-                      children: []
-                    };
-
-                    controller.enqueue(encoder.encode(JSON.stringify(entryPage) + '\n'));
+                    // Add entry content to database content for prompt preview
+                    databaseContent += entryContent;
                   }
                 }
               }
             } catch (error) {
               console.error('Error fetching database entries:', error);
             }
+
+            // Send the database/data_source object with full content
+            const database = {
+              id: databaseId,
+              title: title,
+              content: databaseContent,
+              parent: item.parent,
+              object: item.object || 'database',
+              url,
+              children: []
+            };
+
+            controller.enqueue(encoder.encode(JSON.stringify(database) + '\n'));
           }
         }
 
