@@ -43,6 +43,91 @@ function extractProperty(prop: any): string {
   }
 }
 
+async function processBlocks(blocks: any[], indent = 0): Promise<string> {
+  let content = '';
+  let numberedCounter = 1;
+  let letteredCounter = 1;
+
+  for (const block of blocks) {
+    const indentStr = '    '.repeat(indent);
+
+    if (block.type === 'paragraph') {
+      const text = block.paragraph?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+      content += indentStr + text + '\n';
+      numberedCounter = 1;
+      letteredCounter = 1;
+    } else if (block.type === 'heading_1') {
+      const text = block.heading_1?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+      content += indentStr + '# ' + text + '\n';
+      numberedCounter = 1;
+      letteredCounter = 1;
+    } else if (block.type === 'heading_2') {
+      const text = block.heading_2?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+      content += indentStr + '## ' + text + '\n';
+      numberedCounter = 1;
+      letteredCounter = 1;
+    } else if (block.type === 'heading_3') {
+      const text = block.heading_3?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+      content += indentStr + '### ' + text + '\n';
+      numberedCounter = 1;
+      letteredCounter = 1;
+    } else if (block.type === 'bulleted_list_item') {
+      const text = block.bulleted_list_item?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+      content += indentStr + '- ' + text + '\n';
+      numberedCounter = 1;
+      letteredCounter = 1;
+    } else if (block.type === 'numbered_list_item') {
+      const text = block.numbered_list_item?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+      const letter = String.fromCharCode(96 + letteredCounter);
+      if (indent === 0) {
+        content += indentStr + numberedCounter + '. ' + text + '\n';
+        numberedCounter++;
+      } else {
+        content += indentStr + letter + '. ' + text + '\n';
+        letteredCounter++;
+      }
+    } else if (block.type === 'to_do') {
+      const text = block.to_do?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+      const checked = block.to_do?.checked ? '[x]' : '[ ]';
+      content += indentStr + checked + ' ' + text + '\n';
+      numberedCounter = 1;
+      letteredCounter = 1;
+    } else if (block.type === 'toggle') {
+      const text = block.toggle?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+      content += indentStr + '> ' + text + '\n';
+      numberedCounter = 1;
+      letteredCounter = 1;
+    } else if (block.type === 'quote') {
+      const text = block.quote?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+      content += indentStr + '> ' + text + '\n';
+      numberedCounter = 1;
+      letteredCounter = 1;
+    } else if (block.type === 'divider') {
+      content += indentStr + '---\n';
+      numberedCounter = 1;
+      letteredCounter = 1;
+    } else if (block.type === 'callout') {
+      const text = block.callout?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+      content += indentStr + '> ' + text + '\n';
+      numberedCounter = 1;
+      letteredCounter = 1;
+    } else if (block.type === 'code') {
+      const text = block.code?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+      content += indentStr + '```\n' + indentStr + text + '\n' + indentStr + '```\n';
+      numberedCounter = 1;
+      letteredCounter = 1;
+    }
+
+    // Process nested children if they exist
+    if (block.has_children) {
+      const childrenContent = await processBlocks(block.children || [], indent + 1);
+      content += childrenContent;
+    }
+  }
+
+  return content;
+}
+
 async function processPage(item: any, apiKey: string) {
   try {
     const pageId = item.id;
@@ -62,25 +147,61 @@ async function processPage(item: any, apiKey: string) {
       }
     }
 
-    const blocksResponse = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children?page_size=50`, {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Notion-Version': '2026-03-11'
-      }
-    });
-
-    const blocksData = await blocksResponse.json();
     let content = '';
+    let startCursor: string | undefined = undefined;
+    let hasMore = true;
+    const allBlocks: any[] = [];
 
-    for (const block of blocksData.results || []) {
-      if (block.type === 'paragraph') {
-        content += block.paragraph?.rich_text?.map((t: any) => t.plain_text).join('') + '\n';
-      } else if (block.type === 'heading_1') {
-        content += '# ' + block.heading_1?.rich_text?.map((t: any) => t.plain_text).join('') + '\n';
-      } else if (block.type === 'bulleted_list_item') {
-        content += '- ' + block.bulleted_list_item?.rich_text?.map((t: any) => t.plain_text).join('') + '\n';
+    // Fetch all blocks with pagination
+    while (hasMore) {
+      const blocksUrl: string = startCursor
+        ? `https://api.notion.com/v1/blocks/${pageId}/children?page_size=100&start_cursor=${startCursor}`
+        : `https://api.notion.com/v1/blocks/${pageId}/children?page_size=100`;
+
+      const blocksResponse: Response = await fetch(blocksUrl, {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Notion-Version': '2026-03-11'
+        }
+      });
+
+      const blocksData: any = await blocksResponse.json();
+      allBlocks.push(...(blocksData.results || []));
+
+      hasMore = blocksData.has_more || false;
+      startCursor = blocksData.next_cursor || undefined;
+    }
+
+    // Fetch children for blocks that have them
+    for (const block of allBlocks) {
+      if (block.has_children) {
+        const childrenResponse = await fetch(`https://api.notion.com/v1/blocks/${block.id}/children?page_size=100`, {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Notion-Version': '2026-03-11'
+          }
+        });
+        const childrenData = await childrenResponse.json();
+        block.children = childrenData.results || [];
+
+        // Fetch grandchildren if needed
+        for (const childBlock of block.children) {
+          if (childBlock.has_children) {
+            const grandchildrenResponse = await fetch(`https://api.notion.com/v1/blocks/${childBlock.id}/children?page_size=100`, {
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Notion-Version': '2026-03-11'
+              }
+            });
+            const grandchildrenData = await grandchildrenResponse.json();
+            childBlock.children = grandchildrenData.results || [];
+          }
+        }
       }
     }
+
+    // Process all blocks with their children
+    content = await processBlocks(allBlocks, 0);
 
     return {
       id: pageId,
