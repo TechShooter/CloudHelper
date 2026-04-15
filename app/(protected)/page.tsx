@@ -6,11 +6,11 @@ import ModelSelector from '../components/ModelSelector';
 import LogoutButton from '../components/LogoutButton';
 
 export default function Home() {
-  const [notes, setNotes] = useState<{id: string, title: string, content: string}[]>([]);
+  const [notes] = useState<{id: string, title: string, content: string}[]>([]);
   const [sheetData, setSheetData] = useState<any>(null);
   const [aiModel, setAiModel] = useState<string>('gemini-flash-latest');
-  const [userProfile, setUserProfile] = useState<any>(null);
-  const [mealHistory, setMealHistory] = useState<any[]>([]);
+  const [userProfile] = useState<any>(null);
+  const [mealHistory] = useState<any[]>([]);
   const [notionPages, setNotionPages] = useState<any[]>([]);
   const [hierarchicalNotionPages, setHierarchicalNotionPages] = useState<any[]>([]);
   const workspaceManagerRef = useRef<any>(null);
@@ -28,7 +28,7 @@ export default function Home() {
     // Second pass: build hierarchy
     pages.forEach(page => {
       const parentId = page.parent?.page_id || page.parent?.database_id;
-      
+
       if (!parentId || page.parent?.type === 'workspace') {
         // Root level page
         rootPages.push(pageMap.get(page.id));

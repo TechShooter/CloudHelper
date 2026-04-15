@@ -298,13 +298,6 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
       }
     });
 
-    console.log('=== WorkspaceManager.getNotionPages() ===');
-    console.log('selectedContexts:', selectedContexts);
-    console.log('workspacePages count:', workspacePages.length);
-    console.log('selectedPages count:', selectedPages.length);
-    console.log('allRelevantPages count:', allRelevantPages.length);
-    console.log('allRelevantPages:', allRelevantPages.map((p: any) => ({ id: p.id, title: p.title, contentLength: p.content?.length || 0 })));
-
     return allRelevantPages;
   };
 
@@ -590,7 +583,6 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
 
   // Render grouped pages
   const renderGroupedPages = (pages: any[]): ReactNode => {
-    console.log('renderGroupedPages called with pages:', pages.length, pages);
     if (!groupByTags) {
       return <>{renderHierarchicalPages(pages)}</>;
     }

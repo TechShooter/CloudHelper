@@ -1,12 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+function extractProperty(prop: any): string {
+  if (!prop) return '';
+  
+  switch (prop.type) {
+    case 'title':
+      return prop.title?.map((t: any) => t.plain_text).join('') || '';
+    case 'rich_text':
+      return prop.rich_text?.map((t: any) => t.plain_text).join('') || '';
+    case 'text':
+      return prop.text?.content || '';
+    case 'number':
+      return prop.number?.toString() || '';
+    case 'select':
+      return prop.select?.name || '';
+    case 'multi_select':
+      return prop.multi_select?.map((s: any) => s.name).join(', ') || '';
+    case 'date':
+      return prop.date?.start || '';
+    case 'checkbox':
+      return prop.checkbox ? 'Yes' : 'No';
+    case 'url':
+      return prop.url || '';
+    case 'email':
+      return prop.email || '';
+    case 'phone':
+      return prop.phone || '';
+    case 'formula':
+      return extractProperty(prop.formula);
+    case 'relation':
+      return prop.relation?.map((r: any) => r.id).join(', ') || '';
+    case 'rollup':
+      return prop.rollup?.array?.map((r: any) => extractProperty(r)).join(', ') || '';
+    case 'people':
+      return prop.people?.map((p: any) => p.name).join(', ') || '';
+    case 'files':
+      return prop.files?.map((f: any) => f.name || f.external?.url).join(', ') || '';
+    case 'status':
+      return prop.status?.name || '';
+    default:
+      return '';
+  }
+}
+
 // Recursive function to extract blocks including nested children
 async function extractBlockContent(blockId: string, apiKey: string, indent: string = ''): Promise<string> {
   try {
     const response = await fetch(`https://api.notion.com/v1/blocks/${blockId}/children?page_size=100`, {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
-        'Notion-Version': '2022-06-28'
+        'Notion-Version': '2026-03-11'
       }
     });
 
@@ -82,7 +125,7 @@ export async function GET(req: NextRequest) {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-        'Notion-Version': '2022-06-28',
+        'Notion-Version': '2026-03-11',
         'Content-Type': 'application/json'
       },
       signal: controller.signal,
@@ -110,7 +153,7 @@ export async function GET(req: NextRequest) {
       const dbResponse = await fetch(`https://api.notion.com/v1/databases/${specificDatabaseId}`, {
         headers: {
           'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-          'Notion-Version': '2022-06-28'
+          'Notion-Version': '2026-03-11'
         }
       });
 
@@ -138,15 +181,107 @@ export async function GET(req: NextRequest) {
     const pages = await Promise.all(
       data.results.map(async (item: any) => {
         try {
-          if (item.object === 'database') {
-            // Handle database - just return the database itself
+          if (item.object === 'database' || item.object === 'data_source') {
+            // Handle database or data source - fetch entries with all properties
             const databaseId = item.id;
             let title = item.title?.[0]?.plain_text || 'Untitled Database';
+            let databaseContent = `Database: ${title}\n\n`;
+
+            try {
+              // Try new data sources API first (2026-03-11)
+              if (item.data_sources && item.data_sources.length > 0) {
+                for (const dataSource of item.data_sources) {
+                  try {
+                    const queryResponse = await fetch(`https://api.notion.com/v1/data_sources/${dataSource.id}/query`, {
+                      method: 'POST',
+                      headers: {
+                        'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+                        'Notion-Version': '2026-03-11',
+                        'Content-Type': 'application/json'
+                      },
+                      body: JSON.stringify({ page_size: 100 })
+                    });
+
+                    const queryData = await queryResponse.json();
+
+                    if (queryData.results && queryData.results.length > 0) {
+                      databaseContent += `Data Source: ${dataSource.name}\n\n`;
+                      for (const entry of queryData.results) {
+                        let entryTitle = 'Untitled';
+                        let entryProps: string[] = [];
+
+                        if (entry.properties) {
+                          for (const [propName, propValue] of Object.entries(entry.properties)) {
+                            const value = extractProperty(propValue as any);
+                            if (value) {
+                              if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
+                                entryTitle = value;
+                              } else {
+                                entryProps.push(`${propName}: ${value}`);
+                              }
+                            }
+                          }
+                        }
+
+                        databaseContent += `Entry: ${entryTitle}\n`;
+                        if (entryProps.length > 0) {
+                          databaseContent += entryProps.join('\n') + '\n';
+                        }
+                        databaseContent += '\n---\n\n';
+                      }
+                    }
+                  } catch (error) {
+                    console.error('Error fetching data source entries:', dataSource.id, error);
+                  }
+                }
+              } else {
+                // Fallback to old database query API
+                const queryResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+                    'Notion-Version': '2026-03-11',
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({ page_size: 100 })
+                });
+
+                const queryData = await queryResponse.json();
+
+                if (queryData.results && queryData.results.length > 0) {
+                  for (const entry of queryData.results) {
+                    let entryTitle = 'Untitled';
+                    let entryProps: string[] = [];
+
+                    if (entry.properties) {
+                      for (const [propName, propValue] of Object.entries(entry.properties)) {
+                        const value = extractProperty(propValue as any);
+                        if (value) {
+                          if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
+                            entryTitle = value;
+                          } else {
+                            entryProps.push(`${propName}: ${value}`);
+                          }
+                        }
+                      }
+                    }
+
+                    databaseContent += `Entry: ${entryTitle}\n`;
+                    if (entryProps.length > 0) {
+                      databaseContent += entryProps.join('\n') + '\n';
+                    }
+                    databaseContent += '\n---\n\n';
+                  }
+                }
+              }
+            } catch (error) {
+              console.error('Error fetching database entries:', error);
+            }
 
             return {
               id: databaseId,
               title: title,
-              content: `Database: ${title}`,
+              content: databaseContent,
               parent: item.parent,
               object: 'database',
               children: [] // Will be populated in hierarchy building
@@ -164,7 +299,7 @@ export async function GET(req: NextRequest) {
               title = item.properties.Name.title[0].plain_text;
             } else {
               // Fallback: cerca la prima proprietà di tipo title (es. Task in Tasks DB)
-              const titleProp = Object.values(item.properties || {}).find((prop: any) =>
+              const titleProp = Object.values(item.properties || {}).find((prop: any): prop is { type: string; title: Array<{ plain_text: string }> } =>
                 prop?.type === 'title' && prop?.title?.[0]?.plain_text
               );
               if (titleProp && titleProp.title?.[0]?.plain_text) {
@@ -176,7 +311,7 @@ export async function GET(req: NextRequest) {
               const parentResponse = await fetch(`https://api.notion.com/v1/pages/${item.parent.page_id}`, {
                 headers: {
                   'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-                  'Notion-Version': '2022-06-28'
+                  'Notion-Version': '2026-03-11'
                 }
               });
               const parentData = await parentResponse.json();
@@ -191,7 +326,7 @@ export async function GET(req: NextRequest) {
                 const blocksResponse = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children?page_size=10`, {
                   headers: {
                     'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-                    'Notion-Version': '2022-06-28'
+                    'Notion-Version': '2026-03-11'
                   }
                 });
                 const blocksData = await blocksResponse.json();
@@ -226,7 +361,7 @@ export async function GET(req: NextRequest) {
             const blocksResponse = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children?page_size=100`, {
               headers: {
                 'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-                'Notion-Version': '2022-06-28'
+                'Notion-Version': '2026-03-11'
               }
             });
 
@@ -303,18 +438,62 @@ export async function GET(req: NextRequest) {
         const dbResponse = await fetch(`https://api.notion.com/v1/databases/${parentId}`, {
           headers: {
             'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-            'Notion-Version': '2022-06-28'
+            'Notion-Version': '2026-03-11'
           }
         });
 
         if (dbResponse.ok) {
           const dbData = await dbResponse.json();
           const title = dbData.title?.[0]?.plain_text || 'Untitled Database';
+          let databaseContent = `Database: ${title}\n\n`;
+
+          // Fetch database entries with properties
+          try {
+            const queryResponse = await fetch(`https://api.notion.com/v1/databases/${parentId}/query`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+                'Notion-Version': '2026-03-11',
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ page_size: 100 })
+            });
+
+            const queryData = await queryResponse.json();
+
+            if (queryData.results && queryData.results.length > 0) {
+              for (const entry of queryData.results) {
+                let entryTitle = 'Untitled';
+                let entryProps: string[] = [];
+
+                if (entry.properties) {
+                  for (const [propName, propValue] of Object.entries(entry.properties)) {
+                    const value = extractProperty(propValue as any);
+                    if (value) {
+                      if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
+                        entryTitle = value;
+                      } else {
+                        entryProps.push(`${propName}: ${value}`);
+                      }
+                    }
+                  }
+                }
+
+                databaseContent += `Entry: ${entryTitle}\n`;
+                if (entryProps.length > 0) {
+                  databaseContent += entryProps.join('\n') + '\n';
+                }
+                databaseContent += '\n---\n\n';
+              }
+            }
+          } catch (error) {
+            console.error('Error fetching parent database entries:', error);
+          }
 
           return {
             id: parentId,
             title: title,
-            content: `Database: ${title}`,
+            content: databaseContent,
             parent: dbData.parent,
             object: 'database',
             children: []
@@ -325,7 +504,7 @@ export async function GET(req: NextRequest) {
         const pageResponse = await fetch(`https://api.notion.com/v1/pages/${parentId}`, {
           headers: {
             'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-            'Notion-Version': '2022-06-28'
+            'Notion-Version': '2026-03-11'
           }
         });
 
