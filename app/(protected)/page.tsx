@@ -27,7 +27,17 @@ export default function Home() {
 
     // Second pass: build hierarchy
     pages.forEach(page => {
-      const parentId = page.parent?.page_id || page.parent?.database_id;
+      // Extract parent ID based on parent type
+      let parentId;
+      if (page.parent?.type === 'data_source_id') {
+        parentId = page.parent.data_source_id;
+      } else if (page.parent?.type === 'database_id') {
+        parentId = page.parent.database_id;
+      } else if (page.parent?.type === 'page_id') {
+        parentId = page.parent.page_id;
+      } else {
+        parentId = page.parent?.page_id || page.parent?.database_id || page.parent?.data_source_id;
+      }
 
       if (!parentId || page.parent?.type === 'workspace') {
         // Root level page

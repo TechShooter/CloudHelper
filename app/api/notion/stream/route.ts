@@ -139,10 +139,49 @@ export async function GET(req: NextRequest) {
             const databaseId = item.id;
             const title = item.title?.[0]?.plain_text || 'Untitled Database';
             const url = `https://www.notion.so/${databaseId.replace(/-/g, '')}`;
-            
-            // Fetch database entries
-            let databaseContent = `Database: ${title}\n\n`;
-            
+
+            // If this is a data_source with a database parent, fetch and send the parent database first
+            if (item.object === 'data_source' && item.parent?.type === 'database_id') {
+              try {
+                const parentDbResponse = await fetch(`https://api.notion.com/v1/databases/${item.parent.database_id}`, {
+                  headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Notion-Version': '2026-03-11'
+                  }
+                });
+                const parentDbData = await parentDbResponse.json();
+                
+                if (parentDbData.id) {
+                  const parentDatabase = {
+                    id: parentDbData.id,
+                    title: parentDbData.title?.[0]?.plain_text || 'Parent Database',
+                    content: `Database: ${parentDbData.title?.[0]?.plain_text || 'Parent Database'}\n\n`,
+                    parent: parentDbData.parent,
+                    object: 'database',
+                    url: `https://www.notion.so/${parentDbData.id.replace(/-/g, '')}`,
+                    children: []
+                  };
+                  controller.enqueue(encoder.encode(JSON.stringify(parentDatabase) + '\n'));
+                }
+              } catch (error) {
+                console.error('Error fetching parent database:', error);
+              }
+            }
+
+            // Then, send the data_source object
+            const database = {
+              id: databaseId,
+              title: title,
+              content: `Database: ${title}\n\n`,
+              parent: item.parent,
+              object: item.object || 'database',
+              url,
+              children: []
+            };
+
+            controller.enqueue(encoder.encode(JSON.stringify(database) + '\n'));
+
+            // Then, fetch and send database entries as separate page objects
             try {
               // Try new data sources API first (2026-03-11)
               if (item.data_sources && item.data_sources.length > 0) {
@@ -161,7 +200,6 @@ export async function GET(req: NextRequest) {
                     const queryData = await queryResponse.json();
 
                     if (queryData.results && queryData.results.length > 0) {
-                      databaseContent += `Data Source: ${dataSource.name}\n\n`;
                       for (const entry of queryData.results) {
                         let entryTitle = 'Untitled';
                         let entryProps: string[] = [];
@@ -179,11 +217,26 @@ export async function GET(req: NextRequest) {
                           }
                         }
 
-                        databaseContent += `Entry: ${entryTitle}\n`;
+                        let entryContent = `Entry: ${entryTitle}\n`;
                         if (entryProps.length > 0) {
-                          databaseContent += entryProps.join('\n') + '\n';
+                          entryContent += entryProps.join('\n') + '\n';
                         }
-                        databaseContent += '\n---\n\n';
+
+                        // Send entry as a page object with its actual parent from Notion API
+                        const entryPage = {
+                          id: entry.id,
+                          title: entryTitle,
+                          content: entryContent,
+                          parent: entry.parent || {
+                            type: 'database_id',
+                            database_id: databaseId
+                          },
+                          object: 'page',
+                          url: entry.url || `https://www.notion.so/${entry.id.replace(/-/g, '')}`,
+                          children: []
+                        };
+
+                        controller.enqueue(encoder.encode(JSON.stringify(entryPage) + '\n'));
                       }
                     }
                   } catch (error) {
@@ -222,29 +275,32 @@ export async function GET(req: NextRequest) {
                       }
                     }
 
-                    databaseContent += `Entry: ${entryTitle}\n`;
+                    let entryContent = `Entry: ${entryTitle}\n`;
                     if (entryProps.length > 0) {
-                      databaseContent += entryProps.join('\n') + '\n';
+                      entryContent += entryProps.join('\n') + '\n';
                     }
-                    databaseContent += '\n---\n\n';
+
+                    // Send entry as a page object with its actual parent from Notion API
+                    const entryPage = {
+                      id: entry.id,
+                      title: entryTitle,
+                      content: entryContent,
+                      parent: entry.parent || {
+                        type: 'database_id',
+                        database_id: databaseId
+                      },
+                      object: 'page',
+                      url: entry.url || `https://www.notion.so/${entry.id.replace(/-/g, '')}`,
+                      children: []
+                    };
+
+                    controller.enqueue(encoder.encode(JSON.stringify(entryPage) + '\n'));
                   }
                 }
               }
             } catch (error) {
               console.error('Error fetching database entries:', error);
             }
-            
-            const database = {
-              id: databaseId,
-              title: title,
-              content: databaseContent,
-              parent: item.parent,
-              object: item.object || 'database',
-              url,
-              children: []
-            };
-            
-            controller.enqueue(encoder.encode(JSON.stringify(database) + '\n'));
           }
         }
 

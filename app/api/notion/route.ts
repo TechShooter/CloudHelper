@@ -178,14 +178,14 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const pages = await Promise.all(
+    const pages = (await Promise.all(
       data.results.map(async (item: any) => {
         try {
           if (item.object === 'database' || item.object === 'data_source') {
             // Handle database or data source - fetch entries with all properties
             const databaseId = item.id;
             let title = item.title?.[0]?.plain_text || 'Untitled Database';
-            let databaseContent = `Database: ${title}\n\n`;
+            const databasePages: any[] = [];
 
             try {
               // Try new data sources API first (2026-03-11)
@@ -205,7 +205,6 @@ export async function GET(req: NextRequest) {
                     const queryData = await queryResponse.json();
 
                     if (queryData.results && queryData.results.length > 0) {
-                      databaseContent += `Data Source: ${dataSource.name}\n\n`;
                       for (const entry of queryData.results) {
                         let entryTitle = 'Untitled';
                         let entryProps: string[] = [];
@@ -223,11 +222,24 @@ export async function GET(req: NextRequest) {
                           }
                         }
 
-                        databaseContent += `Entry: ${entryTitle}\n`;
+                        let entryContent = `Entry: ${entryTitle}\n`;
                         if (entryProps.length > 0) {
-                          databaseContent += entryProps.join('\n') + '\n';
+                          entryContent += entryProps.join('\n') + '\n';
                         }
-                        databaseContent += '\n---\n\n';
+
+                        // Create page object for entry with its actual parent from Notion API
+                        databasePages.push({
+                          id: entry.id,
+                          title: entryTitle,
+                          content: entryContent,
+                          parent: entry.parent || {
+                            type: 'database_id',
+                            database_id: databaseId
+                          },
+                          object: 'page',
+                          url: entry.url || `https://www.notion.so/${entry.id.replace(/-/g, '')}`,
+                          children: []
+                        });
                       }
                     }
                   } catch (error) {
@@ -266,11 +278,24 @@ export async function GET(req: NextRequest) {
                       }
                     }
 
-                    databaseContent += `Entry: ${entryTitle}\n`;
+                    let entryContent = `Entry: ${entryTitle}\n`;
                     if (entryProps.length > 0) {
-                      databaseContent += entryProps.join('\n') + '\n';
+                      entryContent += entryProps.join('\n') + '\n';
                     }
-                    databaseContent += '\n---\n\n';
+
+                    // Create page object for entry with its actual parent from Notion API
+                    databasePages.push({
+                      id: entry.id,
+                      title: entryTitle,
+                      content: entryContent,
+                      parent: entry.parent || {
+                        type: 'database_id',
+                        database_id: databaseId
+                      },
+                      object: 'page',
+                      url: entry.url || `https://www.notion.so/${entry.id.replace(/-/g, '')}`,
+                      children: []
+                    });
                   }
                 }
               }
@@ -278,14 +303,18 @@ export async function GET(req: NextRequest) {
               console.error('Error fetching database entries:', error);
             }
 
-            return {
-              id: databaseId,
-              title: title,
-              content: databaseContent,
-              parent: item.parent,
-              object: 'database',
-              children: [] // Will be populated in hierarchy building
-            };
+            // Return database object along with its pages
+            return [
+              {
+                id: databaseId,
+                title: title,
+                content: `Database: ${title}\n\n`,
+                parent: item.parent,
+                object: item.object || 'database',
+                children: [] // Will be populated in hierarchy building
+              },
+              ...databasePages
+            ];
           } else {
             // Handle regular page
             const pageId = item.id;
@@ -411,7 +440,7 @@ export async function GET(req: NextRequest) {
           return null;
         }
       })
-    );
+    )).flat();
 
     // Filter out null results (skipped pages)
     const filteredPages = pages.filter(page => page !== null);
