@@ -139,6 +139,29 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
   const [showMenu, setShowMenu] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [nutrientEntries, setNutrientEntries] = useState<any[]>([]);
+
+  // Load saved workspace and tab from localStorage on mount (client-side only)
+  useEffect(() => {
+    const savedWorkspace = localStorage.getItem('lastWorkspace');
+    const savedTab = localStorage.getItem('lastTab');
+    
+    if (savedWorkspace) {
+      setActiveWorkspace(savedWorkspace);
+    }
+    
+    if (savedTab === 'chat' || savedTab === 'docs' || savedTab === 'calendar' || savedTab === 'nutrients') {
+      setActiveTab(savedTab);
+    }
+  }, []);
+
+  // Save active workspace and tab to localStorage on change
+  useEffect(() => {
+    localStorage.setItem('lastWorkspace', activeWorkspace);
+  }, [activeWorkspace]);
+
+  useEffect(() => {
+    localStorage.setItem('lastTab', activeTab);
+  }, [activeTab]);
   
   // Prompt control state
   const [promptSettings, setPromptSettings] = useState({
@@ -150,6 +173,252 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
     maxSheetRows: 100,
     maxNotionPages: 50
   });
+
+  // Nutrients checkbox state for Docs tab
+  const [nutrientSettings, setNutrientSettings] = useState({
+    includeFoodEntries: false,
+    includeVitaminsMinerals: false
+  });
+  const [defaultNutrientSettings, setDefaultNutrientSettings] = useState<{ [workspaceId: string]: { includeFoodEntries: boolean, includeVitaminsMinerals: boolean } }>({});
+
+  // Load nutrient entries from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('nutrientEntries');
+    if (saved) {
+      try {
+        setNutrientEntries(JSON.parse(saved));
+      } catch (error) {
+        console.error('Failed to load nutrient entries:', error);
+      }
+    }
+  }, []);
+
+  // Load default nutrient settings from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('workspaceDefaultNutrientSettings');
+    if (saved) {
+      try {
+        setDefaultNutrientSettings(JSON.parse(saved));
+      } catch (error) {
+        console.error('Failed to load default nutrient settings:', error);
+      }
+    }
+  }, []);
+
+  // Save default nutrient settings to localStorage
+  useEffect(() => {
+    localStorage.setItem('workspaceDefaultNutrientSettings', JSON.stringify(defaultNutrientSettings));
+  }, [defaultNutrientSettings]);
+
+  // Auto-select default nutrient settings when workspace changes
+  useEffect(() => {
+    const defaults = defaultNutrientSettings[activeWorkspace] || { includeFoodEntries: false, includeVitaminsMinerals: false };
+    setNutrientSettings(defaults);
+  }, [activeWorkspace, defaultNutrientSettings]);
+
+  const toggleDefaultNutrientSetting = (setting: 'includeFoodEntries' | 'includeVitaminsMinerals') => {
+    setDefaultNutrientSettings(prev => {
+      const current = prev[activeWorkspace] || { includeFoodEntries: false, includeVitaminsMinerals: false };
+      const updated = { ...current, [setting]: !current[setting] };
+      return { ...prev, [activeWorkspace]: updated };
+    });
+  };
+
+  const isDefaultNutrientSetting = (setting: 'includeFoodEntries' | 'includeVitaminsMinerals') => {
+    const current = defaultNutrientSettings[activeWorkspace] || { includeFoodEntries: false, includeVitaminsMinerals: false };
+    return current[setting];
+  };
+
+  // Helper function to format nutrient data for prompt
+  const formatFoodEntriesAndDailyNutrients = () => {
+    if (!nutrientEntries || nutrientEntries.length === 0) {
+      return 'No nutrient entries available.';
+    }
+
+    const now = new Date();
+    const last24hEntries = nutrientEntries.filter((entry: any) => {
+      const entryTime = new Date(entry.time);
+      return (now.getTime() - entryTime.getTime()) < 24 * 60 * 60 * 1000;
+    });
+
+    if (last24hEntries.length === 0) {
+      return 'No food entries in the last 24 hours.';
+    }
+
+    let output = '🍽️ Food Entries (Last 24h)\n';
+
+    // Food entries
+    last24hEntries.forEach((entry: any) => {
+      const date = new Date(entry.time);
+      const dateStr = date.toLocaleDateString('it-IT') + ', ' + date.toLocaleTimeString('it-IT');
+      output += `${entry.food}\n`;
+      output += `${dateStr} • ${entry.grams}g\n`;
+      output += `Energy: ${entry.energy.toFixed(0)} kJ | Protein: ${entry.protein.toFixed(1)}g | Carbs: ${entry.carbs.toFixed(1)}g | Fats: ${entry.fats.toFixed(1)}g\n`;
+      output += entry.cost > 0 ? `💶 €${entry.cost.toFixed(2)}\n` : '💶 Prezzo non disponibile\n';
+    });
+
+    // Daily cost
+    const totalCost = last24hEntries.reduce((sum: number, entry: any) => sum + (entry.cost || 0), 0);
+    output += '\nDaily Cost (Last 24h)\n';
+    output += totalCost > 0 ? `💶 €${totalCost.toFixed(2)}\n` : '💶 Prezzo non disponibile\n';
+    output += `From ${last24hEntries.length} food entries\n\n`;
+
+    // Daily nutrients totals
+    const totals = last24hEntries.reduce((acc: any, entry: any) => ({
+      energy: acc.energy + (entry.energy || 0),
+      protein: acc.protein + (entry.protein || 0),
+      carbs: acc.carbs + (entry.carbs || 0),
+      fats: acc.fats + (entry.fats || 0),
+      saturatedFats: acc.saturatedFats + (entry.saturatedFats || 0),
+      fibers: acc.fibers + (entry.fibers || 0),
+      sugars: acc.sugars + (entry.sugars || 0),
+      salt: acc.salt + (entry.salt || 0)
+    }), { 
+      energy: 0, protein: 0, carbs: 0, fats: 0, saturatedFats: 0, fibers: 0, sugars: 0, salt: 0
+    });
+
+    // Default goals (same as in NutrientTracker)
+    const goals = {
+      energyKJ: 8000,
+      protein: 150,
+      carbs: 200,
+      fats: 65,
+      saturatedFats: 20,
+      fibers: 25,
+      sugars: 50,
+      salt: 6
+    };
+
+    const nutrients = [
+      { name: 'Energy (kJ)', value: totals.energy, goal: goals.energyKJ, unit: 'kJ', isLimit: false },
+      { name: 'Protein (g)', value: totals.protein, goal: goals.protein, unit: 'g', isLimit: false },
+      { name: 'Carbs (g)', value: totals.carbs, goal: goals.carbs, unit: 'g', isLimit: false },
+      { name: 'Fats (g)', value: totals.fats, goal: goals.fats, unit: 'g', isLimit: false },
+      { name: 'Sat. Fats (g)', value: totals.saturatedFats, goal: goals.saturatedFats, unit: 'g', isLimit: true },
+      { name: 'Salt (g)', value: totals.salt, goal: goals.salt, unit: 'g', isLimit: true },
+      { name: 'Sugars (g)', value: totals.sugars, goal: goals.sugars, unit: 'g', isLimit: false }
+    ];
+
+    nutrients.forEach(nutrient => {
+      const percentage = nutrient.goal > 0 ? Math.round((nutrient.value / nutrient.goal) * 100) : 0;
+      output += `${nutrient.name}\n`;
+      output += `${nutrient.value.toFixed(1)}\n`;
+      output += nutrient.isLimit ? `Limit: ${nutrient.goal}${nutrient.unit} ⚠️\n` : `Goal: ${nutrient.goal}${nutrient.unit}\n`;
+      output += `${percentage}%\n`;
+    });
+
+    return output;
+  };
+
+  const formatVitaminsAndMinerals = () => {
+    if (!nutrientEntries || nutrientEntries.length === 0) {
+      return 'No nutrient entries available.';
+    }
+
+    const now = new Date();
+    const last24hEntries = nutrientEntries.filter((entry: any) => {
+      const entryTime = new Date(entry.time);
+      return (now.getTime() - entryTime.getTime()) < 24 * 60 * 60 * 1000;
+    });
+
+    if (last24hEntries.length === 0) {
+      return 'No food entries in the last 24 hours.';
+    }
+
+    let output = '💊 Vitamins & Minerals (Last 24h)\n';
+
+    // Calculate totals
+    const totals = last24hEntries.reduce((acc: any, entry: any) => ({
+      vitaminD: acc.vitaminD + (entry.vitaminD || 0),
+      vitaminB1: acc.vitaminB1 + (entry.vitaminB1 || 0),
+      vitaminB2: acc.vitaminB2 + (entry.vitaminB2 || 0),
+      vitaminB3: acc.vitaminB3 + (entry.vitaminB3 || 0),
+      vitaminB5: acc.vitaminB5 + (entry.vitaminB5 || 0),
+      vitaminB6: acc.vitaminB6 + (entry.vitaminB6 || 0),
+      vitaminB9: acc.vitaminB9 + (entry.vitaminB9 || 0),
+      vitaminE: acc.vitaminE + (entry.vitaminE || 0),
+      vitaminK: acc.vitaminK + (entry.vitaminK || 0),
+      calcium: acc.calcium + (entry.calcium || 0),
+      iron: acc.iron + (entry.iron || 0),
+      phosphorus: acc.phosphorus + (entry.phosphorus || 0),
+      magnesium: acc.magnesium + (entry.magnesium || 0),
+      potassium: acc.potassium + (entry.potassium || 0),
+      zinc: acc.zinc + (entry.zinc || 0),
+      copper: acc.copper + (entry.copper || 0),
+      manganese: acc.manganese + (entry.manganese || 0),
+      selenium: acc.selenium + (entry.selenium || 0)
+    }), { 
+      vitaminD: 0, vitaminB1: 0, vitaminB2: 0, vitaminB3: 0, vitaminB5: 0, vitaminB6: 0, vitaminB9: 0,
+      vitaminE: 0, vitaminK: 0, calcium: 0, iron: 0, phosphorus: 0, magnesium: 0,
+      potassium: 0, zinc: 0, copper: 0, manganese: 0, selenium: 0
+    });
+
+    // Default goals
+    const goals = {
+      vitaminD: 10,
+      vitaminB1: 1.2,
+      vitaminB2: 1.3,
+      vitaminB3: 16,
+      vitaminB5: 5,
+      vitaminB6: 1.3,
+      vitaminB9: 400,
+      vitaminE: 12,
+      vitaminK: 70,
+      calcium: 800,
+      iron: 14,
+      phosphorus: 700,
+      magnesium: 320,
+      potassium: 2000,
+      zinc: 8,
+      copper: 0.9,
+      manganese: 2,
+      selenium: 55
+    };
+
+    const vitamins = [
+      { name: 'Vitamin D (μg)', value: totals.vitaminD, goal: goals.vitaminD, unit: 'μg' },
+      { name: 'Vitamin B1 (mg)', value: totals.vitaminB1, goal: goals.vitaminB1, unit: 'mg' },
+      { name: 'Vitamin B2 (mg)', value: totals.vitaminB2, goal: goals.vitaminB2, unit: 'mg' },
+      { name: 'Vitamin B3 (mg)', value: totals.vitaminB3, goal: goals.vitaminB3, unit: 'mg' },
+      { name: 'Vitamin B5 (mg)', value: totals.vitaminB5, goal: goals.vitaminB5, unit: 'mg' },
+      { name: 'Vitamin B6 (mg)', value: totals.vitaminB6, goal: goals.vitaminB6, unit: 'mg' },
+      { name: 'Vitamin B9 (μg)', value: totals.vitaminB9, goal: goals.vitaminB9, unit: 'μg' },
+      { name: 'Vitamin E (mg)', value: totals.vitaminE, goal: goals.vitaminE, unit: 'mg' },
+      { name: 'Vitamin K (μg)', value: totals.vitaminK, goal: goals.vitaminK, unit: 'μg' }
+    ];
+
+    const minerals = [
+      { name: 'Calcium (mg)', value: totals.calcium, goal: goals.calcium, unit: 'mg' },
+      { name: 'Iron (mg)', value: totals.iron, goal: goals.iron, unit: 'mg' },
+      { name: 'Phosphorus (mg)', value: totals.phosphorus, goal: goals.phosphorus, unit: 'mg' },
+      { name: 'Magnesium (mg)', value: totals.magnesium, goal: goals.magnesium, unit: 'mg' },
+      { name: 'Potassium (mg)', value: totals.potassium, goal: goals.potassium, unit: 'mg' },
+      { name: 'Zinc (mg)', value: totals.zinc, goal: goals.zinc, unit: 'mg' },
+      { name: 'Copper (mg)', value: totals.copper, goal: goals.copper, unit: 'mg' },
+      { name: 'Manganese (mg)', value: totals.manganese, goal: goals.manganese, unit: 'mg' },
+      { name: 'Selenium (μg)', value: totals.selenium, goal: goals.selenium, unit: 'μg' }
+    ];
+
+    output += '\nVitamins:\n';
+    vitamins.forEach(vitamin => {
+      const percentage = vitamin.goal > 0 ? Math.round((vitamin.value / vitamin.goal) * 100) : 0;
+      output += `${vitamin.name}\n`;
+      output += `${vitamin.value.toFixed(2)}\n`;
+      output += `Goal: ${vitamin.goal}${vitamin.unit}\n`;
+      output += `${percentage}%\n`;
+    });
+
+    output += '\nMinerals:\n';
+    minerals.forEach(mineral => {
+      const percentage = mineral.goal > 0 ? Math.round((mineral.value / mineral.goal) * 100) : 0;
+      output += `${mineral.name}\n`;
+      output += `${mineral.value.toFixed(2)}\n`;
+      output += `Goal: ${mineral.goal}${mineral.unit}\n`;
+      output += `${percentage}%\n`;
+    });
+
+    return output;
+  };
 
   // Expose functions to parent component
   useImperativeHandle(ref, () => ({
@@ -914,6 +1183,62 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                     </div>
                   </div>
 
+                  {/* Nutrients Section */}
+                  <div className="mt-6 p-4 bg-gray-800 rounded">
+                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                      🥗 Nutrients
+                      <span className="text-sm text-gray-400">(Include nutrient data from Nutrients tab)</span>
+                    </h3>
+                    
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2 text-sm text-orange-300 p-3 bg-gray-800 rounded">
+                        <label className="flex items-center gap-2 flex-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={nutrientSettings.includeFoodEntries}
+                            onChange={(e) => setNutrientSettings(prev => ({ ...prev, includeFoodEntries: e.target.checked }))}
+                            className="form-checkbox h-4 w-4"
+                          />
+                          <span>Food Entries & Daily Nutrients (Last 24h)</span>
+                        </label>
+                        <button
+                          onClick={() => toggleDefaultNutrientSetting('includeFoodEntries')}
+                          className={`text-xs px-2 py-1 rounded cursor-pointer ${
+                            isDefaultNutrientSetting('includeFoodEntries')
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          }`}
+                          title="Mark as default for this chat"
+                        >
+                          {isDefaultNutrientSetting('includeFoodEntries') ? '✓ Default' : 'Default'}
+                        </button>
+                      </div>
+                      
+                      <div className="flex items-center justify-between gap-2 text-sm text-cyan-300 p-3 bg-gray-800 rounded">
+                        <label className="flex items-center gap-2 flex-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={nutrientSettings.includeVitaminsMinerals}
+                            onChange={(e) => setNutrientSettings(prev => ({ ...prev, includeVitaminsMinerals: e.target.checked }))}
+                            className="form-checkbox h-4 w-4"
+                          />
+                          <span>Vitamins & Minerals (Last 24h)</span>
+                        </label>
+                        <button
+                          onClick={() => toggleDefaultNutrientSetting('includeVitaminsMinerals')}
+                          className={`text-xs px-2 py-1 rounded cursor-pointer ${
+                            isDefaultNutrientSetting('includeVitaminsMinerals')
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          }`}
+                          title="Mark as default for this chat"
+                        >
+                          {isDefaultNutrientSetting('includeVitaminsMinerals') ? '✓ Default' : 'Default'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Prompt Control Section */}
                   <div className="mt-6 p-4 bg-gray-800 rounded">
                     <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
@@ -1145,7 +1470,25 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                               );
                             })}
 
-                            {selectedContexts.filter(ctx => ctx.startsWith('notion-')).length === 0 && !selectedContexts.includes('sheet') && (
+                            {nutrientSettings.includeFoodEntries && (
+                              <div className="mb-3">
+                                <div className="text-orange-400 font-bold mb-1">🍽️ Food Entries & Daily Nutrients:</div>
+                                <div className="text-gray-400 whitespace-pre-wrap text-xs">
+                                  {formatFoodEntriesAndDailyNutrients()}
+                                </div>
+                              </div>
+                            )}
+
+                            {nutrientSettings.includeVitaminsMinerals && (
+                              <div className="mb-3">
+                                <div className="text-cyan-400 font-bold mb-1">💊 Vitamins & Minerals:</div>
+                                <div className="text-gray-400 whitespace-pre-wrap text-xs">
+                                  {formatVitaminsAndMinerals()}
+                                </div>
+                              </div>
+                            )}
+
+                            {selectedContexts.filter(ctx => ctx.startsWith('notion-')).length === 0 && !selectedContexts.includes('sheet') && !nutrientSettings.includeFoodEntries && !nutrientSettings.includeVitaminsMinerals && (
                               <div className="text-gray-500">No content will be sent to AI</div>
                             )}
                           </div>
