@@ -91,14 +91,19 @@ export default function Home() {
 
         if (reader) {
           const pages: any[] = [];
+          let buffer = '';
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const text = decoder.decode(value);
-            const lines = text.split('\n').filter(line => line.trim());
+            const text = decoder.decode(value, { stream: true });
+            buffer += text;
+            
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
 
             for (const line of lines) {
+              if (!line.trim()) continue;
               try {
                 const page = JSON.parse(line);
                 if (page.error) {
@@ -111,7 +116,7 @@ export default function Home() {
                   setHierarchicalNotionPages(hierarchical);
                 }
               } catch (e) {
-                console.error('Parse error:', e);
+                console.error('Parse error:', e, line);
               }
             }
           }
@@ -133,14 +138,19 @@ export default function Home() {
 
       if (reader) {
         const pages: any[] = [];
+        let buffer = '';
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          const text = decoder.decode(value);
-          const lines = text.split('\n').filter(line => line.trim());
+          const text = decoder.decode(value, { stream: true });
+          buffer += text;
+          
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
 
           for (const line of lines) {
+            if (!line.trim()) continue;
             try {
               const page = JSON.parse(line);
               if (page.error) {
@@ -153,7 +163,7 @@ export default function Home() {
                 setHierarchicalNotionPages(hierarchical);
               }
             } catch (e) {
-              console.error('Parse error:', e);
+              console.error('Parse error:', e, line);
             }
           }
         }
