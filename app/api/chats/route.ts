@@ -73,12 +73,50 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// PATCH: Update chat title
+export async function PATCH(req: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { chatId, title } = await req.json();
+
+    if (!chatId) {
+      return NextResponse.json({ error: 'chatId is required' }, { status: 400 });
+    }
+
+    if (!title) {
+      return NextResponse.json({ error: 'title is required' }, { status: 400 });
+    }
+
+    const { data: chat, error } = await supabase
+      .from('chats')
+      .update({ title, updated_at: new Date().toISOString() })
+      .eq('id', chatId)
+      .eq('user_id', user.id)
+      .select()
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ chat });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
 // DELETE: Delete a chat
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    
+
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

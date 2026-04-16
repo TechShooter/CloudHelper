@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 
 interface Chat {
   id: string;
@@ -16,41 +16,50 @@ interface Props {
   onNewChat: () => void;
 }
 
-export default function ChatHeader({ workspaceId, activeChatId, onChatSelect, onNewChat }: Props) {
+export interface ChatHeaderRef {
+  refreshChats: () => void;
+}
+
+const ChatHeader = forwardRef<ChatHeaderRef, Props>(({ workspaceId, activeChatId, onChatSelect, onNewChat }, ref) => {
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  const loadChats = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/chats?workspaceId=${workspaceId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.chats) {
+          setChats(data.chats);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load chats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Load chats from Supabase
   useEffect(() => {
-    const loadChats = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch(`/api/chats?workspaceId=${workspaceId}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.chats) {
-            setChats(data.chats);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load chats:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadChats();
   }, [workspaceId]);
 
+  // Expose refresh function via ref
+  useImperativeHandle(ref, () => ({
+    refreshChats: loadChats
+  }));
+
   // Create new chat
-  const handleCreateChat = async () => {
+  const handleCreateChat = async (title?: string) => {
     try {
-      console.log('Creating chat with workspaceId:', workspaceId);
+      console.log('Creating chat with workspaceId:', workspaceId, 'title:', title || 'New Chat');
       const res = await fetch('/api/chats', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId })
+        body: JSON.stringify({ workspaceId, title: title || 'New Chat' })
       });
       console.log('Response status:', res.status);
       const data = await res.json();
@@ -106,11 +115,10 @@ export default function ChatHeader({ workspaceId, activeChatId, onChatSelect, on
       <div className="flex items-center gap-2 px-3 py-2">
         {/* New Chat Button */}
         <button
-          onClick={handleCreateChat}
-          className="bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 text-sm flex items-center gap-1 flex-shrink-0"
+          onClick={() => handleCreateChat()}
+          className="bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 text-lg flex items-center gap-1 flex-shrink-0"
         >
-          <span className="text-base">+</span>
-          <span>New Chat</span>
+          +
         </button>
 
         {/* Chat List - Horizontal Scroll */}
@@ -180,4 +188,6 @@ export default function ChatHeader({ workspaceId, activeChatId, onChatSelect, on
       </div>
     </div>
   );
-}
+});
+
+export default ChatHeader;

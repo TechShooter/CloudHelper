@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
-import ChatHeader from './ChatHeader';
+import ChatHeader, { ChatHeaderRef } from './ChatHeader';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -106,13 +106,16 @@ interface Props {
 }
 
 export default function ChatInterface({ selectedContexts, notes, aiModel, userProfile, sheetData, mealHistory, notionPages, workspacePrompt, workspaceId, calendarEvents, nutrientEntries }: Props) {
+  const chatHeaderRef = useRef<ChatHeaderRef>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState<'connecting' | 'thinking' | 'responding' | 'error'>('connecting');
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [visibleMessageCount, setVisibleMessageCount] = useState(50);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
@@ -124,20 +127,49 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
     return currentMessages.slice(total - visibleMessageCount);
   }, [currentMessages, visibleMessageCount]);
 
+  // Clear chat state when workspaceId changes
+  useEffect(() => {
+    setActiveChatId(null);
+    setMessages([]);
+    setInput('');
+  }, [workspaceId]);
+
+  // Abort streaming response when activeChatId changes
+  useEffect(() => {
+    return () => {
+      if (abortController) {
+        abortController.abort();
+      }
+    };
+  }, [activeChatId]);
+
   // Load messages from Supabase when activeChatId changes
   useEffect(() => {
     const loadMessages = async () => {
-      if (!activeChatId) return;
+      if (!activeChatId) {
+        console.log('No activeChatId, skipping load');
+        return;
+      }
+      // Clear messages immediately before loading
+      setMessages([]);
+      setLoadingMessages(true);
+      console.log('Loading messages for chatId:', activeChatId);
       try {
         const res = await fetch(`/api/chat-persistence?chatId=${activeChatId}`);
+        console.log('Load response status:', res.status);
         if (res.ok) {
           const data = await res.json();
+          console.log('Loaded messages:', data.messages?.length || 0);
           if (data.messages) {
             setMessages(data.messages);
           }
+        } else {
+          console.error('Failed to load messages, status:', res.status);
         }
       } catch (error) {
         console.error('Failed to load messages:', error);
+      } finally {
+        setLoadingMessages(false);
       }
     };
 
@@ -148,12 +180,17 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
   useEffect(() => {
     if (!activeChatId) return;
     const timeoutId = setTimeout(async () => {
+      console.log('Saving messages for chatId:', activeChatId, 'count:', messages.length);
       try {
-        await fetch('/api/chat-persistence', {
+        const res = await fetch('/api/chat-persistence', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ chatId: activeChatId, messages })
         });
+        console.log('Save response status:', res.status);
+        if (!res.ok) {
+          console.error('Failed to save messages, status:', res.status);
+        }
       } catch (error) {
         console.error('Failed to save messages:', error);
       }
@@ -163,16 +200,25 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
   }, [messages, activeChatId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [currentMessages]);
+    if (!userScrolledUp) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [currentMessages, userScrolledUp]);
 
-  // Handle scroll to load more messages
+  // Handle scroll to load more messages and track user scroll position
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
-    if (target.scrollTop === 0 && visibleMessageCount < currentMessages.length) {
+    const { scrollTop, scrollHeight, clientHeight } = target;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+
+    // Track if user has scrolled up (not near bottom)
+    setUserScrolledUp(!isNearBottom);
+
+    // Load more messages when scrolling to top
+    if (scrollTop === 0 && visibleMessageCount < currentMessages.length) {
       const prevHeight = target.scrollHeight;
       setVisibleMessageCount(prev => Math.min(prev + 30, currentMessages.length));
-      
+
       setTimeout(() => {
         const newHeight = target.scrollHeight;
         target.scrollTop = newHeight - prevHeight;
@@ -198,18 +244,22 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
 
     // Create a new chat if none is active
     let chatIdToUse = activeChatId;
+    let isNewChat = false;
     if (!chatIdToUse) {
       try {
+        // Generate title from first message (first 50 characters)
+        const title = input.trim().substring(0, 50) + (input.length > 50 ? '...' : '');
         const res = await fetch('/api/chats', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ workspaceId })
+          body: JSON.stringify({ workspaceId, title })
         });
         if (res.ok) {
           const data = await res.json();
           if (data.chat) {
             chatIdToUse = data.chat.id;
             setActiveChatId(chatIdToUse);
+            isNewChat = true;
           }
         }
       } catch (error) {
@@ -219,6 +269,21 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
     }
 
     if (!chatIdToUse) return;
+
+    // Update chat title if it's the first message in the chat
+    if (!isNewChat && currentMessages.length === 0) {
+      try {
+        const title = input.trim().substring(0, 50) + (input.length > 50 ? '...' : '');
+        await fetch('/api/chats', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId: chatIdToUse, title })
+        });
+        chatHeaderRef.current?.refreshChats();
+      } catch (error) {
+        console.error('Failed to update chat title:', error);
+      }
+    }
 
     const controller = new AbortController();
     setAbortController(controller);
@@ -263,7 +328,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
 
     try {
       setLoadingStatus('thinking');
-      
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -272,7 +337,15 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
       });
 
       if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
+        const errorData = await res.json().catch(() => ({ response: `API Error: ${res.status}` }));
+        setMessages(prev => {
+          const newMessages = [...prev];
+          newMessages[assistantIndex] = { role: 'assistant', content: errorData.response || errorData.error?.message || 'An error occurred while processing your request.' };
+          return newMessages;
+        });
+        setLoading(false);
+        setLoadingStatus('error');
+        return;
       }
 
       setLoadingStatus('responding');
@@ -369,6 +442,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
     <div className="flex-1 flex flex-col overflow-hidden h-full">
       {/* Chat Header */}
       <ChatHeader
+        ref={chatHeaderRef}
         workspaceId={workspaceId}
         activeChatId={activeChatId}
         onChatSelect={handleChatSelect}
@@ -380,6 +454,20 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto min-h-0 px-3 sm:px-4 py-2 sm:py-4 space-y-3 sm:space-y-4 bg-gray-900 h-full"
       >
+        {loadingMessages && (
+          <div className="flex justify-center">
+            <div className="bg-gray-700 text-gray-100 px-4 py-2 rounded-lg flex items-center gap-3">
+              <div className="flex gap-1">
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+              </div>
+              <div className="text-sm">
+                Loading messages...
+              </div>
+            </div>
+          </div>
+        )}
         {currentMessages.length > visibleMessageCount && (
           <div className="text-center text-gray-500 text-sm py-2">
             Showing {visibleMessageCount} of {currentMessages.length} messages. Scroll up to load more.

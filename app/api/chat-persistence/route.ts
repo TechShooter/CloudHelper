@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'chatId is required' }, { status: 400 });
     }
 
+    console.log('[chat-persistence GET] Loading messages for chatId:', chatId, 'user:', user.id);
     const { data: messages, error } = await supabase
       .from('chat_messages')
       .select('*')
@@ -28,9 +29,11 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: true });
 
     if (error) {
+      console.error('[chat-persistence GET] Error loading messages:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    console.log('[chat-persistence GET] Loaded messages count:', messages?.length || 0);
     // Transform to match the format expected by ChatInterface
     const transformedMessages = messages?.map(msg => ({
       role: msg.role,
@@ -39,6 +42,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ messages: transformedMessages });
   } catch (error: any) {
+    console.error('[chat-persistence GET] Exception:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -48,7 +52,7 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    
+
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -59,6 +63,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'chatId and messages array are required' }, { status: 400 });
     }
 
+    console.log('[chat-persistence POST] Saving messages for chatId:', chatId, 'count:', messages.length, 'user:', user.id);
+
     // Delete existing messages for this chat
     const { error: deleteError } = await supabase
       .from('chat_messages')
@@ -67,11 +73,14 @@ export async function POST(req: NextRequest) {
       .eq('chat_id', chatId);
 
     if (deleteError) {
+      console.error('[chat-persistence POST] Error deleting messages:', deleteError);
       return NextResponse.json({ error: deleteError.message }, { status: 500 });
     }
 
     // Insert new messages
-    const messagesToInsert = messages.map(msg => ({
+    const messagesToInsert = messages
+      .filter(msg => msg && msg.role && msg.content)
+      .map(msg => ({
       user_id: user.id,
       chat_id: chatId,
       role: msg.role,
@@ -79,11 +88,13 @@ export async function POST(req: NextRequest) {
     }));
 
     if (messagesToInsert.length > 0) {
+      console.log('[chat-persistence POST] Inserting messages:', messagesToInsert.length);
       const { error: insertError } = await supabase
         .from('chat_messages')
         .insert(messagesToInsert);
 
       if (insertError) {
+        console.error('[chat-persistence POST] Error inserting messages:', insertError);
         return NextResponse.json({ error: insertError.message }, { status: 500 });
       }
     }
@@ -95,8 +106,10 @@ export async function POST(req: NextRequest) {
       .eq('id', chatId)
       .eq('user_id', user.id);
 
+    console.log('[chat-persistence POST] Successfully saved messages');
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    console.error('[chat-persistence POST] Exception:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

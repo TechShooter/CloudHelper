@@ -25,7 +25,18 @@ BEGIN
   END IF;
 END $$;
 
--- Step 4: Create indexes
+-- Step 4: Remove workspace_id column from chat_messages if it exists
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'chat_messages' AND column_name = 'workspace_id'
+  ) THEN
+    ALTER TABLE chat_messages DROP COLUMN workspace_id;
+  END IF;
+END $$;
+
+-- Step 5: Create indexes
 CREATE INDEX idx_chats_user_workspace ON chats(user_id, workspace_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_user_chat ON chat_messages(user_id, chat_id, created_at);
 
