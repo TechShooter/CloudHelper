@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
+import ChatHeader from './ChatHeader';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -105,7 +106,8 @@ interface Props {
 }
 
 export default function ChatInterface({ selectedContexts, notes, aiModel, userProfile, sheetData, mealHistory, notionPages, workspacePrompt, workspaceId, calendarEvents, nutrientEntries }: Props) {
-  const [messages, setMessages] = useState<{ [key: string]: Message[] }>({});
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState<'connecting' | 'thinking' | 'responding' | 'error'>('connecting');
@@ -115,22 +117,23 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Memoize current messages to avoid recalculation on every render
-  const currentMessages = useMemo(() => messages[workspaceId] || [], [messages, workspaceId]);
+  const currentMessages = messages;
   const visibleMessages = useMemo(() => {
     const total = currentMessages.length;
     if (total <= visibleMessageCount) return currentMessages;
     return currentMessages.slice(total - visibleMessageCount);
   }, [currentMessages, visibleMessageCount]);
 
-  // Load messages from Supabase on mount
+  // Load messages from Supabase when activeChatId changes
   useEffect(() => {
     const loadMessages = async () => {
+      if (!activeChatId) return;
       try {
-        const res = await fetch(`/api/chat-persistence?workspaceId=${workspaceId}`);
+        const res = await fetch(`/api/chat-persistence?chatId=${activeChatId}`);
         if (res.ok) {
           const data = await res.json();
           if (data.messages) {
-            setMessages(prev => ({ ...prev, [workspaceId]: data.messages }));
+            setMessages(data.messages);
           }
         }
       } catch (error) {
@@ -139,17 +142,17 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
     };
 
     loadMessages();
-  }, [workspaceId]);
+  }, [activeChatId]);
 
   // Save messages to Supabase with debounce
   useEffect(() => {
+    if (!activeChatId) return;
     const timeoutId = setTimeout(async () => {
       try {
-        const workspaceMessages = messages[workspaceId] || [];
         await fetch('/api/chat-persistence', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ workspaceId, messages: workspaceMessages })
+          body: JSON.stringify({ chatId: activeChatId, messages })
         });
       } catch (error) {
         console.error('Failed to save messages:', error);
@@ -157,7 +160,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
     }, 1000); // Debounce 1 second
 
     return () => clearTimeout(timeoutId);
-  }, [messages, workspaceId]);
+  }, [messages, activeChatId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -193,6 +196,30 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
   const sendMessage = useCallback(async () => {
     if (!input.trim() || loading) return;
 
+    // Create a new chat if none is active
+    let chatIdToUse = activeChatId;
+    if (!chatIdToUse) {
+      try {
+        const res = await fetch('/api/chats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workspaceId })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.chat) {
+            chatIdToUse = data.chat.id;
+            setActiveChatId(chatIdToUse);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to create chat:', error);
+        return;
+      }
+    }
+
+    if (!chatIdToUse) return;
+
     const controller = new AbortController();
     setAbortController(controller);
     setLoading(true);
@@ -200,12 +227,12 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
 
     const userMessage = { role: 'user' as const, content: input };
     const updatedMessages = [...currentMessages, userMessage];
-    setMessages({ ...messages, [workspaceId]: updatedMessages });
+    setMessages(updatedMessages);
     setInput('');
 
     // Add empty assistant message
     const assistantIndex = updatedMessages.length;
-    setMessages({ ...messages, [workspaceId]: [...updatedMessages, { role: 'assistant', content: '' }] });
+    setMessages([...updatedMessages, { role: 'assistant', content: '' }]);
 
     const contextNotes = notes.filter(n => selectedContexts.includes(n.id));
     let sheetContext = selectedContexts.includes('sheet') ? sheetData : null;
@@ -262,20 +289,18 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
           fullText += text;
 
           setMessages(prev => {
-            const workspaceMessages = prev[workspaceId] || [];
-            const newMessages = [...workspaceMessages];
+            const newMessages = [...prev];
             newMessages[assistantIndex] = { role: 'assistant', content: fullText };
-            return { ...prev, [workspaceId]: newMessages };
+            return newMessages;
           });
         }
 
         // Check if response is empty after streaming
         if (!fullText || fullText.trim() === '') {
           setMessages(prev => {
-            const workspaceMessages = prev[workspaceId] || [];
-            const newMessages = [...workspaceMessages];
+            const newMessages = [...prev];
             newMessages[assistantIndex] = { role: 'assistant', content: 'No response from the AI model. This could be due to:\n• Invalid model name\n• API error or rate limit\n• Network issue\n\nPlease try again or use a different model.' };
-            return { ...prev, [workspaceId]: newMessages };
+            return newMessages;
           });
         }
       } else {
@@ -288,10 +313,9 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
         }
 
         setMessages(prev => {
-          const workspaceMessages = prev[workspaceId] || [];
-          const newMessages = [...workspaceMessages];
+          const newMessages = [...prev];
           newMessages[assistantIndex] = { role: 'assistant', content: fullText };
-          return { ...prev, [workspaceId]: newMessages };
+          return newMessages;
         });
       }
 
@@ -300,17 +324,15 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
       
       if (error.name === 'AbortError') {
         setMessages(prev => {
-          const workspaceMessages = prev[workspaceId] || [];
-          const newMessages = [...workspaceMessages];
+          const newMessages = [...prev];
           newMessages[assistantIndex] = { role: 'assistant', content: fullText + (fullText ? '\n\n*(stopped)*' : '*(stopped)*') };
-          return { ...prev, [workspaceId]: newMessages };
+          return newMessages;
         });
       } else {
         setMessages(prev => {
-          const workspaceMessages = prev[workspaceId] || [];
-          const newMessages = [...workspaceMessages];
+          const newMessages = [...prev];
           newMessages[assistantIndex] = { role: 'assistant', content: 'Error: Could not get response. Please try again.' };
-          return { ...prev, [workspaceId]: newMessages };
+          return newMessages;
         });
       }
     } finally {
@@ -322,12 +344,19 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
 
   // Memoize delete handler to prevent re-renders
   const handleDeleteMessage = useCallback((index: number) => {
-    setMessages(prev => {
-      const workspaceMessages = prev[workspaceId] || [];
-      const newMessages = workspaceMessages.filter((_, idx) => idx !== index);
-      return { ...prev, [workspaceId]: newMessages };
-    });
-  }, [workspaceId]);
+    setMessages(prev => prev.filter((_, idx) => idx !== index));
+  }, []);
+
+  // Handle chat selection from header
+  const handleChatSelect = useCallback((chatId: string) => {
+    setActiveChatId(chatId);
+  }, []);
+
+  // Handle new chat creation
+  const handleNewChat = useCallback(() => {
+    setActiveChatId(null);
+    setMessages([]);
+  }, []);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -338,6 +367,14 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
+      {/* Chat Header */}
+      <ChatHeader
+        workspaceId={workspaceId}
+        activeChatId={activeChatId}
+        onChatSelect={handleChatSelect}
+        onNewChat={handleNewChat}
+      />
+      
       <div 
         ref={messagesContainerRef}
         onScroll={handleScroll}

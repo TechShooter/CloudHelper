@@ -1,11 +1,24 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Chats table (for multiple conversations per workspace)
+CREATE TABLE IF NOT EXISTS chats (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL,
+  title TEXT DEFAULT 'New Chat',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create index for faster queries
+CREATE INDEX IF NOT EXISTS idx_chats_user_workspace ON chats(user_id, workspace_id, updated_at DESC);
+
 -- Chat messages table
 CREATE TABLE IF NOT EXISTS chat_messages (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  workspace_id TEXT NOT NULL,
+  chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
   role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
   content TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -13,7 +26,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 );
 
 -- Create index for faster queries
-CREATE INDEX IF NOT EXISTS idx_chat_messages_user_workspace ON chat_messages(user_id, workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_user_chat ON chat_messages(user_id, chat_id, created_at);
 
 -- Nutrient entries table
 CREATE TABLE IF NOT EXISTS nutrient_entries (
@@ -140,6 +153,7 @@ CREATE TABLE IF NOT EXISTS workspace_settings (
 CREATE INDEX IF NOT EXISTS idx_workspace_settings_user_workspace ON workspace_settings(user_id, workspace_id);
 
 -- Enable Row Level Security
+ALTER TABLE chats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nutrient_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nutrient_goals ENABLE ROW LEVEL SECURITY;
@@ -149,6 +163,18 @@ ALTER TABLE nutrient_notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workspace_settings ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies: Users can only access their own data
+CREATE POLICY "Users can view own chats" ON chats
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own chats" ON chats
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own chats" ON chats
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own chats" ON chats
+  FOR DELETE USING (auth.uid() = user_id);
+
 CREATE POLICY "Users can view own chat messages" ON chat_messages
   FOR SELECT USING (auth.uid() = user_id);
 
@@ -243,6 +269,9 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Triggers for updated_at
+CREATE TRIGGER update_chats_updated_at BEFORE UPDATE ON chats
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER update_chat_messages_updated_at BEFORE UPDATE ON chat_messages
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

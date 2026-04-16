@@ -3,7 +3,7 @@ import { createClient } from '@/utils/supabase/server';
 
 export const runtime = 'edge';
 
-// GET: Fetch all chat messages for a workspace
+// GET: Fetch all chat messages for a chat
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient();
@@ -14,17 +14,17 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const workspaceId = searchParams.get('workspaceId');
+    const chatId = searchParams.get('chatId');
 
-    if (!workspaceId) {
-      return NextResponse.json({ error: 'workspaceId is required' }, { status: 400 });
+    if (!chatId) {
+      return NextResponse.json({ error: 'chatId is required' }, { status: 400 });
     }
 
     const { data: messages, error } = await supabase
       .from('chat_messages')
       .select('*')
       .eq('user_id', user.id)
-      .eq('workspace_id', workspaceId)
+      .eq('chat_id', chatId)
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST: Save chat messages for a workspace
+// POST: Save chat messages for a chat
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
@@ -53,18 +53,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { workspaceId, messages } = await req.json();
+    const { chatId, messages } = await req.json();
 
-    if (!workspaceId || !Array.isArray(messages)) {
-      return NextResponse.json({ error: 'workspaceId and messages array are required' }, { status: 400 });
+    if (!chatId || !Array.isArray(messages)) {
+      return NextResponse.json({ error: 'chatId and messages array are required' }, { status: 400 });
     }
 
-    // Delete existing messages for this workspace
+    // Delete existing messages for this chat
     const { error: deleteError } = await supabase
       .from('chat_messages')
       .delete()
       .eq('user_id', user.id)
-      .eq('workspace_id', workspaceId);
+      .eq('chat_id', chatId);
 
     if (deleteError) {
       return NextResponse.json({ error: deleteError.message }, { status: 500 });
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     // Insert new messages
     const messagesToInsert = messages.map(msg => ({
       user_id: user.id,
-      workspace_id: workspaceId,
+      chat_id: chatId,
       role: msg.role,
       content: msg.content
     }));
@@ -88,13 +88,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Update chat's updated_at timestamp
+    await supabase
+      .from('chats')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', chatId)
+      .eq('user_id', user.id);
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// DELETE: Delete all chat messages for a workspace
+// DELETE: Delete all chat messages for a chat
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createClient();
@@ -105,17 +112,17 @@ export async function DELETE(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const workspaceId = searchParams.get('workspaceId');
+    const chatId = searchParams.get('chatId');
 
-    if (!workspaceId) {
-      return NextResponse.json({ error: 'workspaceId is required' }, { status: 400 });
+    if (!chatId) {
+      return NextResponse.json({ error: 'chatId is required' }, { status: 400 });
     }
 
     const { error } = await supabase
       .from('chat_messages')
       .delete()
       .eq('user_id', user.id)
-      .eq('workspace_id', workspaceId);
+      .eq('chat_id', chatId);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
