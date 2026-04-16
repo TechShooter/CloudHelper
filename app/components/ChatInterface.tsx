@@ -122,33 +122,42 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
     return currentMessages.slice(total - visibleMessageCount);
   }, [currentMessages, visibleMessageCount]);
 
-  // Debounced save to localStorage
-  const saveMessages = useCallback((messagesToSave: { [key: string]: Message[] }) => {
-    if (Object.keys(messagesToSave).length > 0) {
-      localStorage.setItem('chatMessages', JSON.stringify(messagesToSave));
-    }
-  }, []);
-
-  // Load messages from localStorage on mount
+  // Load messages from Supabase on mount
   useEffect(() => {
-    const saved = localStorage.getItem('chatMessages');
-    if (saved) {
+    const loadMessages = async () => {
       try {
-        setMessages(JSON.parse(saved));
+        const res = await fetch(`/api/chat-persistence?workspaceId=${workspaceId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.messages) {
+            setMessages(prev => ({ ...prev, [workspaceId]: data.messages }));
+          }
+        }
       } catch (error) {
         console.error('Failed to load messages:', error);
       }
-    }
-  }, []);
+    };
 
-  // Save messages to localStorage with debounce
+    loadMessages();
+  }, [workspaceId]);
+
+  // Save messages to Supabase with debounce
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      saveMessages(messages);
-    }, 500); // Debounce 500ms
+    const timeoutId = setTimeout(async () => {
+      try {
+        const workspaceMessages = messages[workspaceId] || [];
+        await fetch('/api/chat-persistence', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workspaceId, messages: workspaceMessages })
+        });
+      } catch (error) {
+        console.error('Failed to save messages:', error);
+      }
+    }, 1000); // Debounce 1 second
 
     return () => clearTimeout(timeoutId);
-  }, [messages, saveMessages]);
+  }, [messages, workspaceId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

@@ -140,27 +140,66 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [nutrientEntries, setNutrientEntries] = useState<any[]>([]);
 
-  // Load saved workspace and tab from localStorage on mount (client-side only)
+  // Load saved workspace and tab from Supabase on mount
   useEffect(() => {
-    const savedWorkspace = localStorage.getItem('lastWorkspace');
-    const savedTab = localStorage.getItem('lastTab');
-    
-    if (savedWorkspace) {
-      setActiveWorkspace(savedWorkspace);
-    }
-    
-    if (savedTab === 'chat' || savedTab === 'docs' || savedTab === 'calendar' || savedTab === 'nutrients') {
-      setActiveTab(savedTab);
-    }
+    const loadSettings = async () => {
+      try {
+        const res = await fetch('/api/workspace-settings');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.settings) {
+            if (data.settings['lastWorkspace']) setActiveWorkspace(data.settings['lastWorkspace']);
+            if (data.settings['lastTab']) setActiveTab(data.settings['lastTab']);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load settings:', error);
+      }
+    };
+
+    loadSettings();
   }, []);
 
-  // Save active workspace and tab to localStorage on change
+  // Save active workspace to Supabase on change
   useEffect(() => {
-    localStorage.setItem('lastWorkspace', activeWorkspace);
+    const saveWorkspace = async () => {
+      try {
+        await fetch('/api/workspace-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspaceId: 'global',
+            settingKey: 'lastWorkspace',
+            settingValue: activeWorkspace
+          })
+        });
+      } catch (error) {
+        console.error('Failed to save workspace:', error);
+      }
+    };
+
+    saveWorkspace();
   }, [activeWorkspace]);
 
+  // Save active tab to Supabase on change
   useEffect(() => {
-    localStorage.setItem('lastTab', activeTab);
+    const saveTab = async () => {
+      try {
+        await fetch('/api/workspace-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspaceId: 'global',
+            settingKey: 'lastTab',
+            settingValue: activeTab
+          })
+        });
+      } catch (error) {
+        console.error('Failed to save tab:', error);
+      }
+    };
+
+    saveTab();
   }, [activeTab]);
   
   // Prompt control state
@@ -181,33 +220,68 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
   });
   const [defaultNutrientSettings, setDefaultNutrientSettings] = useState<{ [workspaceId: string]: { includeFoodEntries: boolean, includeVitaminsMinerals: boolean } }>({});
 
-  // Load nutrient entries from localStorage on mount
+  // Load nutrient entries from Supabase on mount
   useEffect(() => {
-    const saved = localStorage.getItem('nutrientEntries');
-    if (saved) {
+    const loadNutrientEntries = async () => {
       try {
-        setNutrientEntries(JSON.parse(saved));
+        const res = await fetch('/api/nutrients?type=entries');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.entries) {
+            setNutrientEntries(data.entries);
+          }
+        }
       } catch (error) {
         console.error('Failed to load nutrient entries:', error);
       }
-    }
+    };
+
+    loadNutrientEntries();
   }, []);
 
-  // Load default nutrient settings from localStorage on mount
+  // Load default nutrient settings from Supabase on mount
   useEffect(() => {
-    const saved = localStorage.getItem('workspaceDefaultNutrientSettings');
-    if (saved) {
+    const loadSettings = async () => {
       try {
-        setDefaultNutrientSettings(JSON.parse(saved));
+        const res = await fetch('/api/workspace-settings');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.settings) {
+            const loadedSettings: { [workspaceId: string]: { includeFoodEntries: boolean, includeVitaminsMinerals: boolean } } = {};
+            Object.keys(data.settings).forEach(key => {
+              if (key.startsWith('nutrientSettings_')) {
+                const workspaceId = key.replace('nutrientSettings_', '');
+                loadedSettings[workspaceId] = data.settings[key];
+              }
+            });
+            setDefaultNutrientSettings(loadedSettings);
+          }
+        }
       } catch (error) {
         console.error('Failed to load default nutrient settings:', error);
       }
-    }
+    };
+
+    loadSettings();
   }, []);
 
-  // Save default nutrient settings to localStorage
+  // Save default nutrient settings to Supabase
   useEffect(() => {
-    localStorage.setItem('workspaceDefaultNutrientSettings', JSON.stringify(defaultNutrientSettings));
+    Object.entries(defaultNutrientSettings).forEach(async ([workspaceId, settings]) => {
+      try {
+        await fetch('/api/workspace-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspaceId,
+            settingKey: 'nutrientSettings',
+            settingValue: settings
+          })
+        });
+      } catch (error) {
+        console.error('Failed to save nutrient settings:', error);
+      }
+    });
   }, [defaultNutrientSettings]);
 
   // Auto-select default nutrient settings when workspace changes
@@ -439,47 +513,86 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
   const [tagInput, setTagInput] = useState('');
   const [expandedPreviewPages, setExpandedPreviewPages] = useState<Set<string>>(new Set());
 
-  // Load custom tags from localStorage
+  // Load custom tags from Supabase
   useEffect(() => {
-    const saved = localStorage.getItem('notionCustomTags');
-    if (saved) {
+    const loadCustomTags = async () => {
       try {
-        setCustomTags(JSON.parse(saved));
+        const res = await fetch('/api/workspace-settings?settingKey=notionCustomTags');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.settings) {
+            const tagsValue = Object.values(data.settings)[0] as { [pageId: string]: string[] };
+            if (tagsValue) {
+              setCustomTags(tagsValue);
+            }
+          }
+        }
       } catch (error) {
         console.error('Failed to load custom tags:', error);
       }
-    }
+    };
+
+    loadCustomTags();
   }, []);
 
-  // Save custom tags to localStorage
+  // Save custom tags to Supabase
   useEffect(() => {
-    localStorage.setItem('notionCustomTags', JSON.stringify(customTags));
+    const saveCustomTags = async () => {
+      try {
+        await fetch('/api/workspace-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspaceId: 'global',
+            settingKey: 'notionCustomTags',
+            settingValue: customTags
+          })
+        });
+      } catch (error) {
+        console.error('Failed to save custom tags:', error);
+      }
+    };
+
+    saveCustomTags();
   }, [customTags]);
 
-  // Load default docs from localStorage on mount
+  // Load default docs from Supabase on mount
   useEffect(() => {
-    const saved = localStorage.getItem('workspaceDefaultDocs');
-    if (saved) {
+    const loadDefaultDocs = async () => {
       try {
-        const parsed = JSON.parse(saved);
-        setDefaultDocs(parsed);
-        // Then initialize missing workspaces
-        const updated = { ...parsed };
-        let changed = false;
-        workspaces.forEach(workspace => {
-          if (!updated[workspace.id]) {
-            const contexts: string[] = [];
-            if (workspace.autoLoadSheets && sheetData) contexts.push('sheet');
-            if (workspace.autoLoadNotion) {
-              const notionCandidates = getNotionPagesForWorkspace(workspace, allNotionPages);
-              notionCandidates.forEach((p: any) => contexts.push(`notion-${p.id}`));
+        const res = await fetch('/api/workspace-settings');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.settings) {
+            const loadedDocs: { [workspaceId: string]: string[] } = {};
+            Object.keys(data.settings).forEach(key => {
+              if (key.startsWith('defaultDocs_')) {
+                const workspaceId = key.replace('defaultDocs_', '');
+                loadedDocs[workspaceId] = data.settings[key];
+              }
+            });
+            
+            // Initialize missing workspaces
+            const updated = { ...loadedDocs };
+            let changed = false;
+            workspaces.forEach(workspace => {
+              if (!updated[workspace.id]) {
+                const contexts: string[] = [];
+                if (workspace.autoLoadSheets && sheetData) contexts.push('sheet');
+                if (workspace.autoLoadNotion) {
+                  const notionCandidates = getNotionPagesForWorkspace(workspace, allNotionPages);
+                  notionCandidates.forEach((p: any) => contexts.push(`notion-${p.id}`));
+                }
+                updated[workspace.id] = contexts;
+                changed = true;
+              }
+            });
+            if (changed) {
+              setDefaultDocs(updated);
+            } else {
+              setDefaultDocs(loadedDocs);
             }
-            updated[workspace.id] = contexts;
-            changed = true;
           }
-        });
-        if (changed) {
-          setDefaultDocs(updated);
         }
       } catch (error) {
         console.error('Failed to load default docs:', error);
@@ -496,25 +609,28 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
         });
         setDefaultDocs(initial);
       }
-    } else {
-      // Initialize all workspaces
-      const initial: { [workspaceId: string]: string[] } = {};
-      workspaces.forEach(workspace => {
-        const contexts: string[] = [];
-        if (workspace.autoLoadSheets && sheetData) contexts.push('sheet');
-        if (workspace.autoLoadNotion) {
-          const notionCandidates = getNotionPagesForWorkspace(workspace, allNotionPages);
-          notionCandidates.forEach((p: any) => contexts.push(`notion-${p.id}`));
-        }
-        initial[workspace.id] = contexts;
-      });
-      setDefaultDocs(initial);
-    }
-  }, [allNotionPages, sheetData]);
+    };
 
-  // Save default docs to localStorage
+    loadDefaultDocs();
+  }, [allNotionPages, sheetData, workspaces]);
+
+  // Save default docs to Supabase
   useEffect(() => {
-    localStorage.setItem('workspaceDefaultDocs', JSON.stringify(defaultDocs));
+    Object.entries(defaultDocs).forEach(async ([workspaceId, docs]) => {
+      try {
+        await fetch('/api/workspace-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspaceId,
+            settingKey: 'defaultDocs',
+            settingValue: docs
+          })
+        });
+      } catch (error) {
+        console.error('Failed to save default docs:', error);
+      }
+    });
   }, [defaultDocs]);
 
   // Helper function to get Notion pages for a workspace
