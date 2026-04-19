@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isGeminiModel } from '../../lib/models';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
   try {
@@ -147,44 +147,39 @@ export async function POST(req: NextRequest) {
         );
 
         if (response.ok && response.body) {
-          const reader = response.body.getReader();
           const decoder = new TextDecoder();
           const encoder = new TextEncoder();
 
-          const stream = new ReadableStream({
-            async start(controller) {
-              try {
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
+          const transformStream = new TransformStream({
+            transform(chunk, controller) {
+              const text = decoder.decode(chunk, { stream: true });
+              const lines = text.split('\n');
 
-                  const chunk = decoder.decode(value);
-                  const lines = chunk.split('\n');
-
-                  for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                      const jsonStr = line.slice(6);
-                      try {
-                        const parsed = JSON.parse(jsonStr);
-                        const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-                        if (text) {
-                          controller.enqueue(encoder.encode(text));
-                        }
-                      } catch (e) {
-                        // Skip invalid JSON
-                      }
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const jsonStr = line.slice(6);
+                  try {
+                    const parsed = JSON.parse(jsonStr);
+                    const textContent = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (textContent) {
+                      controller.enqueue(encoder.encode(textContent));
                     }
+                  } catch (e) {
+                    // Skip invalid JSON
                   }
                 }
-                controller.close();
-              } catch (error) {
-                controller.error(error);
               }
             }
           });
 
-          return new Response(stream, {
-            headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+          const transformedStream = response.body.pipeThrough(transformStream);
+
+          return new Response(transformedStream, {
+            headers: {
+              'Content-Type': 'text/plain; charset=utf-8',
+              'Cache-Control': 'no-cache',
+              'Connection': 'keep-alive'
+            }
           });
         }
       }
@@ -221,45 +216,40 @@ export async function POST(req: NextRequest) {
 
       if (stream && response.body) {
         // Handle Groq streaming
-        const encoder = new TextEncoder();
-        const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        const encoder = new TextEncoder();
 
-        const stream = new ReadableStream({
-          async start(controller) {
-            try {
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
+        const transformStream = new TransformStream({
+          transform(chunk, controller) {
+            const text = decoder.decode(chunk, { stream: true });
+            const lines = text.split('\n');
 
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
-
-                for (const line of lines) {
-                  if (line.startsWith('data: ')) {
-                    const jsonStr = line.slice(6);
-                    if (jsonStr === '[DONE]') continue;
-                    try {
-                      const parsed = JSON.parse(jsonStr);
-                      const text = parsed.choices?.[0]?.delta?.content;
-                      if (text) {
-                        controller.enqueue(encoder.encode(text));
-                      }
-                    } catch (e) {
-                      // Skip invalid JSON
-                    }
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const jsonStr = line.slice(6);
+                if (jsonStr === '[DONE]') continue;
+                try {
+                  const parsed = JSON.parse(jsonStr);
+                  const text = parsed.choices?.[0]?.delta?.content;
+                  if (text) {
+                    controller.enqueue(encoder.encode(text));
                   }
+                } catch (e) {
+                  // Skip invalid JSON
                 }
               }
-              controller.close();
-            } catch (error) {
-              controller.error(error);
             }
           }
         });
 
-        return new Response(stream, {
-          headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+        const transformedStream = response.body.pipeThrough(transformStream);
+
+        return new Response(transformedStream, {
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
+          }
         });
       }
 
