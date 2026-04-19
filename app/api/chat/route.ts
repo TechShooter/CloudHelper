@@ -113,6 +113,7 @@ export async function POST(req: NextRequest) {
 
       if (stream) {
         // Gemini streaming
+        console.log('[STREAM] Starting Gemini stream for model:', aiModel);
         response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
           {
@@ -124,14 +125,24 @@ export async function POST(req: NextRequest) {
           }
         );
 
+        console.log('[STREAM] Response status:', response.status, response.statusText);
+        console.log('[STREAM] Response headers:', Object.fromEntries(response.headers.entries()));
+
         if (response.ok && response.body) {
           const decoder = new TextDecoder();
           const encoder = new TextEncoder();
+          let chunkCount = 0;
+          let totalBytes = 0;
 
           const { readable, writable } = new TransformStream({
             transform(chunk, controller) {
+              chunkCount++;
+              totalBytes += chunk.length;
+              console.log('[STREAM] Chunk', chunkCount, 'size:', chunk.length, 'total:', totalBytes);
+              
               const text = decoder.decode(chunk, { stream: true });
               const lines = text.split('\n');
+              console.log('[STREAM] Lines in chunk:', lines.length);
 
               for (const line of lines) {
                 if (line.startsWith('data: ')) {
@@ -140,19 +151,27 @@ export async function POST(req: NextRequest) {
                     const parsed = JSON.parse(jsonStr);
                     const textContent = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
                     if (textContent) {
+                      console.log('[STREAM] Enqueuing text content, length:', textContent.length);
                       controller.enqueue(encoder.encode(textContent));
                     }
                   } catch (e) {
-                    // Skip invalid JSON
+                    console.log('[STREAM] Failed to parse JSON:', jsonStr.substring(0, 100));
                   }
                 }
               }
+            },
+            flush(controller) {
+              console.log('[STREAM] TransformStream flush called, total chunks:', chunkCount, 'total bytes:', totalBytes);
             }
           });
 
+          console.log('[STREAM] Starting pipeTo');
           // Start pumping the body. NOTE: No await!
-          response.body.pipeTo(writable);
+          response.body.pipeTo(writable).catch(err => {
+            console.error('[STREAM] pipeTo error:', err);
+          });
 
+          console.log('[STREAM] Returning Response with readable stream');
           return new Response(readable, {
             headers: {
               'Content-Type': 'text/plain; charset=utf-8',
@@ -160,6 +179,8 @@ export async function POST(req: NextRequest) {
               'Connection': 'keep-alive'
             }
           });
+        } else {
+          console.error('[STREAM] Response not ok or no body');
         }
       }
 
@@ -178,6 +199,7 @@ export async function POST(req: NextRequest) {
       aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini';
     } else {
       // Groq models - use aiModel directly since IDs are now API names
+      console.log('[STREAM] Starting Groq stream for model:', aiModel);
       response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -193,37 +215,58 @@ export async function POST(req: NextRequest) {
         })
       });
 
+      console.log('[STREAM] Response status:', response.status, response.statusText);
+      console.log('[STREAM] Response headers:', Object.fromEntries(response.headers.entries()));
+
       if (stream && response.body) {
         // Handle Groq streaming
         const decoder = new TextDecoder();
         const encoder = new TextEncoder();
+        let chunkCount = 0;
+        let totalBytes = 0;
 
         const { readable, writable } = new TransformStream({
           transform(chunk, controller) {
+            chunkCount++;
+            totalBytes += chunk.length;
+            console.log('[STREAM] Chunk', chunkCount, 'size:', chunk.length, 'total:', totalBytes);
+
             const text = decoder.decode(chunk, { stream: true });
             const lines = text.split('\n');
+            console.log('[STREAM] Lines in chunk:', lines.length);
 
             for (const line of lines) {
               if (line.startsWith('data: ')) {
                 const jsonStr = line.slice(6);
-                if (jsonStr === '[DONE]') continue;
+                if (jsonStr === '[DONE]') {
+                  console.log('[STREAM] Received [DONE] signal');
+                  continue;
+                }
                 try {
                   const parsed = JSON.parse(jsonStr);
                   const text = parsed.choices?.[0]?.delta?.content;
                   if (text) {
+                    console.log('[STREAM] Enqueuing text content, length:', text.length);
                     controller.enqueue(encoder.encode(text));
                   }
                 } catch (e) {
-                  // Skip invalid JSON
+                  console.log('[STREAM] Failed to parse JSON:', jsonStr.substring(0, 100));
                 }
               }
             }
+          },
+          flush(controller) {
+            console.log('[STREAM] TransformStream flush called, total chunks:', chunkCount, 'total bytes:', totalBytes);
           }
         });
 
+        console.log('[STREAM] Starting pipeTo');
         // Start pumping the body. NOTE: No await!
-        response.body.pipeTo(writable);
+        response.body.pipeTo(writable).catch(err => {
+          console.error('[STREAM] pipeTo error:', err);
+        });
 
+        console.log('[STREAM] Returning Response with readable stream');
         return new Response(readable, {
           headers: {
             'Content-Type': 'text/plain; charset=utf-8',
