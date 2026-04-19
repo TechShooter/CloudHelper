@@ -11,8 +11,6 @@ export default function Home() {
   const [notes] = useState<{id: string, title: string, content: string}[]>([]);
   const [sheetData, setSheetData] = useState<any>(null);
   const [aiModel, setAiModel] = useState<string>('gemini-flash-latest');
-  const [userProfile] = useState<any>(null);
-  const [mealHistory] = useState<any[]>([]);
   const [notionPages, setNotionPages] = useState<any[]>([]);
   const [hierarchicalNotionPages, setHierarchicalNotionPages] = useState<any[]>([]);
   const workspaceManagerRef = useRef<any>(null);
@@ -208,9 +206,7 @@ export default function Home() {
         ref={workspaceManagerRef}
         notes={notes}
         aiModel={aiModel}
-        userProfile={userProfile}
         sheetData={sheetData}
-        mealHistory={mealHistory}
         notionPages={notionPages}
         allNotionPages={notionPages}
         hierarchicalNotionPages={hierarchicalNotionPages}

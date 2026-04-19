@@ -171,11 +171,10 @@ interface NutrientEditState {
 
 interface Props {
   sheetData: any;
-  userProfile: any;
   onEntriesChange?: (entries: FoodEntry[]) => void;
 }
 
-export default function NutrientTracker({ sheetData, userProfile, onEntriesChange }: Props) {
+export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
   // Load initial data from Supabase
   const getInitialEntries = (): FoodEntry[] => {
     // Start with empty array, will load from Supabase in useEffect

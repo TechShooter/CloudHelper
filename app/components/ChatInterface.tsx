@@ -95,9 +95,7 @@ interface Props {
   selectedContexts: string[];
   notes: { id: string, title: string, content: string }[];
   aiModel: string;
-  userProfile: any;
   sheetData: any;
-  mealHistory: any[];
   notionPages: any[];
   workspacePrompt?: string;
   workspaceId: string;
@@ -105,7 +103,7 @@ interface Props {
   nutrientEntries?: any[];
 }
 
-export default function ChatInterface({ selectedContexts, notes, aiModel, userProfile, sheetData, mealHistory, notionPages, workspacePrompt, workspaceId, calendarEvents, nutrientEntries }: Props) {
+export default function ChatInterface({ selectedContexts, notes, aiModel, sheetData, notionPages, workspacePrompt, workspaceId, calendarEvents, nutrientEntries }: Props) {
   const chatHeaderRef = useRef<ChatHeaderRef>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -317,8 +315,6 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
       notes: contextNotes,
       sheetData: sheetContext,
       notionData: notionContext,
-      mealHistory: mealHistory,
-      userProfile: userProfile,
       workspacePrompt: workspacePrompt,
       conversationHistory: updatedMessages.slice(-6), // Use updatedMessages with the new user message
       aiModel: aiModel,
@@ -413,7 +409,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
       setAbortController(null);
       setLoadingStatus('connecting');
     }
-  }, [input, loading, currentMessages, messages, workspaceId, notes, selectedContexts, sheetData, notionPages, userProfile, mealHistory, workspacePrompt, aiModel, calendarEvents, nutrientEntries]);
+  }, [input, loading, currentMessages, messages, workspaceId, notes, selectedContexts, sheetData, notionPages, workspacePrompt, aiModel, calendarEvents, nutrientEntries]);
 
   // Memoize delete handler to prevent re-renders
   const handleDeleteMessage = useCallback((index: number) => {

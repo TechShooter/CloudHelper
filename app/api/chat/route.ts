@@ -5,7 +5,7 @@ export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
   try {
-    const { context, sheetData, notionData, userProfile, mealHistory, workspacePrompt, conversationHistory, aiModel, stream, calendarEvents, nutrientEntries } = await req.json();
+    const { context, sheetData, notionData, workspacePrompt, conversationHistory, aiModel, stream, calendarEvents, nutrientEntries } = await req.json();
 
     let systemPrompt = '';
 
@@ -19,28 +19,6 @@ export async function POST(req: NextRequest) {
     const dateStr = now.toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     const timeStr = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
     systemPrompt += `Current Date & Time: ${dateStr}, ore ${timeStr}\n\n---\n\n`;
-
-    if (userProfile && (userProfile.calories || userProfile.goal)) {
-      systemPrompt += 'User Profile & Goals:\n';
-      if (userProfile.calories) systemPrompt += `Daily Calories: ${userProfile.calories}\n`;
-      if (userProfile.protein) systemPrompt += `Protein: ${userProfile.protein}\n`;
-      if (userProfile.carbs) systemPrompt += `Carbs: ${userProfile.carbs}\n`;
-      if (userProfile.fats) systemPrompt += `Fats: ${userProfile.fats}\n`;
-      if (userProfile.goal) systemPrompt += `Goal: ${userProfile.goal}\n`;
-      if (userProfile.notes) systemPrompt += `Notes: ${userProfile.notes}\n`;
-      systemPrompt += '\n---\n\n';
-    }
-
-    if (mealHistory && mealHistory.length > 0) {
-      systemPrompt += 'Meal History (Last 7 Days):\n';
-      mealHistory.forEach((meal: any) => {
-        systemPrompt += `${meal.date} ${meal.time} - ${meal.type}: ${meal.food}`;
-        if (meal.calories) systemPrompt += ` (${meal.calories} kcal)`;
-        if (meal.notes) systemPrompt += ` - ${meal.notes}`;
-        systemPrompt += '\n';
-      });
-      systemPrompt += '\n---\n\n';
-    }
 
     if (sheetData && Array.isArray(sheetData)) {
       systemPrompt += 'Google Sheets Database (ALL SHEETS - COMPLETE DATA):\n\n';

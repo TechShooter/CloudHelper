@@ -14,13 +14,11 @@ interface ModelChat {
 
 interface Props {
   notes: { id: string, title: string, content: string }[];
-  userProfile: any;
   sheetData: any;
-  mealHistory: any[];
   notionPages: any[];
 }
 
-export default function ModelTesting({ notes, userProfile, sheetData, mealHistory, notionPages }: Props) {
+export default function ModelTesting({ notes, sheetData, notionPages }: Props) {
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [modelChats, setModelChats] = useState<{ [key: string]: ModelChat }>({});
   const [currentMessage, setCurrentMessage] = useState('');
@@ -129,8 +127,6 @@ export default function ModelTesting({ notes, userProfile, sheetData, mealHistor
             context: [],
             sheetData: null,
             notionData: [],
-            userProfile: null,
-            mealHistory: [],
             workspacePrompt: 'You are a helpful AI assistant. Respond to the user\'s message clearly and concisely.',
             stream: false,
             calendarEvents: null,

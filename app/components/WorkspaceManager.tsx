@@ -123,16 +123,14 @@ const DEFAULT_WORKSPACES: Workspace[] = [
 interface Props {
   notes: { id: string, title: string, content: string }[];
   aiModel: string;
-  userProfile: any;
   sheetData: any;
-  mealHistory: any[];
   notionPages: any[];
   allNotionPages: any[];
   hierarchicalNotionPages?: any[];
   onReloadNotion?: () => Promise<void>;
 }
 
-export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfile, sheetData, mealHistory, notionPages, allNotionPages, hierarchicalNotionPages, onReloadNotion }: Props, ref) {
+export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData, notionPages, allNotionPages, hierarchicalNotionPages, onReloadNotion }: Props, ref) {
   const [activeWorkspace, setActiveWorkspace] = useState('general');
   const [activeTab, setActiveTab] = useState<'chat' | 'docs' | 'calendar' | 'nutrients'>('chat');
   const [workspaces] = useState<Workspace[]>(DEFAULT_WORKSPACES);
@@ -206,7 +204,6 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
   const [promptSettings, setPromptSettings] = useState({
     includeSheets: true,
     includeNotion: true,
-    includeMealHistory: true,
     includeChatHistory: true,
     maxChatMessages: 6,
     maxSheetRows: 100,
@@ -1101,9 +1098,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
           {activeTab === 'chat' && currentWorkspace.id === 'model-testing' && (
             <ModelTesting
               notes={notes}
-              userProfile={userProfile}
               sheetData={sheetData}
-              mealHistory={mealHistory}
               notionPages={notionPages}
             />
           )}
@@ -1113,9 +1108,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
               selectedContexts={selectedContexts}
               notes={notes}
               aiModel={aiModel}
-              userProfile={currentWorkspace.autoLoadProfile ? userProfile : null}
               sheetData={currentWorkspace.autoLoadSheets ? sheetData : null}
-              mealHistory={currentWorkspace.autoLoadMeals ? mealHistory : []}
               notionPages={getNotionPages()}
               workspacePrompt={currentWorkspace.systemPrompt}
               workspaceId={currentWorkspace.id}
@@ -1419,15 +1412,6 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                           </div>
                         )}
                         
-                        <label className="flex items-center gap-2 text-white">
-                          <input
-                            type="checkbox"
-                            checked={promptSettings.includeMealHistory}
-                            onChange={(e) => setPromptSettings(prev => ({ ...prev, includeMealHistory: e.target.checked }))}
-                            className="form-checkbox"
-                          />
-                          Meal History ({mealHistory.length} meals)
-                        </label>
                       </div>
                       
                       {/* Chat Control */}
@@ -1469,7 +1453,6 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                           onClick={() => setPromptSettings({
                             includeSheets: true,
                             includeNotion: true,
-                            includeMealHistory: true,
                             includeChatHistory: true,
                             maxChatMessages: 6,
                             maxSheetRows: 100,
@@ -1483,7 +1466,6 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                           onClick={() => setPromptSettings({
                             includeSheets: false,
                             includeNotion: false,
-                            includeMealHistory: false,
                             includeChatHistory: false,
                             maxChatMessages: 6,
                             maxSheetRows: 100,
@@ -1497,7 +1479,6 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
                           onClick={() => setPromptSettings({
                             includeSheets: false,
                             includeNotion: false,
-                            includeMealHistory: false,
                             includeChatHistory: true,
                             maxChatMessages: 2,
                             maxSheetRows: 100,
@@ -1624,7 +1605,6 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, userProfil
           {activeTab === 'nutrients' && (
             <NutrientTracker 
               sheetData={sheetData} 
-              userProfile={userProfile} 
               onEntriesChange={setNutrientEntries}
             />
           )}
