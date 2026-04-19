@@ -360,16 +360,22 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
           buffer += chunk;
 
           if (isSSE) {
-            // Parse SSE format for Gemini
+            // Parse SSE format (Gemini or Groq)
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
 
             for (const line of lines) {
               if (line.startsWith('data: ')) {
                 const jsonStr = line.slice(6);
+                if (jsonStr === '[DONE]') continue;
                 try {
                   const parsed = JSON.parse(jsonStr);
-                  const textContent = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+                  // Try Gemini format first
+                  let textContent = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+                  // Try Groq format if Gemini format not found
+                  if (!textContent) {
+                    textContent = parsed.choices?.[0]?.delta?.content;
+                  }
                   if (textContent) {
                     fullText += textContent;
                     setMessages(prev => {
