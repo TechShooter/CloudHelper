@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
           const decoder = new TextDecoder();
           const encoder = new TextEncoder();
 
-          const transformStream = new TransformStream({
+          const { readable, writable } = new TransformStream({
             transform(chunk, controller) {
               const text = decoder.decode(chunk, { stream: true });
               const lines = text.split('\n');
@@ -150,9 +150,10 @@ export async function POST(req: NextRequest) {
             }
           });
 
-          const transformedStream = response.body.pipeThrough(transformStream);
+          // Start pumping the body. NOTE: No await!
+          response.body.pipeTo(writable);
 
-          return new Response(transformedStream, {
+          return new Response(readable, {
             headers: {
               'Content-Type': 'text/plain; charset=utf-8',
               'Cache-Control': 'no-cache',
@@ -197,7 +198,7 @@ export async function POST(req: NextRequest) {
         const decoder = new TextDecoder();
         const encoder = new TextEncoder();
 
-        const transformStream = new TransformStream({
+        const { readable, writable } = new TransformStream({
           transform(chunk, controller) {
             const text = decoder.decode(chunk, { stream: true });
             const lines = text.split('\n');
@@ -220,9 +221,10 @@ export async function POST(req: NextRequest) {
           }
         });
 
-        const transformedStream = response.body.pipeThrough(transformStream);
+        // Start pumping the body. NOTE: No await!
+        response.body.pipeTo(writable);
 
-        return new Response(transformedStream, {
+        return new Response(readable, {
           headers: {
             'Content-Type': 'text/plain; charset=utf-8',
             'Cache-Control': 'no-cache',
