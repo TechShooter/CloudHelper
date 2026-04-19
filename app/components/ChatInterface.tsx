@@ -347,21 +347,51 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
       setLoadingStatus('responding');
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
+      const isSSE = res.headers.get('content-type')?.includes('text/event-stream');
 
       if (reader) {
+        let buffer = '';
         while (true) {
           if (controller.signal.aborted) break;
           const { done, value } = await reader.read();
           if (done) break;
 
-          const text = decoder.decode(value);
-          fullText += text;
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
 
-          setMessages(prev => {
-            const newMessages = [...prev];
-            newMessages[assistantIndex] = { role: 'assistant', content: fullText };
-            return newMessages;
-          });
+          if (isSSE) {
+            // Parse SSE format for Gemini
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const jsonStr = line.slice(6);
+                try {
+                  const parsed = JSON.parse(jsonStr);
+                  const textContent = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+                  if (textContent) {
+                    fullText += textContent;
+                    setMessages(prev => {
+                      const newMessages = [...prev];
+                      newMessages[assistantIndex] = { role: 'assistant', content: fullText };
+                      return newMessages;
+                    });
+                  }
+                } catch (e) {
+                  // Skip invalid JSON
+                }
+              }
+            }
+          } else {
+            // Plain text for Groq
+            fullText += chunk;
+            setMessages(prev => {
+              const newMessages = [...prev];
+              newMessages[assistantIndex] = { role: 'assistant', content: fullText };
+              return newMessages;
+            });
+          }
         }
 
         // Check if response is empty after streaming

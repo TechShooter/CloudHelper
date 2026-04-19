@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
       geminiPrompt += `user: ${conversationHistory[conversationHistory.length - 1]?.content || ''}`;
 
       if (stream) {
-        // Gemini streaming
+        // Gemini streaming - test raw passthrough
         console.log('[STREAM] Starting Gemini stream for model:', aiModel);
         response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
@@ -126,55 +126,12 @@ export async function POST(req: NextRequest) {
         );
 
         console.log('[STREAM] Response status:', response.status, response.statusText);
-        console.log('[STREAM] Response headers:', Object.fromEntries(response.headers.entries()));
 
         if (response.ok && response.body) {
-          const decoder = new TextDecoder();
-          const encoder = new TextEncoder();
-          let chunkCount = 0;
-          let totalBytes = 0;
-
-          const { readable, writable } = new TransformStream({
-            transform(chunk, controller) {
-              chunkCount++;
-              totalBytes += chunk.length;
-              console.log('[STREAM] Chunk', chunkCount, 'size:', chunk.length, 'total:', totalBytes);
-              
-              const text = decoder.decode(chunk, { stream: true });
-              const lines = text.split('\n');
-              console.log('[STREAM] Lines in chunk:', lines.length);
-
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const jsonStr = line.slice(6);
-                  try {
-                    const parsed = JSON.parse(jsonStr);
-                    const textContent = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (textContent) {
-                      console.log('[STREAM] Enqueuing text content, length:', textContent.length);
-                      controller.enqueue(encoder.encode(textContent));
-                    }
-                  } catch (e) {
-                    console.log('[STREAM] Failed to parse JSON:', jsonStr.substring(0, 100));
-                  }
-                }
-              }
-            },
-            flush(controller) {
-              console.log('[STREAM] TransformStream flush called, total chunks:', chunkCount, 'total bytes:', totalBytes);
-            }
-          });
-
-          console.log('[STREAM] Starting pipeTo');
-          // Start pumping the body. NOTE: No await!
-          response.body.pipeTo(writable).catch(err => {
-            console.error('[STREAM] pipeTo error:', err);
-          });
-
-          console.log('[STREAM] Returning Response with readable stream');
-          return new Response(readable, {
+          console.log('[STREAM] Returning raw SSE stream');
+          return new Response(response.body, {
             headers: {
-              'Content-Type': 'text/plain; charset=utf-8',
+              'Content-Type': 'text/event-stream',
               'Cache-Control': 'no-cache',
               'Connection': 'keep-alive'
             }
