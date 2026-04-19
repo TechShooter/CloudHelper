@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isGeminiModel } from '../../lib/models';
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
