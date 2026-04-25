@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
+import ChatHeader, { ChatHeaderRef } from './ChatHeader';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -94,9 +95,7 @@ interface Props {
   selectedContexts: string[];
   notes: { id: string, title: string, content: string }[];
   aiModel: string;
-  userProfile: any;
   sheetData: any;
-  mealHistory: any[];
   notionPages: any[];
   workspacePrompt?: string;
   workspaceId: string;
@@ -104,63 +103,120 @@ interface Props {
   nutrientEntries?: any[];
 }
 
-export default function ChatInterface({ selectedContexts, notes, aiModel, userProfile, sheetData, mealHistory, notionPages, workspacePrompt, workspaceId, calendarEvents, nutrientEntries }: Props) {
-  const [messages, setMessages] = useState<{ [key: string]: Message[] }>({});
+export default function ChatInterface({ selectedContexts, notes, aiModel, sheetData, notionPages, workspacePrompt, workspaceId, calendarEvents, nutrientEntries }: Props) {
+  const chatHeaderRef = useRef<ChatHeaderRef>(null);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState<'connecting' | 'thinking' | 'responding' | 'error'>('connecting');
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [visibleMessageCount, setVisibleMessageCount] = useState(50);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Memoize current messages to avoid recalculation on every render
-  const currentMessages = useMemo(() => messages[workspaceId] || [], [messages, workspaceId]);
+  const currentMessages = messages;
   const visibleMessages = useMemo(() => {
     const total = currentMessages.length;
     if (total <= visibleMessageCount) return currentMessages;
     return currentMessages.slice(total - visibleMessageCount);
   }, [currentMessages, visibleMessageCount]);
 
-  // Debounced save to localStorage
-  const saveMessages = useCallback((messagesToSave: { [key: string]: Message[] }) => {
-    if (Object.keys(messagesToSave).length > 0) {
-      localStorage.setItem('chatMessages', JSON.stringify(messagesToSave));
-    }
-  }, []);
-
-  // Load messages from localStorage on mount
+  // Clear chat state when workspaceId changes
   useEffect(() => {
-    const saved = localStorage.getItem('chatMessages');
-    if (saved) {
+    setActiveChatId(null);
+    setMessages([]);
+    setInput('');
+  }, [workspaceId]);
+
+  // Abort streaming response when activeChatId changes
+  useEffect(() => {
+    return () => {
+      if (abortController) {
+        abortController.abort();
+      }
+    };
+  }, [activeChatId]);
+
+  // Load messages from Supabase when activeChatId changes
+  useEffect(() => {
+    const loadMessages = async () => {
+      if (!activeChatId) {
+        console.log('No activeChatId, skipping load');
+        return;
+      }
+      // Clear messages immediately before loading
+      setMessages([]);
+      setLoadingMessages(true);
+      console.log('Loading messages for chatId:', activeChatId);
       try {
-        setMessages(JSON.parse(saved));
+        const res = await fetch(`/api/chat-persistence?chatId=${activeChatId}`);
+        console.log('Load response status:', res.status);
+        if (res.ok) {
+          const data = await res.json();
+          console.log('Loaded messages:', data.messages?.length || 0);
+          if (data.messages) {
+            setMessages(data.messages);
+          }
+        } else {
+          console.error('Failed to load messages, status:', res.status);
+        }
       } catch (error) {
         console.error('Failed to load messages:', error);
+      } finally {
+        setLoadingMessages(false);
       }
-    }
-  }, []);
+    };
 
-  // Save messages to localStorage with debounce
+    loadMessages();
+  }, [activeChatId]);
+
+  // Save messages to Supabase with debounce
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      saveMessages(messages);
-    }, 500); // Debounce 500ms
+    if (!activeChatId) return;
+    const timeoutId = setTimeout(async () => {
+      console.log('Saving messages for chatId:', activeChatId, 'count:', messages.length);
+      try {
+        const res = await fetch('/api/chat-persistence', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId: activeChatId, messages })
+        });
+        console.log('Save response status:', res.status);
+        if (!res.ok) {
+          console.error('Failed to save messages, status:', res.status);
+        }
+      } catch (error) {
+        console.error('Failed to save messages:', error);
+      }
+    }, 1000); // Debounce 1 second
 
     return () => clearTimeout(timeoutId);
-  }, [messages, saveMessages]);
+  }, [messages, activeChatId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [currentMessages]);
+    if (!userScrolledUp) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [currentMessages, userScrolledUp]);
 
-  // Handle scroll to load more messages
+  // Handle scroll to load more messages and track user scroll position
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
-    if (target.scrollTop === 0 && visibleMessageCount < currentMessages.length) {
+    const { scrollTop, scrollHeight, clientHeight } = target;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+
+    // Track if user has scrolled up (not near bottom)
+    setUserScrolledUp(!isNearBottom);
+
+    // Load more messages when scrolling to top
+    if (scrollTop === 0 && visibleMessageCount < currentMessages.length) {
       const prevHeight = target.scrollHeight;
       setVisibleMessageCount(prev => Math.min(prev + 30, currentMessages.length));
-      
+
       setTimeout(() => {
         const newHeight = target.scrollHeight;
         target.scrollTop = newHeight - prevHeight;
@@ -184,6 +240,49 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
   const sendMessage = useCallback(async () => {
     if (!input.trim() || loading) return;
 
+    // Create a new chat if none is active
+    let chatIdToUse = activeChatId;
+    let isNewChat = false;
+    if (!chatIdToUse) {
+      try {
+        // Generate title from first message (first 50 characters)
+        const title = input.trim().substring(0, 50) + (input.length > 50 ? '...' : '');
+        const res = await fetch('/api/chats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workspaceId, title })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.chat) {
+            chatIdToUse = data.chat.id;
+            setActiveChatId(chatIdToUse);
+            isNewChat = true;
+          }
+        }
+      } catch (error) {
+        console.error('Failed to create chat:', error);
+        return;
+      }
+    }
+
+    if (!chatIdToUse) return;
+
+    // Update chat title if it's the first message in the chat
+    if (!isNewChat && currentMessages.length === 0) {
+      try {
+        const title = input.trim().substring(0, 50) + (input.length > 50 ? '...' : '');
+        await fetch('/api/chats', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId: chatIdToUse, title })
+        });
+        chatHeaderRef.current?.refreshChats();
+      } catch (error) {
+        console.error('Failed to update chat title:', error);
+      }
+    }
+
     const controller = new AbortController();
     setAbortController(controller);
     setLoading(true);
@@ -191,12 +290,12 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
 
     const userMessage = { role: 'user' as const, content: input };
     const updatedMessages = [...currentMessages, userMessage];
-    setMessages({ ...messages, [workspaceId]: updatedMessages });
+    setMessages(updatedMessages);
     setInput('');
 
     // Add empty assistant message
     const assistantIndex = updatedMessages.length;
-    setMessages({ ...messages, [workspaceId]: [...updatedMessages, { role: 'assistant', content: '' }] });
+    setMessages([...updatedMessages, { role: 'assistant', content: '' }]);
 
     const contextNotes = notes.filter(n => selectedContexts.includes(n.id));
     let sheetContext = selectedContexts.includes('sheet') ? sheetData : null;
@@ -216,8 +315,6 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
       notes: contextNotes,
       sheetData: sheetContext,
       notionData: notionContext,
-      mealHistory: mealHistory,
-      userProfile: userProfile,
       workspacePrompt: workspacePrompt,
       conversationHistory: updatedMessages.slice(-6), // Use updatedMessages with the new user message
       aiModel: aiModel,
@@ -227,7 +324,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
 
     try {
       setLoadingStatus('thinking');
-      
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -236,37 +333,79 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
       });
 
       if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
+        const errorData = await res.json().catch(() => ({ response: `API Error: ${res.status}` }));
+        setMessages(prev => {
+          const newMessages = [...prev];
+          newMessages[assistantIndex] = { role: 'assistant', content: errorData.response || errorData.error?.message || 'An error occurred while processing your request.' };
+          return newMessages;
+        });
+        setLoading(false);
+        setLoadingStatus('error');
+        return;
       }
 
       setLoadingStatus('responding');
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
+      const isSSE = res.headers.get('content-type')?.includes('text/event-stream');
 
       if (reader) {
+        let buffer = '';
         while (true) {
           if (controller.signal.aborted) break;
           const { done, value } = await reader.read();
           if (done) break;
 
-          const text = decoder.decode(value);
-          fullText += text;
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
 
-          setMessages(prev => {
-            const workspaceMessages = prev[workspaceId] || [];
-            const newMessages = [...workspaceMessages];
-            newMessages[assistantIndex] = { role: 'assistant', content: fullText };
-            return { ...prev, [workspaceId]: newMessages };
-          });
+          if (isSSE) {
+            // Parse SSE format (Gemini or Groq)
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const jsonStr = line.slice(6);
+                if (jsonStr === '[DONE]') continue;
+                try {
+                  const parsed = JSON.parse(jsonStr);
+                  // Try Gemini format first
+                  let textContent = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+                  // Try Groq format if Gemini format not found
+                  if (!textContent) {
+                    textContent = parsed.choices?.[0]?.delta?.content;
+                  }
+                  if (textContent) {
+                    fullText += textContent;
+                    setMessages(prev => {
+                      const newMessages = [...prev];
+                      newMessages[assistantIndex] = { role: 'assistant', content: fullText };
+                      return newMessages;
+                    });
+                  }
+                } catch (e) {
+                  // Skip invalid JSON
+                }
+              }
+            }
+          } else {
+            // Plain text for Groq
+            fullText += chunk;
+            setMessages(prev => {
+              const newMessages = [...prev];
+              newMessages[assistantIndex] = { role: 'assistant', content: fullText };
+              return newMessages;
+            });
+          }
         }
 
         // Check if response is empty after streaming
         if (!fullText || fullText.trim() === '') {
           setMessages(prev => {
-            const workspaceMessages = prev[workspaceId] || [];
-            const newMessages = [...workspaceMessages];
+            const newMessages = [...prev];
             newMessages[assistantIndex] = { role: 'assistant', content: 'No response from the AI model. This could be due to:\n• Invalid model name\n• API error or rate limit\n• Network issue\n\nPlease try again or use a different model.' };
-            return { ...prev, [workspaceId]: newMessages };
+            return newMessages;
           });
         }
       } else {
@@ -279,10 +418,9 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
         }
 
         setMessages(prev => {
-          const workspaceMessages = prev[workspaceId] || [];
-          const newMessages = [...workspaceMessages];
+          const newMessages = [...prev];
           newMessages[assistantIndex] = { role: 'assistant', content: fullText };
-          return { ...prev, [workspaceId]: newMessages };
+          return newMessages;
         });
       }
 
@@ -291,17 +429,15 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
       
       if (error.name === 'AbortError') {
         setMessages(prev => {
-          const workspaceMessages = prev[workspaceId] || [];
-          const newMessages = [...workspaceMessages];
+          const newMessages = [...prev];
           newMessages[assistantIndex] = { role: 'assistant', content: fullText + (fullText ? '\n\n*(stopped)*' : '*(stopped)*') };
-          return { ...prev, [workspaceId]: newMessages };
+          return newMessages;
         });
       } else {
         setMessages(prev => {
-          const workspaceMessages = prev[workspaceId] || [];
-          const newMessages = [...workspaceMessages];
+          const newMessages = [...prev];
           newMessages[assistantIndex] = { role: 'assistant', content: 'Error: Could not get response. Please try again.' };
-          return { ...prev, [workspaceId]: newMessages };
+          return newMessages;
         });
       }
     } finally {
@@ -309,16 +445,23 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
       setAbortController(null);
       setLoadingStatus('connecting');
     }
-  }, [input, loading, currentMessages, messages, workspaceId, notes, selectedContexts, sheetData, notionPages, userProfile, mealHistory, workspacePrompt, aiModel, calendarEvents, nutrientEntries]);
+  }, [input, loading, currentMessages, messages, workspaceId, notes, selectedContexts, sheetData, notionPages, workspacePrompt, aiModel, calendarEvents, nutrientEntries]);
 
   // Memoize delete handler to prevent re-renders
   const handleDeleteMessage = useCallback((index: number) => {
-    setMessages(prev => {
-      const workspaceMessages = prev[workspaceId] || [];
-      const newMessages = workspaceMessages.filter((_, idx) => idx !== index);
-      return { ...prev, [workspaceId]: newMessages };
-    });
-  }, [workspaceId]);
+    setMessages(prev => prev.filter((_, idx) => idx !== index));
+  }, []);
+
+  // Handle chat selection from header
+  const handleChatSelect = useCallback((chatId: string) => {
+    setActiveChatId(chatId);
+  }, []);
+
+  // Handle new chat creation
+  const handleNewChat = useCallback(() => {
+    setActiveChatId(null);
+    setMessages([]);
+  }, []);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -329,11 +472,34 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, userPr
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
+      {/* Chat Header */}
+      <ChatHeader
+        ref={chatHeaderRef}
+        workspaceId={workspaceId}
+        activeChatId={activeChatId}
+        onChatSelect={handleChatSelect}
+        onNewChat={handleNewChat}
+      />
+      
       <div 
         ref={messagesContainerRef}
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto min-h-0 px-3 sm:px-4 py-2 sm:py-4 space-y-3 sm:space-y-4 bg-gray-900 h-full"
       >
+        {loadingMessages && (
+          <div className="flex justify-center">
+            <div className="bg-gray-700 text-gray-100 px-4 py-2 rounded-lg flex items-center gap-3">
+              <div className="flex gap-1">
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+              </div>
+              <div className="text-sm">
+                Loading messages...
+              </div>
+            </div>
+          </div>
+        )}
         {currentMessages.length > visibleMessageCount && (
           <div className="text-center text-gray-500 text-sm py-2">
             Showing {visibleMessageCount} of {currentMessages.length} messages. Scroll up to load more.

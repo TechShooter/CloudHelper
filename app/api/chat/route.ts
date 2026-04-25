@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isGeminiModel } from '../../lib/models';
 
+export const runtime = 'edge';
+
 export async function POST(req: NextRequest) {
   try {
-    const { context, sheetData, notionData, userProfile, mealHistory, workspacePrompt, conversationHistory, aiModel, stream, calendarEvents, nutrientEntries } = await req.json();
+    const { context, sheetData, notionData, workspacePrompt, conversationHistory, aiModel, stream, calendarEvents, nutrientEntries } = await req.json();
 
     let systemPrompt = '';
 
@@ -17,28 +19,6 @@ export async function POST(req: NextRequest) {
     const dateStr = now.toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     const timeStr = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
     systemPrompt += `Current Date & Time: ${dateStr}, ore ${timeStr}\n\n---\n\n`;
-
-    if (userProfile && (userProfile.calories || userProfile.goal)) {
-      systemPrompt += 'User Profile & Goals:\n';
-      if (userProfile.calories) systemPrompt += `Daily Calories: ${userProfile.calories}\n`;
-      if (userProfile.protein) systemPrompt += `Protein: ${userProfile.protein}\n`;
-      if (userProfile.carbs) systemPrompt += `Carbs: ${userProfile.carbs}\n`;
-      if (userProfile.fats) systemPrompt += `Fats: ${userProfile.fats}\n`;
-      if (userProfile.goal) systemPrompt += `Goal: ${userProfile.goal}\n`;
-      if (userProfile.notes) systemPrompt += `Notes: ${userProfile.notes}\n`;
-      systemPrompt += '\n---\n\n';
-    }
-
-    if (mealHistory && mealHistory.length > 0) {
-      systemPrompt += 'Meal History (Last 7 Days):\n';
-      mealHistory.forEach((meal: any) => {
-        systemPrompt += `${meal.date} ${meal.time} - ${meal.type}: ${meal.food}`;
-        if (meal.calories) systemPrompt += ` (${meal.calories} kcal)`;
-        if (meal.notes) systemPrompt += ` - ${meal.notes}`;
-        systemPrompt += '\n';
-      });
-      systemPrompt += '\n---\n\n';
-    }
 
     if (sheetData && Array.isArray(sheetData)) {
       systemPrompt += 'Google Sheets Database (ALL SHEETS - COMPLETE DATA):\n\n';
@@ -132,7 +112,6 @@ export async function POST(req: NextRequest) {
       geminiPrompt += `user: ${conversationHistory[conversationHistory.length - 1]?.content || ''}`;
 
       if (stream) {
-        // Gemini streaming
         response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
           {
@@ -145,49 +124,16 @@ export async function POST(req: NextRequest) {
         );
 
         if (response.ok && response.body) {
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          const encoder = new TextEncoder();
-
-          const stream = new ReadableStream({
-            async start(controller) {
-              try {
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-
-                  const chunk = decoder.decode(value);
-                  const lines = chunk.split('\n');
-
-                  for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                      const jsonStr = line.slice(6);
-                      try {
-                        const parsed = JSON.parse(jsonStr);
-                        const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-                        if (text) {
-                          controller.enqueue(encoder.encode(text));
-                        }
-                      } catch (e) {
-                        // Skip invalid JSON
-                      }
-                    }
-                  }
-                }
-                controller.close();
-              } catch (error) {
-                controller.error(error);
-              }
+          return new Response(response.body, {
+            headers: {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+              'Connection': 'keep-alive'
             }
-          });
-
-          return new Response(stream, {
-            headers: { 'Content-Type': 'text/plain; charset=utf-8' }
           });
         }
       }
 
-      // Non-streaming fallback
       response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${process.env.GEMINI_API_KEY}`,
         {
@@ -218,46 +164,13 @@ export async function POST(req: NextRequest) {
       });
 
       if (stream && response.body) {
-        // Handle Groq streaming
-        const encoder = new TextEncoder();
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        const stream = new ReadableStream({
-          async start(controller) {
-            try {
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
-
-                for (const line of lines) {
-                  if (line.startsWith('data: ')) {
-                    const jsonStr = line.slice(6);
-                    if (jsonStr === '[DONE]') continue;
-                    try {
-                      const parsed = JSON.parse(jsonStr);
-                      const text = parsed.choices?.[0]?.delta?.content;
-                      if (text) {
-                        controller.enqueue(encoder.encode(text));
-                      }
-                    } catch (e) {
-                      // Skip invalid JSON
-                    }
-                  }
-                }
-              }
-              controller.close();
-            } catch (error) {
-              controller.error(error);
-            }
+        // Return raw SSE stream for Groq
+        return new Response(response.body, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
           }
-        });
-
-        return new Response(stream, {
-          headers: { 'Content-Type': 'text/plain; charset=utf-8' }
         });
       }
 

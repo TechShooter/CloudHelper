@@ -171,20 +171,14 @@ interface NutrientEditState {
 
 interface Props {
   sheetData: any;
-  userProfile: any;
   onEntriesChange?: (entries: FoodEntry[]) => void;
 }
 
-export default function NutrientTracker({ sheetData, userProfile, onEntriesChange }: Props) {
-  // Load initial data from localStorage
+export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
+  // Load initial data from Supabase
   const getInitialEntries = (): FoodEntry[] => {
-    try {
-      const saved = localStorage.getItem('nutrientEntries');
-      return saved ? JSON.parse(saved) : [];
-    } catch (error) {
-      console.error('Failed to load entries:', error);
-      return [];
-    }
+    // Start with empty array, will load from Supabase in useEffect
+    return [];
   };
 
   const getInitialGoals = (): NutrientGoals => {
@@ -308,26 +302,85 @@ export default function NutrientTracker({ sheetData, userProfile, onEntriesChang
     setWeightDate(localTime.slice(0, 10));
   }, []);
 
+  // Load nutrient entries from Supabase on mount
   useEffect(() => {
-    setSaveStatus('saving');
-    try {
-      localStorage.setItem('nutrientEntries', JSON.stringify(entries));
-      const saved = localStorage.getItem('nutrientEntries');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus(null), 2000);
+    const loadEntries = async () => {
+      try {
+        const res = await fetch('/api/nutrients?type=entries');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.entries) {
+            setEntries(data.entries);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load entries:', error);
       }
-    } catch (error) {
-      setSaveStatus(null);
-    }
-    if (onEntriesChange) {
-      onEntriesChange(entries);
-    }
+    };
+
+    loadEntries();
+  }, []);
+
+  // Save nutrient entries to Supabase with debounce
+  useEffect(() => {
+    const timeoutId = setTimeout(async () => {
+      setSaveStatus('saving');
+      try {
+        const res = await fetch('/api/nutrients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'entries', data: entries })
+        });
+        if (res.ok) {
+          setSaveStatus('saved');
+          setTimeout(() => setSaveStatus(null), 2000);
+        }
+      } catch (error) {
+        console.error('Failed to save entries:', error);
+        setSaveStatus(null);
+      }
+      if (onEntriesChange) {
+        onEntriesChange(entries);
+      }
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
   }, [entries, onEntriesChange]);
 
+  // Load nutrient goals from Supabase on mount
   useEffect(() => {
-    localStorage.setItem('nutrientGoals', JSON.stringify(goals));
+    const loadGoals = async () => {
+      try {
+        const res = await fetch('/api/nutrients?type=goals');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.goals) {
+            setGoals(data.goals);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load goals:', error);
+      }
+    };
+
+    loadGoals();
+  }, []);
+
+  // Save nutrient goals to Supabase
+  useEffect(() => {
+    const saveGoals = async () => {
+      try {
+        await fetch('/api/nutrients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'goals', data: goals })
+        });
+      } catch (error) {
+        console.error('Failed to save goals:', error);
+      }
+    };
+
+    saveGoals();
   }, [goals]);
 
   // Sync tempGoals with goals whenever goals changes, but only when Goals modal is not open
@@ -337,20 +390,111 @@ export default function NutrientTracker({ sheetData, userProfile, onEntriesChang
     }
   }, [goals, editingGoals]);
 
+  // Load weight history from Supabase on mount
   useEffect(() => {
-    localStorage.setItem('weightHistory', JSON.stringify(weightHistory));
+    const loadWeightHistory = async () => {
+      try {
+        const res = await fetch('/api/nutrients?type=weight');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.weightHistory) {
+            setWeightHistory(data.weightHistory);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load weight history:', error);
+      }
+    };
+
+    loadWeightHistory();
+  }, []);
+
+  // Save weight history to Supabase
+  useEffect(() => {
+    const saveWeightHistory = async () => {
+      try {
+        await fetch('/api/nutrients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'weight', data: weightHistory })
+        });
+      } catch (error) {
+        console.error('Failed to save weight history:', error);
+      }
+    };
+
+    saveWeightHistory();
   }, [weightHistory]);
 
+  // Load notes from Supabase on mount
   useEffect(() => {
-    localStorage.setItem('goalsText', goalsText);
-  }, [goalsText]);
+    const loadNotes = async () => {
+      try {
+        const res = await fetch('/api/nutrients?type=notes');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.goalsText !== undefined) setGoalsText(data.goalsText);
+          if (data.notesText !== undefined) setNotesText(data.notesText);
+        }
+      } catch (error) {
+        console.error('Failed to load notes:', error);
+      }
+    };
 
-  useEffect(() => {
-    localStorage.setItem('notesText', notesText);
-  }, [notesText]);
+    loadNotes();
+  }, []);
 
+  // Save notes to Supabase
   useEffect(() => {
-    localStorage.setItem('nutrientNotes', JSON.stringify(nutrientNotes));
+    const saveNotes = async () => {
+      try {
+        await fetch('/api/nutrients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'notes', data: { goalsText, notesText } })
+        });
+      } catch (error) {
+        console.error('Failed to save notes:', error);
+      }
+    };
+
+    saveNotes();
+  }, [goalsText, notesText]);
+
+  // Load nutrient notes from Supabase on mount
+  useEffect(() => {
+    const loadNutrientNotes = async () => {
+      try {
+        const res = await fetch('/api/nutrients?type=nutrient-notes');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.nutrientNotes) {
+            setNutrientNotes(data.nutrientNotes);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load nutrient notes:', error);
+      }
+    };
+
+    loadNutrientNotes();
+  }, []);
+
+  // Save nutrient notes to Supabase
+  useEffect(() => {
+    const saveNutrientNotes = async () => {
+      try {
+        await fetch('/api/nutrients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'nutrient-notes', data: nutrientNotes })
+        });
+      } catch (error) {
+        console.error('Failed to save nutrient notes:', error);
+      }
+    };
+
+    saveNutrientNotes();
   }, [nutrientNotes]);
 
   // Funzione per pulire i valori di costo dal formato italiano

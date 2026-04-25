@@ -18,17 +18,19 @@ interface Props {
 export default function CalendarView({ onEventsChange }: Props) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
-  
-  // Load saved settings from localStorage during initialization
-  const [daysBack, setDaysBack] = useState(() => {
-    const saved = localStorage.getItem('calendarDaysBack');
-    return saved ? parseInt(saved) : 30;
-  });
-  const [daysForward, setDaysForward] = useState(() => {
-    const saved = localStorage.getItem('calendarDaysForward');
-    return saved ? parseInt(saved) : 30;
-  });
-  
+  const [errorCount, setErrorCount] = useState(0);
+
+  const [daysBack, setDaysBack] = useState(30);
+  const [daysForward, setDaysForward] = useState(30);
+
+  // Load saved settings from localStorage on mount (client-side only)
+  useEffect(() => {
+    const savedDaysBack = localStorage.getItem('calendarDaysBack');
+    const savedDaysForward = localStorage.getItem('calendarDaysForward');
+    if (savedDaysBack) setDaysBack(parseInt(savedDaysBack));
+    if (savedDaysForward) setDaysForward(parseInt(savedDaysForward));
+  }, []);
+
   const calendarId = 'cb6cdb21570e9e868a7d76f47035cb71be5eb96eca6c9a47763093a587e106e7@group.calendar.google.com';
 
   // Save settings to localStorage whenever they change
@@ -42,21 +44,40 @@ export default function CalendarView({ onEventsChange }: Props) {
   }, [daysBack, daysForward]);
 
   const loadEvents = async () => {
+    if (loading) return; // Prevent concurrent requests
+    if (errorCount >= 3) {
+      console.log('Calendar fetch error limit reached, stopping retries');
+      return; // Stop retrying after 3 consecutive errors
+    }
+
     setLoading(true);
     try {
+      console.log('Fetching calendar events...');
       const res = await fetch(`/api/calendar?calendarId=${encodeURIComponent(calendarId)}&daysBack=${daysBack}&daysForward=${daysForward}`);
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error('Calendar API error response:', text.substring(0, 200));
+        setErrorCount(prev => prev + 1);
+        throw new Error(`API returned ${res.status}: ${text.substring(0, 100)}`);
+      }
+
       const data = await res.json();
-      
+
       if (data.error) {
         console.error('Calendar error:', data.error);
+        setErrorCount(prev => prev + 1);
       } else if (data.events) {
+        console.log('Calendar events loaded:', data.events.length);
         setEvents(data.events);
         onEventsChange(data.events);
+        setErrorCount(0); // Reset error count on success
       }
     } catch (error: any) {
       console.error('Failed to load calendar:', error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const formatDate = (event: CalendarEvent) => {
