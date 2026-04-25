@@ -219,8 +219,19 @@ Deno.serve(async (req: Request) => {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'API Error' }))
       console.error('[Edge Function] API Error:', errorData, 'Status:', response.status)
+      
+      // Extract detailed error message for both Gemini and Groq
+      let errorMessage = 'API Error'
+      if (errorData.error?.message) {
+        errorMessage = errorData.error.message
+      } else if (errorData.message) {
+        errorMessage = errorData.message
+      } else if (typeof errorData.error === 'string') {
+        errorMessage = errorData.error
+      }
+      
       return new Response(JSON.stringify({ 
-        error: errorData.error?.message || errorData.message || 'API Error',
+        response: errorMessage,
         status: response.status 
       }), { 
         status: 500,
