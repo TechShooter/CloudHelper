@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  logging: {
+    incomingRequests: false, //HTTP POST, GET etc. logging on prompt
+  },
 };
 
 export default nextConfig;
