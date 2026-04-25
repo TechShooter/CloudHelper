@@ -20,7 +20,6 @@ if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
 
 // @ts-ignore
 Deno.serve(async (req: Request) => {
-  console.log('[Edge Function] Request received, method:', req.method)
   
   // Check environment variables
   if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
@@ -38,8 +37,7 @@ Deno.serve(async (req: Request) => {
   
   // Handle CORS preflight request (must be before JSON parsing)
   if (req.method === 'OPTIONS') {
-    console.log('[Edge Function] Handling OPTIONS request')
-    return new Response(null, {
+      return new Response(null, {
       status: 200,
       headers: {
         'Access-Control-Allow-Origin': '*',
@@ -50,7 +48,6 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    console.log('[Edge Function] Parsing JSON body')
     const { 
       context, 
       sheetData, 
@@ -63,7 +60,6 @@ Deno.serve(async (req: Request) => {
       nutrientEntries, 
       chatId 
     } = await req.json()
-    console.log('[Edge Function] JSON parsed, chatId:', chatId)
 
     if (!chatId) {
       return new Response(JSON.stringify({ error: 'chatId is required' }), { 
@@ -76,15 +72,12 @@ Deno.serve(async (req: Request) => {
     }
 
     // Create Supabase client with anon key for auth validation
-    console.log('[Edge Function] Creating Supabase client for auth, URL:', supabaseUrl)
     const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey)
 
     // Get user from auth header
-    console.log('[Edge Function] Getting auth header')
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      console.log('[Edge Function] No auth header found')
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
         status: 401,
         headers: { 
           'Content-Type': 'application/json',
@@ -93,14 +86,12 @@ Deno.serve(async (req: Request) => {
       })
     }
 
-    console.log('[Edge Function] Validating user token')
     const { data: { user }, error: userError } = await supabaseAuth.auth.getUser(
       authHeader.replace('Bearer ', '')
     )
 
     if (userError || !user) {
-      console.log('[Edge Function] Invalid token:', userError)
-      return new Response(JSON.stringify({ error: 'Invalid token' }), { 
+        return new Response(JSON.stringify({ error: 'Invalid token' }), { 
         status: 401,
         headers: { 
           'Content-Type': 'application/json',
@@ -108,14 +99,11 @@ Deno.serve(async (req: Request) => {
         }
       })
     }
-    console.log('[Edge Function] User validated:', user.id)
 
     // Create Supabase client with service role key for DB operations
-    console.log('[Edge Function] Creating Supabase client for DB operations')
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Build system prompt (same logic as /api/chat)
-    console.log('[Edge Function] Building system prompt')
     let systemPrompt = ''
     if (workspacePrompt) {
       systemPrompt += workspacePrompt + '\n\n---\n\n'
@@ -155,14 +143,11 @@ Deno.serve(async (req: Request) => {
     }
 
     // Determine if Gemini or Groq model
-    console.log('[Edge Function] Determining AI model')
     const isGemini = aiModel?.includes('gemini') || aiModel?.includes('flash')
-    console.log('[Edge Function] isGemini:', isGemini, 'aiModel:', aiModel)
 
     let response: Response
 
     if (isGemini) {
-      console.log('[Edge Function] Calling Gemini API')
       // Gemini API call
       let geminiPrompt = ''
       if (systemPrompt) geminiPrompt += systemPrompt + '\n\n'
@@ -185,7 +170,6 @@ Deno.serve(async (req: Request) => {
         }
       )
     } else {
-      console.log('[Edge Function] Calling Groq API')
       // Groq API call
       const messages = []
       if (systemPrompt) {
@@ -214,7 +198,6 @@ Deno.serve(async (req: Request) => {
         })
       })
     }
-    console.log('[Edge Function] API call completed, response ok:', response.ok)
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'API Error' }))
@@ -276,9 +259,7 @@ Deno.serve(async (req: Request) => {
             }))
           )
         
-        console.log('[Edge Function] Saved to Supabase, content length:', content.length)
       } catch (error) {
-        console.error('[Edge Function] Error saving to Supabase:', error)
       }
     }
 
@@ -328,7 +309,6 @@ Deno.serve(async (req: Request) => {
             await saveToSupabase(fullText)
           }
         } catch (error) {
-          console.error('[Edge Function] Stream processing error:', error)
         } finally {
           controller.close()
         }

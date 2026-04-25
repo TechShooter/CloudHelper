@@ -147,25 +147,20 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
   useEffect(() => {
     const loadMessages = async () => {
       if (!activeChatId) {
-        console.log('No activeChatId, skipping load');
         return;
       }
       // Skip loading if this is a newly created chat (messages are already in state)
       if (isNewlyCreatedChatRef.current) {
-        console.log('Newly created chat, skipping load from Supabase');
         isNewlyCreatedChatRef.current = false;
         return;
       }
       // Clear messages and load from Supabase when switching chats
       setMessages([]);
       setLoadingMessages(true);
-      console.log('Loading messages for chatId:', activeChatId);
       try {
         const res = await fetch(`/api/chat-persistence?chatId=${activeChatId}`);
-        console.log('Load response status:', res.status);
         if (res.ok) {
           const data = await res.json();
-          console.log('Loaded messages:', data.messages?.length || 0);
           if (data.messages) {
             setMessages(data.messages);
           }
@@ -186,14 +181,12 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
   useEffect(() => {
     if (!activeChatId) return;
     const timeoutId = setTimeout(async () => {
-      console.log('Saving messages for chatId:', activeChatId, 'count:', messages.length);
       try {
         const res = await fetch('/api/chat-persistence', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ chatId: activeChatId, messages })
         });
-        console.log('Save response status:', res.status);
         if (!res.ok) {
           console.error('Failed to save messages, status:', res.status);
         }
@@ -317,10 +310,6 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     // notionPages is already filtered by WorkspaceManager's getNotionPages()
     let notionContext = notionPages || [];
 
-    console.log('=== CHAT CONTEXT DEBUG ===');
-    console.log('selectedContexts:', selectedContexts);
-    console.log('notionPages received:', notionPages?.length || 0);
-    console.log('notionContext being sent:', notionContext.map((p: any) => ({ id: p.id, title: p.title, contentLength: p.content?.length || 0 })));
 
     let fullText = '';
     const requestStartTime = new Date();
