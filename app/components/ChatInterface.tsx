@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import ChatHeader, { ChatHeaderRef } from './ChatHeader';
+import { createClient } from '@/utils/supabase/client';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -186,7 +187,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     loadMessages();
   }, [activeChatId, isNewlyCreatedChat, messages.length]);
 
-  // Save messages to Supabase with debounce
+  // Save messages to Supabase with debounce (backup for non-streaming responses)
   useEffect(() => {
     if (!activeChatId) return;
     const timeoutId = setTimeout(async () => {
@@ -204,7 +205,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
       } catch (error) {
         console.error('Failed to save messages:', error);
       }
-    }, 1000); // Debounce 1 second
+    }, 5000); // Increased to 5 seconds since server handles streaming persistence
 
     return () => clearTimeout(timeoutId);
   }, [messages, activeChatId]);
@@ -337,6 +338,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
       workspacePrompt: workspacePrompt,
       conversationHistory: updatedMessages.slice(-6), // Use updatedMessages with the new user message
       aiModel: aiModel,
+      chatId: chatIdToUse, // Pass chatId for server-side persistence
       stream: true,
       calendarEvents: calendarEvents
     };
@@ -344,9 +346,25 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     try {
       setLoadingStatus('thinking');
 
-      const res = await fetch('/api/chat', {
+      // Get session token for Edge Function authentication
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      if (!token) {
+        throw new Error('No session token found');
+      }
+
+      // Call Supabase Edge Function for server-side streaming with persistence
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const edgeFunctionUrl = `${supabaseUrl}/functions/v1/chat-stream`
+      
+      const res = await fetch(edgeFunctionUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(contextData),
         signal: controller.signal
       });
@@ -389,8 +407,12 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
                 if (jsonStr === '[DONE]') continue;
                 try {
                   const parsed = JSON.parse(jsonStr);
-                  // Try Gemini format first
-                  let textContent = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+                  // Try Edge Function format first (from Supabase Edge Function)
+                  let textContent = parsed.content;
+                  // Try Gemini format if Edge Function format not found
+                  if (!textContent) {
+                    textContent = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+                  }
                   // Try Groq format if Gemini format not found
                   if (!textContent) {
                     textContent = parsed.choices?.[0]?.delta?.content;
