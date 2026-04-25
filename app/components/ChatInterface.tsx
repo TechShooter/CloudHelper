@@ -156,12 +156,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
         setIsNewlyCreatedChat(false);
         return;
       }
-      // Only clear messages if we're switching to an existing chat (not a new one)
-      // If messages are already present locally, don't clear them (new chat scenario)
-      if (messages.length > 0) {
-        console.log('Messages already present locally, skipping load');
-        return;
-      }
+      // Clear messages and load from Supabase when switching chats
       setMessages([]);
       setLoadingMessages(true);
       console.log('Loading messages for chatId:', activeChatId);
@@ -185,7 +180,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     };
 
     loadMessages();
-  }, [activeChatId, isNewlyCreatedChat, messages.length]);
+  }, [activeChatId, isNewlyCreatedChat]);
 
   // Save messages to Supabase with debounce (backup for non-streaming responses)
   useEffect(() => {
