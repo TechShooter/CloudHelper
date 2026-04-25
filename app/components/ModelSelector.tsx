@@ -65,8 +65,8 @@ export default function ModelSelector({ selectedModel, onModelSelect }: ModelSel
               </button>
             </div>
 
-            {/* Category Filter */}
-            <div className="flex gap-2 mb-4 flex-wrap">
+            {/* Category Filter with Rate Limit Buttons */}
+            <div className="flex gap-2 mb-4 flex-wrap items-center">
               <button
                 onClick={() => setSelectedCategory('all')}
                 className={`px-3 py-1 rounded text-sm ${
@@ -107,6 +107,25 @@ export default function ModelSelector({ selectedModel, onModelSelect }: ModelSel
               >
                 🤖 Auto
               </button>
+              <div className="flex items-center gap-2 ml-auto">
+                <span className="text-xs text-gray-400">Limits:</span>
+                <a
+                  href="https://aistudio.google.com/rate-limit?timeRange=last-7-days&project=gen-lang-client-0415055055"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1 rounded text-sm bg-purple-600 text-white hover:bg-purple-700 cursor-pointer transition-colors"
+                >
+                  🔮 Gemini
+                </a>
+                <a
+                  href="https://console.groq.com/settings/limits"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1 rounded text-sm bg-green-600 text-white hover:bg-green-700 cursor-pointer transition-colors"
+                >
+                  ⚡ Groq
+                </a>
+              </div>
             </div>
 
             {/* Models List */}

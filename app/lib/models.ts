@@ -80,7 +80,7 @@ export const MODELS: Model[] = [
     category: 'gemini'
   },
 
-  // Groq Models
+  // Groq Models. Ignore Allam, it's for arabics
   {
     id: 'llama-3.3-70b-versatile',
     name: 'Llama 3.3 70B Versatile',
@@ -114,27 +114,6 @@ export const MODELS: Model[] = [
     name: 'Compound Beta Mini',
     provider: 'Groq',
     description: 'Versione mini di Compound',
-    category: 'groq'
-  },
-  {
-    id: 'allam-2-7b',
-    name: 'Allam 2 7B',
-    provider: 'Groq',
-    description: 'Modello Allam 2',
-    category: 'groq'
-  },
-  {
-    id: 'moonshotai/kimi-k2-instruct',
-    name: 'Kimi K2 Instruct',
-    provider: 'Groq',
-    description: 'Modello Kimi K2',
-    category: 'groq'
-  },
-  {
-    id: 'moonshotai/kimi-k2-instruct-0905',
-    name: 'Kimi K2 Instruct 0905',
-    provider: 'Groq',
-    description: 'Modello Kimi K2 versione 0905',
     category: 'groq'
   },
   {
