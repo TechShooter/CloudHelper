@@ -117,7 +117,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const [isNewlyCreatedChat, setIsNewlyCreatedChat] = useState(false);
+  const isNewlyCreatedChatRef = useRef(false);
 
   // Memoize current messages to avoid recalculation on every render
   const currentMessages = messages;
@@ -151,9 +151,9 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
         return;
       }
       // Skip loading if this is a newly created chat (messages are already in state)
-      if (isNewlyCreatedChat) {
+      if (isNewlyCreatedChatRef.current) {
         console.log('Newly created chat, skipping load from Supabase');
-        setIsNewlyCreatedChat(false);
+        isNewlyCreatedChatRef.current = false;
         return;
       }
       // Clear messages and load from Supabase when switching chats
@@ -180,7 +180,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     };
 
     loadMessages();
-  }, [activeChatId, isNewlyCreatedChat]);
+  }, [activeChatId]);
 
   // Save messages to Supabase with debounce (backup for non-streaming responses)
   useEffect(() => {
@@ -267,9 +267,9 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
           const data = await res.json();
           if (data.chat) {
             chatIdToUse = data.chat.id;
-            setActiveChatId(chatIdToUse);
             isNewChat = true;
-            setIsNewlyCreatedChat(true);
+            isNewlyCreatedChatRef.current = true;
+            setActiveChatId(chatIdToUse);
             // Refresh chat header to show the new chat immediately
             chatHeaderRef.current?.refreshChats();
           }
