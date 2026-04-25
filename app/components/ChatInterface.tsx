@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import ChatHeader, { ChatHeaderRef } from './ChatHeader';
+import { createClient } from '@/utils/supabase/client';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -116,6 +117,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const isNewlyCreatedChatRef = useRef(false);
 
   // Memoize current messages to avoid recalculation on every render
   const currentMessages = messages;
@@ -148,7 +150,13 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
         console.log('No activeChatId, skipping load');
         return;
       }
-      // Clear messages immediately before loading
+      // Skip loading if this is a newly created chat (messages are already in state)
+      if (isNewlyCreatedChatRef.current) {
+        console.log('Newly created chat, skipping load from Supabase');
+        isNewlyCreatedChatRef.current = false;
+        return;
+      }
+      // Clear messages and load from Supabase when switching chats
       setMessages([]);
       setLoadingMessages(true);
       console.log('Loading messages for chatId:', activeChatId);
@@ -174,7 +182,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     loadMessages();
   }, [activeChatId]);
 
-  // Save messages to Supabase with debounce
+  // Save messages to Supabase with debounce (backup for non-streaming responses)
   useEffect(() => {
     if (!activeChatId) return;
     const timeoutId = setTimeout(async () => {
@@ -192,7 +200,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
       } catch (error) {
         console.error('Failed to save messages:', error);
       }
-    }, 1000); // Debounce 1 second
+    }, 5000); // Increased to 5 seconds since server handles streaming persistence
 
     return () => clearTimeout(timeoutId);
   }, [messages, activeChatId]);
@@ -240,8 +248,11 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
   const sendMessage = useCallback(async () => {
     if (!input.trim() || loading) return;
 
+    // Capture activeChatId at the start to prevent chat switching issues
+    const currentActiveChatId = activeChatId;
+
     // Create a new chat if none is active
-    let chatIdToUse = activeChatId;
+    let chatIdToUse = currentActiveChatId;
     let isNewChat = false;
     if (!chatIdToUse) {
       try {
@@ -256,8 +267,11 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
           const data = await res.json();
           if (data.chat) {
             chatIdToUse = data.chat.id;
-            setActiveChatId(chatIdToUse);
             isNewChat = true;
+            isNewlyCreatedChatRef.current = true;
+            setActiveChatId(chatIdToUse);
+            // Refresh chat header to show the new chat immediately
+            chatHeaderRef.current?.refreshChats();
           }
         }
       } catch (error) {
@@ -290,12 +304,13 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
 
     const userMessage = { role: 'user' as const, content: input };
     const updatedMessages = [...currentMessages, userMessage];
-    setMessages(updatedMessages);
+    
+    // Add empty assistant message in the same update to prevent race condition
+    const finalMessages: Message[] = [...updatedMessages, { role: 'assistant' as const, content: '' }];
+    setMessages(finalMessages);
     setInput('');
 
-    // Add empty assistant message
     const assistantIndex = updatedMessages.length;
-    setMessages([...updatedMessages, { role: 'assistant', content: '' }]);
 
     const contextNotes = notes.filter(n => selectedContexts.includes(n.id));
     let sheetContext = selectedContexts.includes('sheet') ? sheetData : null;
@@ -318,6 +333,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
       workspacePrompt: workspacePrompt,
       conversationHistory: updatedMessages.slice(-6), // Use updatedMessages with the new user message
       aiModel: aiModel,
+      chatId: chatIdToUse, // Pass chatId for server-side persistence
       stream: true,
       calendarEvents: calendarEvents
     };
@@ -325,9 +341,25 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     try {
       setLoadingStatus('thinking');
 
-      const res = await fetch('/api/chat', {
+      // Get session token for Edge Function authentication
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      if (!token) {
+        throw new Error('No session token found');
+      }
+
+      // Call Supabase Edge Function for server-side streaming with persistence
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const edgeFunctionUrl = `${supabaseUrl}/functions/v1/chat-stream`
+      
+      const res = await fetch(edgeFunctionUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(contextData),
         signal: controller.signal
       });
@@ -370,8 +402,12 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
                 if (jsonStr === '[DONE]') continue;
                 try {
                   const parsed = JSON.parse(jsonStr);
-                  // Try Gemini format first
-                  let textContent = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+                  // Try Edge Function format first (from Supabase Edge Function)
+                  let textContent = parsed.content;
+                  // Try Gemini format if Edge Function format not found
+                  if (!textContent) {
+                    textContent = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+                  }
                   // Try Groq format if Gemini format not found
                   if (!textContent) {
                     textContent = parsed.choices?.[0]?.delta?.content;
