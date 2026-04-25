@@ -116,6 +116,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const [isNewlyCreatedChat, setIsNewlyCreatedChat] = useState(false);
 
   // Memoize current messages to avoid recalculation on every render
   const currentMessages = messages;
@@ -148,7 +149,18 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
         console.log('No activeChatId, skipping load');
         return;
       }
-      // Clear messages immediately before loading
+      // Skip loading if this is a newly created chat (messages are already in state)
+      if (isNewlyCreatedChat) {
+        console.log('Newly created chat, skipping load from Supabase');
+        setIsNewlyCreatedChat(false);
+        return;
+      }
+      // Only clear messages if we're switching to an existing chat (not a new one)
+      // If messages are already present locally, don't clear them (new chat scenario)
+      if (messages.length > 0) {
+        console.log('Messages already present locally, skipping load');
+        return;
+      }
       setMessages([]);
       setLoadingMessages(true);
       console.log('Loading messages for chatId:', activeChatId);
@@ -172,7 +184,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     };
 
     loadMessages();
-  }, [activeChatId]);
+  }, [activeChatId, isNewlyCreatedChat, messages.length]);
 
   // Save messages to Supabase with debounce
   useEffect(() => {
@@ -240,8 +252,11 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
   const sendMessage = useCallback(async () => {
     if (!input.trim() || loading) return;
 
+    // Capture activeChatId at the start to prevent chat switching issues
+    const currentActiveChatId = activeChatId;
+
     // Create a new chat if none is active
-    let chatIdToUse = activeChatId;
+    let chatIdToUse = currentActiveChatId;
     let isNewChat = false;
     if (!chatIdToUse) {
       try {
@@ -258,6 +273,9 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
             chatIdToUse = data.chat.id;
             setActiveChatId(chatIdToUse);
             isNewChat = true;
+            setIsNewlyCreatedChat(true);
+            // Refresh chat header to show the new chat immediately
+            chatHeaderRef.current?.refreshChats();
           }
         }
       } catch (error) {
@@ -290,12 +308,13 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
 
     const userMessage = { role: 'user' as const, content: input };
     const updatedMessages = [...currentMessages, userMessage];
-    setMessages(updatedMessages);
+    
+    // Add empty assistant message in the same update to prevent race condition
+    const finalMessages: Message[] = [...updatedMessages, { role: 'assistant' as const, content: '' }];
+    setMessages(finalMessages);
     setInput('');
 
-    // Add empty assistant message
     const assistantIndex = updatedMessages.length;
-    setMessages([...updatedMessages, { role: 'assistant', content: '' }]);
 
     const contextNotes = notes.filter(n => selectedContexts.includes(n.id));
     let sheetContext = selectedContexts.includes('sheet') ? sheetData : null;
