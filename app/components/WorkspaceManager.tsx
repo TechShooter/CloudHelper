@@ -1124,13 +1124,24 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                 <div className="lg:col-span-2">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold text-white">Manage accessible documents</h3>
-                    <button
-                      onClick={reloadNotionPages}
-                      disabled={loadingNotion}
-                      className="text-sm bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 disabled:bg-gray-600 cursor-pointer"
-                    >
-                      {loadingNotion ? 'Loading...' : '↻ Reload'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href="https://www.notion.so/profile/integrations/internal/321edf78-6daa-81fd-b8e2-00271dff58e1"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm bg-gray-900 text-white border border-gray-600 px-4 py-2 rounded hover:bg-gray-800 hover:border-gray-500 cursor-pointer transition-colors"
+                        title="Open Notion API Integration"
+                      >
+                        🔗 Notion API
+                      </a>
+                      <button
+                        onClick={reloadNotionPages}
+                        disabled={loadingNotion}
+                        className="text-sm bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 disabled:bg-gray-600 cursor-pointer"
+                      >
+                        {loadingNotion ? 'Loading...' : '↻ Reload'}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Controls */}
