@@ -21,7 +21,7 @@ export default function LoginPage() {
     const checkAuth = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        router.push('/');
+        router.push('/chat');
         router.refresh();
       } else {
         setCheckingAuth(false);
@@ -41,7 +41,7 @@ export default function LoginPage() {
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/`,
+            emailRedirectTo: `${window.location.origin}/chat`,
           },
         });
         if (error) throw error;
@@ -52,7 +52,7 @@ export default function LoginPage() {
           password,
         });
         if (error) throw error;
-        router.push('/');
+        router.push('/chat');
         router.refresh();
       }
     } catch (err: any) {
