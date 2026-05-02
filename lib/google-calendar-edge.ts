@@ -43,13 +43,29 @@ function base64UrlDecode(str: string): string {
 
 // Convert PEM private key to CryptoKey
 async function importPrivateKey(pem: string): Promise<CryptoKey> {
-  // Remove PEM headers and whitespace
+  console.log('Importing private key, input length:', pem.length);
+  console.log('Key starts with:', pem.substring(0, 50));
+  console.log('Key ends with:', pem.substring(pem.length - 50));
+  console.log('Contains literal \\n:', pem.includes('\\n'));
+  console.log('Contains actual newline:', pem.includes('\n'));
+  
+  // Handle Cloudflare env vars: replace literal \n with actual newlines, then clean up
+  let cleanPem = pem
+    .replace(/\\n/g, '\n')  // Convert literal \n to actual newlines
+    .replace(/\r\n/g, '\n') // Normalize Windows newlines
+    .replace(/\r/g, '\n');  // Normalize old Mac newlines
+
+  // Extract base64 content between headers
   const pemHeader = '-----BEGIN PRIVATE KEY-----';
   const pemFooter = '-----END PRIVATE KEY-----';
-  const pemContents = pem
+  
+  // Remove headers and any remaining whitespace/newlines
+  const pemContents = cleanPem
     .replace(pemHeader, '')
     .replace(pemFooter, '')
-    .replace(/\s/g, '');
+    .replace(/\s/g, '');  // Remove all whitespace (spaces, newlines, tabs)
+  
+  console.log('PEM content length after cleanup:', pemContents.length);
 
   // Base64 decode to get binary
   const binaryDer = base64UrlDecode(pemContents);
