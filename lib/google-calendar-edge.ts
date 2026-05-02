@@ -46,14 +46,25 @@ async function importPrivateKey(pem: string): Promise<CryptoKey> {
   console.log('Importing private key, input length:', pem.length);
   console.log('Key starts with:', pem.substring(0, 50));
   console.log('Key ends with:', pem.substring(pem.length - 50));
-  console.log('Contains literal \\n:', pem.includes('\\n'));
+  console.log('Contains literal \\\\n:', pem.includes('\\n'));
   console.log('Contains actual newline:', pem.includes('\n'));
   
-  // Handle Cloudflare env vars: replace literal \n with actual newlines, then clean up
-  let cleanPem = pem
-    .replace(/\\n/g, '\n')  // Convert literal \n to actual newlines
-    .replace(/\r\n/g, '\n') // Normalize Windows newlines
-    .replace(/\r/g, '\n');  // Normalize old Mac newlines
+  // Handle JSON-encoded strings (e.g., from copy-pasting JSON)
+  let cleanPem = pem.trim();
+  
+  // Remove surrounding quotes if present (JSON-style encoding)
+  if ((cleanPem.startsWith('"') && cleanPem.endsWith('"')) ||
+      (cleanPem.startsWith("'") && cleanPem.endsWith("'"))) {
+    cleanPem = cleanPem.slice(1, -1);
+    console.log('Removed surrounding quotes, new length:', cleanPem.length);
+  }
+  
+  // Handle double-escaped newlines (\\\\n) from JSON string encoding
+  cleanPem = cleanPem
+    .replace(/\\\\n/g, '\n')  // Convert \\\\n (JSON-encoded \\n) to actual newlines
+    .replace(/\\n/g, '\n')     // Convert \\n to actual newlines
+    .replace(/\r\n/g, '\n')    // Normalize Windows newlines
+    .replace(/\r/g, '\n');     // Normalize old Mac newlines
 
   // Extract base64 content between headers
   const pemHeader = '-----BEGIN PRIVATE KEY-----';
