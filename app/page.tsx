@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { createClient } from '@/utils/supabase/client';
 import WorkspaceManager from './components/WorkspaceManager';
 import ModelSelector from './components/ModelSelector';
 
@@ -8,12 +10,28 @@ export const runtime = 'edge';
 import LogoutButton from './components/LogoutButton';
 
 export default function Home() {
+  const router = useRouter();
+  const supabase = createClient();
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [notes] = useState<{id: string, title: string, content: string}[]>([]);
   const [sheetData, setSheetData] = useState<any>(null);
   const [aiModel, setAiModel] = useState<string>('gemini-flash-latest');
   const [notionPages, setNotionPages] = useState<any[]>([]);
   const [hierarchicalNotionPages, setHierarchicalNotionPages] = useState<any[]>([]);
   const workspaceManagerRef = useRef<any>(null);
+
+  // Check auth on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/login');
+      } else {
+        setCheckingAuth(false);
+      }
+    };
+    checkAuth();
+  }, [router, supabase]);
 
   // Helper function to build hierarchy from flat list
   const buildHierarchy = (pages: any[]) => {
@@ -180,6 +198,14 @@ export default function Home() {
       workspaceManagerRef.current.setActiveTab('chat');
     }
   };
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-white">Caricamento...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-gray-900">
