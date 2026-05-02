@@ -18,11 +18,27 @@ interface ServiceAccount {
 }
 
 function getServiceAccount(): ServiceAccount {
+  // Debug: Log all available env vars
+  const allEnvVars = Object.keys(process.env).filter(k => 
+    k.includes('GOOGLE') || k.includes('ENV') || k.includes('NODE')
+  );
+  console.log('Available env vars:', allEnvVars);
+  
   const privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  
+  console.log('GOOGLE_SERVICE_ACCOUNT_KEY present:', !!privateKey);
+  console.log('GOOGLE_SERVICE_ACCOUNT_KEY length:', privateKey?.length || 0);
+  console.log('GOOGLE_SERVICE_ACCOUNT_EMAIL present:', !!clientEmail);
+  console.log('GOOGLE_SERVICE_ACCOUNT_EMAIL value:', clientEmail);
 
   if (!privateKey || !clientEmail) {
-    throw new Error('Google service account credentials not configured');
+    throw new Error(
+      `Google service account credentials not configured. ` +
+      `Available GOOGLE vars: ${allEnvVars.join(', ') || 'NONE'}. ` +
+      `EMAIL: ${clientEmail ? 'SET' : 'MISSING'}, ` +
+      `KEY: ${privateKey ? 'SET' : 'MISSING'}`
+    );
   }
 
   return {
