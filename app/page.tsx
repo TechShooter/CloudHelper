@@ -23,15 +23,21 @@ export default function Home() {
   // Check auth on mount
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/login');
-      } else {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          // Redirect immediato a /login
+          window.location.href = '/login';
+          return;
+        }
         setCheckingAuth(false);
+      } catch (error) {
+        // In caso di errore, redirect a login
+        window.location.href = '/login';
       }
     };
     checkAuth();
-  }, [router, supabase]);
+  }, []);
 
   // Helper function to build hierarchy from flat list
   const buildHierarchy = (pages: any[]) => {
