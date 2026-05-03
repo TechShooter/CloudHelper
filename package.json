@@ -12,12 +12,10 @@
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.0",
     "bcryptjs": "*",
-    "googleapis": "^171.4.0",
     "jsonwebtoken": "*",
     "next": "^16.2.3",
     "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-markdown": "^10.1.0"
+    "react-dom": "19.2.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
