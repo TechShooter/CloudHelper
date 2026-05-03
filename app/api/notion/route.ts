@@ -5,44 +5,35 @@ export const runtime = 'edge';
 function extractProperty(prop: any): string {
   if (!prop) return '';
   
-  switch (prop.type) {
-    case 'title':
-      return prop.title?.map((t: any) => t.plain_text).join('') || '';
-    case 'rich_text':
-      return prop.rich_text?.map((t: any) => t.plain_text).join('') || '';
-    case 'text':
-      return prop.text?.content || '';
-    case 'number':
-      return prop.number?.toString() || '';
-    case 'select':
-      return prop.select?.name || '';
-    case 'multi_select':
-      return prop.multi_select?.map((s: any) => s.name).join(', ') || '';
-    case 'date':
-      return prop.date?.start || '';
-    case 'checkbox':
-      return prop.checkbox ? 'Yes' : 'No';
-    case 'url':
-      return prop.url || '';
-    case 'email':
-      return prop.email || '';
-    case 'phone':
-      return prop.phone || '';
-    case 'formula':
-      return extractProperty(prop.formula);
-    case 'relation':
-      return prop.relation?.map((r: any) => r.id).join(', ') || '';
-    case 'rollup':
-      return prop.rollup?.array?.map((r: any) => extractProperty(r)).join(', ') || '';
-    case 'people':
-      return prop.people?.map((p: any) => p.name).join(', ') || '';
-    case 'files':
-      return prop.files?.map((f: any) => f.name || f.external?.url).join(', ') || '';
-    case 'status':
-      return prop.status?.name || '';
-    default:
-      return '';
+  const { type } = prop;
+  
+  // Text array types
+  if (type === 'title' || type === 'rich_text') {
+    const arr = type === 'title' ? prop.title : prop.rich_text;
+    return arr?.map((t: any) => t.plain_text).join('') || '';
   }
+  
+  // Simple string types
+  if (['text', 'number', 'select', 'date', 'url', 'email', 'phone', 'status'].includes(type)) {
+    if (type === 'text') return prop.text?.content || '';
+    if (type === 'number') return prop.number?.toString() || '';
+    return prop[type]?.name || prop[type]?.start || prop[type] || '';
+  }
+  
+  // Boolean
+  if (type === 'checkbox') return prop.checkbox ? 'Yes' : 'No';
+  
+  // Array types
+  if (type === 'multi_select') return prop.multi_select?.map((s: any) => s.name).join(', ') || '';
+  if (type === 'relation') return prop.relation?.map((r: any) => r.id).join(', ') || '';
+  if (type === 'people') return prop.people?.map((p: any) => p.name).join(', ') || '';
+  if (type === 'files') return prop.files?.map((f: any) => f.name || f.external?.url).join(', ') || '';
+  
+  // Complex types
+  if (type === 'formula') return extractProperty(prop.formula);
+  if (type === 'rollup') return prop.rollup?.array?.map((r: any) => extractProperty(r)).join(', ') || '';
+  
+  return '';
 }
 
 // Recursive function to extract blocks including nested children
@@ -108,17 +99,12 @@ async function extractBlockContent(blockId: string, apiKey: string, indent: stri
 }
 
 export async function GET(req: NextRequest) {
-  console.log('Notion API called');
-  
   // Abort controller with 15 second timeout
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
   
   try {
-    console.log('NOTION_API_KEY exists:', !!process.env.NOTION_API_KEY);
-
     if (!process.env.NOTION_API_KEY || process.env.NOTION_API_KEY === 'your_notion_integration_token_here') {
-      console.log('API key not configured properly');
       clearTimeout(timeoutId);
       return NextResponse.json({ error: 'Notion API key not configured' }, { status: 400 });
     }
@@ -137,8 +123,6 @@ export async function GET(req: NextRequest) {
     });
 
     const data = await response.json();
-    console.log('Search API response status:', response.status);
-    console.log('Search API response data:', data);
 
     if (!response.ok) {
       console.error('Notion API error:', data);

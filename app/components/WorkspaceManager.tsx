@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle, Suspense, lazy } from 'react';
 import type { ReactNode } from 'react';
-import ChatInterface from './ChatInterface';
-import CalendarView from './CalendarView';
-import NutrientTracker from './NutrientTracker';
-import ModelTesting from './ModelTesting';
+
+// Dynamic imports to reduce bundle size - these components are huge!
+const ChatInterface = lazy(() => import('./ChatInterface'));
+const CalendarView = lazy(() => import('./CalendarView'));
+const NutrientTracker = lazy(() => import('./NutrientTracker'));
+const ModelTesting = lazy(() => import('./ModelTesting'));
 
 interface Workspace {
   id: string;
@@ -1096,25 +1098,29 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto min-w-0 sm:min-w-[800px]">
           {activeTab === 'chat' && currentWorkspace.id === 'model-testing' && (
-            <ModelTesting
-              notes={notes}
-              sheetData={sheetData}
-              notionPages={notionPages}
-            />
+            <Suspense fallback={<div className="text-white p-4">Loading Model Testing...</div>}>
+              <ModelTesting
+                notes={notes}
+                sheetData={sheetData}
+                notionPages={notionPages}
+              />
+            </Suspense>
           )}
 
           {activeTab === 'chat' && currentWorkspace.id !== 'model-testing' && (
-            <ChatInterface
-              selectedContexts={selectedContexts}
-              notes={notes}
-              aiModel={aiModel}
-              sheetData={currentWorkspace.autoLoadSheets ? sheetData : null}
-              notionPages={getNotionPages()}
-              workspacePrompt={currentWorkspace.systemPrompt}
-              workspaceId={currentWorkspace.id}
-              calendarEvents={calendarEvents}
-              nutrientEntries={currentWorkspace.id === 'nutrition' ? nutrientEntries : []}
-            />
+            <Suspense fallback={<div className="text-white p-4">Loading Chat...</div>}>
+              <ChatInterface
+                selectedContexts={selectedContexts}
+                notes={notes}
+                aiModel={aiModel}
+                sheetData={currentWorkspace.autoLoadSheets ? sheetData : null}
+                notionPages={getNotionPages()}
+                workspacePrompt={currentWorkspace.systemPrompt}
+                workspaceId={currentWorkspace.id}
+                calendarEvents={calendarEvents}
+                nutrientEntries={currentWorkspace.id === 'nutrition' ? nutrientEntries : []}
+              />
+            </Suspense>
           )}
 
           {activeTab === 'docs' && (
@@ -1610,14 +1616,18 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
           )}
 
           {activeTab === 'calendar' && (
-            <CalendarView onEventsChange={setCalendarEvents} />
+            <Suspense fallback={<div className="text-white p-4">Loading Calendar...</div>}>
+              <CalendarView onEventsChange={setCalendarEvents} />
+            </Suspense>
           )}
 
           {activeTab === 'nutrients' && (
-            <NutrientTracker 
-              sheetData={sheetData} 
-              onEntriesChange={setNutrientEntries}
-            />
+            <Suspense fallback={<div className="text-white p-4">Loading Nutrients...</div>}>
+              <NutrientTracker 
+                sheetData={sheetData} 
+                onEntriesChange={setNutrientEntries}
+              />
+            </Suspense>
           )}
         </div>
       </div>

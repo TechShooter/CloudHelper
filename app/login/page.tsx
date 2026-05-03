@@ -1,10 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
-
-export const runtime = 'edge';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,7 +11,22 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const supabase = createClient();
+
+  // Verifica se l'utente è già loggato
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        router.push('/chat');
+        router.refresh();
+      } else {
+        setCheckingAuth(false);
+      }
+    };
+    checkAuth();
+  }, [router, supabase]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +39,7 @@ export default function LoginPage() {
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/`,
+            emailRedirectTo: `${window.location.origin}/chat`,
           },
         });
         if (error) throw error;
@@ -37,7 +50,7 @@ export default function LoginPage() {
           password,
         });
         if (error) throw error;
-        router.push('/');
+        router.push('/chat');
         router.refresh();
       }
     } catch (err: any) {
@@ -46,6 +59,14 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800">
+        <div className="text-white">Verifica autenticazione...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800">

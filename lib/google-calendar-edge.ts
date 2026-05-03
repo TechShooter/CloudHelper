@@ -43,11 +43,6 @@ function base64UrlDecode(str: string): string {
 
 // Convert PEM private key to CryptoKey
 async function importPrivateKey(pem: string): Promise<CryptoKey> {
-  console.log('Importing private key, input length:', pem.length);
-  console.log('Key starts with:', pem.substring(0, 50));
-  console.log('Key ends with:', pem.substring(pem.length - 50));
-  console.log('Contains literal \\\\n:', pem.includes('\\n'));
-  console.log('Contains actual newline:', pem.includes('\n'));
   
   // Handle JSON-encoded strings (e.g., from copy-pasting JSON)
   let cleanPem = pem.trim();
@@ -56,7 +51,6 @@ async function importPrivateKey(pem: string): Promise<CryptoKey> {
   if ((cleanPem.startsWith('"') && cleanPem.endsWith('"')) ||
       (cleanPem.startsWith("'") && cleanPem.endsWith("'"))) {
     cleanPem = cleanPem.slice(1, -1);
-    console.log('Removed surrounding quotes, new length:', cleanPem.length);
   }
   
   // Handle double-escaped newlines (\\\\n) from JSON string encoding
@@ -76,7 +70,6 @@ async function importPrivateKey(pem: string): Promise<CryptoKey> {
     .replace(pemFooter, '')
     .replace(/\s/g, '');  // Remove all whitespace (spaces, newlines, tabs)
   
-  console.log('PEM content length after cleanup:', pemContents.length);
 
   // Base64 decode to get binary
   const binaryDer = base64UrlDecode(pemContents);
