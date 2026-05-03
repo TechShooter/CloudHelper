@@ -2,8 +2,6 @@
 
 import { useEffect } from 'react';
 
-export const runtime = 'edge';
-
 export default function Home() {
   useEffect(() => {
     // Dynamic import per caricare Supabase solo quando serve

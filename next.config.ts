@@ -1,13 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: 'export',
+  // Only use static export for production builds
+  ...(process.env.NODE_ENV === 'production' && {
+    output: 'export',
+    images: {
+      unoptimized: true,
+    },
+  }),
   logging: {
     incomingRequests: false,
-  },
-  // Disable image optimization for static export
-  images: {
-    unoptimized: true,
   },
 };
 

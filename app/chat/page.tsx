@@ -3,8 +3,6 @@
 import { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { useRouter } from 'next/navigation';
 
-export const runtime = 'edge';
-
 // Dynamic imports to reduce initial bundle size
 const WorkspaceManager = lazy(() => import('../components/WorkspaceManager'));
 const ModelSelector = lazy(() => import('../components/ModelSelector'));
@@ -48,36 +46,40 @@ export default function Home() {
               action: 'getAllSheets',
               sheetId: '1FvjfZ5a-OMM2ScO2lJewBFIrbnWvgQKJug_Ve32gAQA'
             })
-          }),
-          fetch('/api/notion/stream')
+          }).catch(() => null),
+          fetch('/api/notion/stream').catch(() => null)
         ]);
         
-        const sheetsData = await sheetsRes.json();
-        if (sheetsData.sheets) setSheetData(sheetsData.sheets);
+        if (sheetsRes && sheetsRes.ok) {
+          const sheetsData = await sheetsRes.json();
+          if (sheetsData.sheets) setSheetData(sheetsData.sheets);
+        }
         
         // Stream notion pages
-        const reader = notionRes.body?.getReader();
-        if (reader) {
-          const decoder = new TextDecoder();
-          const pages: any[] = [];
-          let buffer = '';
-          
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
+        if (notionRes && notionRes.ok) {
+          const reader = notionRes.body?.getReader();
+          if (reader) {
+            const decoder = new TextDecoder();
+            const pages: any[] = [];
+            let buffer = '';
             
-            for (const line of lines) {
-              if (!line.trim()) continue;
-              try {
-                const page = JSON.parse(line);
-                if (!page.error) {
-                  pages.push(page);
-                  setNotionPages([...pages]);
-                }
-              } catch {}
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || '';
+              
+              for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                  const page = JSON.parse(line);
+                  if (!page.error) {
+                    pages.push(page);
+                    setNotionPages([...pages]);
+                  }
+                } catch {}
+              }
             }
           }
         }

@@ -1,8 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { createClient } from '@/utils/supabase/server';
-import { redirect } from 'next/navigation';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,18 +30,11 @@ export const viewport: Viewport = {
   userScalable: true,
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Check auth on server side
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  
-  // If not logged in, this will be handled by client-side check
-  // We pass user info to children via headers or context if needed
-  
   return (
     <html lang="en">
       <body
