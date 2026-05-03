@@ -1,24 +1,36 @@
-// Pagina statica HTML pura - nessun Edge Function, nessun bundle React
-// Fa redirect a /login o /chat immediatamente via JavaScript inline
+'use client';
+
+import { useEffect } from 'react';
+
+export const runtime = 'edge';
 
 export default function Home() {
+  useEffect(() => {
+    // Dynamic import per caricare Supabase solo quando serve
+    const checkAuth = async () => {
+      const { createClient } = await import('@/utils/supabase/client');
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        window.location.href = '/chat';
+      } else {
+        window.location.href = '/login';
+      }
+    };
+    
+    checkAuth();
+  }, []);
+
   return (
-    <html>
-      <head>
-        <title>CloudHelper</title>
-        <meta charSet="utf-8" />
-        <script dangerouslySetInnerHTML={{
-          __html: `
-            (function() {
-              var hasSession = document.cookie.includes('sb-');
-              window.location.replace(hasSession ? '/chat' : '/login');
-            })();
-          `
-        }} />
-      </head>
-      <body style={{ margin: 0, background: '#111827', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ color: '#9CA3AF', fontFamily: 'system-ui, sans-serif' }}>Caricamento...</div>
-      </body>
-    </html>
+    <div style={{ 
+      minHeight: '100vh', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      background: '#111827'
+    }}>
+      <div style={{ color: '#9CA3AF' }}>Caricamento...</div>
+    </div>
   );
 }
