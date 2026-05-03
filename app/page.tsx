@@ -1,17 +1,36 @@
+'use client';
+
+import { useEffect } from 'react';
+
 export const runtime = 'edge';
 
-import { createClient } from '@/utils/supabase/server';
-import { redirect } from 'next/navigation';
+export default function Home() {
+  useEffect(() => {
+    // Dynamic import per caricare Supabase solo quando serve
+    const checkAuth = async () => {
+      const { createClient } = await import('@/utils/supabase/client');
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        window.location.href = '/chat';
+      } else {
+        window.location.href = '/login';
+      }
+    };
+    
+    checkAuth();
+  }, []);
 
-export default async function Home() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  
-  // Redirect immediato server-side a /login se non autenticato
-  if (!user) {
-    redirect('/login');
-  }
-  
-  // Se autenticato, reindirizza alla chat
-  redirect('/chat');
+  return (
+    <div style={{ 
+      minHeight: '100vh', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      background: '#111827'
+    }}>
+      <div style={{ color: '#9CA3AF' }}>Caricamento...</div>
+    </div>
+  );
 }
