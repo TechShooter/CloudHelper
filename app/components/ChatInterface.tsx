@@ -1,9 +1,21 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import ReactMarkdown from 'react-markdown';
 import ChatHeader, { ChatHeaderRef } from './ChatHeader';
 import { createClient } from '@/utils/supabase/client';
+
+// Lightweight markdown parser (replaces heavy react-markdown)
+function SimpleMarkdown({ content }: { content: string }) {
+  // Simple formatting: code blocks, bold, italic, links
+  const formatted = content
+    .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre class="bg-gray-800 p-2 rounded my-2 overflow-x-auto"><code>$2</code></pre>')
+    .replace(/`([^`]+)`/g, '<code class="bg-gray-800 px-1 rounded">$1</code>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br/>');
+  
+  return <div dangerouslySetInnerHTML={{ __html: formatted }} />;
+}
 
 interface Message {
   role: 'user' | 'assistant';
@@ -38,9 +50,7 @@ const MessageItem = React.memo(({ message, onDelete, index }: { message: Message
         }`}>
         <div className="pr-16">
           {message.role === 'assistant' ? (
-            <ReactMarkdown>
-              {message.content}
-            </ReactMarkdown>
+            <SimpleMarkdown content={message.content} />
           ) : (
             message.content
           )}
