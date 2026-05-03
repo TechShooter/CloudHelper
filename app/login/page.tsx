@@ -4,8 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 
-export const runtime = 'edge';
-
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
