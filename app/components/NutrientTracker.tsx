@@ -16,24 +16,32 @@ interface FoodEntry {
   fibers: number;
   sugars: number;
   salt: number;
-  vitaminD: number;
+  vitaminA: number;
   vitaminB1: number;
   vitaminB2: number;
   vitaminB3: number;
   vitaminB5: number;
   vitaminB6: number;
   vitaminB9: number;
+  vitaminB12: number;
+  vitaminC: number;
+  vitaminD: number;
   vitaminE: number;
   vitaminK: number;
   calcium: number;
-  iron: number;
-  phosphorus: number;
-  magnesium: number;
-  potassium: number;
-  zinc: number;
+  chromium: number;
   copper: number;
+  fluoride: number;
+  iodine: number;
+  iron: number;
+  magnesium: number;
   manganese: number;
+  molybdenum: number;
+  phosphorus: number;
+  potassium: number;
   selenium: number;
+  sodium: number;
+  zinc: number;
 }
 
 // Food entry item with delete confirmation
@@ -135,24 +143,32 @@ interface NutrientGoals {
   fibers: number;
   sugars: number;
   salt: number;
-  vitaminD: number;
+  vitaminA: number;
   vitaminB1: number;
   vitaminB2: number;
   vitaminB3: number;
   vitaminB5: number;
   vitaminB6: number;
   vitaminB9: number;
+  vitaminB12: number;
+  vitaminC: number;
+  vitaminD: number;
   vitaminE: number;
   vitaminK: number;
   calcium: number;
-  iron: number;
-  phosphorus: number;
-  magnesium: number;
-  potassium: number;
-  zinc: number;
+  chromium: number;
   copper: number;
+  fluoride: number;
+  iodine: number;
+  iron: number;
+  magnesium: number;
   manganese: number;
+  molybdenum: number;
+  phosphorus: number;
+  potassium: number;
   selenium: number;
+  sodium: number;
+  zinc: number;
 }
 
 interface NutrientNotes {
@@ -197,24 +213,32 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       fibers: 25,
       sugars: 50,
       salt: 6,
-      vitaminD: 10,
+      vitaminA: 900,
       vitaminB1: 1.2,
       vitaminB2: 1.3,
       vitaminB3: 16,
       vitaminB5: 5,
       vitaminB6: 1.3,
       vitaminB9: 400,
+      vitaminB12: 2.4,
+      vitaminC: 90,
+      vitaminD: 10,
       vitaminE: 12,
       vitaminK: 70,
       calcium: 800,
-      iron: 14,
-      phosphorus: 700,
-      magnesium: 320,
-      potassium: 2000,
-      zinc: 8,
+      chromium: 35,
       copper: 0.9,
+      fluoride: 4000,
+      iodine: 150,
+      iron: 14,
+      magnesium: 320,
       manganese: 2,
-      selenium: 55
+      molybdenum: 45,
+      phosphorus: 700,
+      potassium: 2000,
+      selenium: 55,
+      sodium: 2300,
+      zinc: 8
     };
   };
 
@@ -792,30 +816,39 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
     fibers: acc.fibers + (entry.fibers || 0),
     sugars: acc.sugars + (entry.sugars || 0),
     salt: acc.salt + (entry.salt || 0),
-    vitaminD: acc.vitaminD + (entry.vitaminD || 0),
+    vitaminA: acc.vitaminA + (entry.vitaminA || 0),
     vitaminB1: acc.vitaminB1 + (entry.vitaminB1 || 0),
     vitaminB2: acc.vitaminB2 + (entry.vitaminB2 || 0),
     vitaminB3: acc.vitaminB3 + (entry.vitaminB3 || 0),
     vitaminB5: acc.vitaminB5 + (entry.vitaminB5 || 0),
     vitaminB6: acc.vitaminB6 + (entry.vitaminB6 || 0),
     vitaminB9: acc.vitaminB9 + (entry.vitaminB9 || 0),
+    vitaminB12: acc.vitaminB12 + (entry.vitaminB12 || 0),
+    vitaminC: acc.vitaminC + (entry.vitaminC || 0),
+    vitaminD: acc.vitaminD + (entry.vitaminD || 0),
     vitaminE: acc.vitaminE + (entry.vitaminE || 0),
     vitaminK: acc.vitaminK + (entry.vitaminK || 0),
     calcium: acc.calcium + (entry.calcium || 0),
-    iron: acc.iron + (entry.iron || 0),
-    phosphorus: acc.phosphorus + (entry.phosphorus || 0),
-    magnesium: acc.magnesium + (entry.magnesium || 0),
-    potassium: acc.potassium + (entry.potassium || 0),
-    zinc: acc.zinc + (entry.zinc || 0),
+    chromium: acc.chromium + (entry.chromium || 0),
     copper: acc.copper + (entry.copper || 0),
+    fluoride: acc.fluoride + (entry.fluoride || 0),
+    iodine: acc.iodine + (entry.iodine || 0),
+    iron: acc.iron + (entry.iron || 0),
+    magnesium: acc.magnesium + (entry.magnesium || 0),
     manganese: acc.manganese + (entry.manganese || 0),
+    molybdenum: acc.molybdenum + (entry.molybdenum || 0),
+    phosphorus: acc.phosphorus + (entry.phosphorus || 0),
+    potassium: acc.potassium + (entry.potassium || 0),
     selenium: acc.selenium + (entry.selenium || 0),
+    sodium: acc.sodium + (entry.sodium || 0),
+    zinc: acc.zinc + (entry.zinc || 0),
     cost: acc.cost + (entry.cost || 0)
   }), { 
     energy: 0, protein: 0, carbs: 0, fats: 0, saturatedFats: 0, fibers: 0, sugars: 0, salt: 0,
-    vitaminD: 0, vitaminB1: 0, vitaminB2: 0, vitaminB3: 0, vitaminB5: 0, vitaminB6: 0, vitaminB9: 0,
-    vitaminE: 0, vitaminK: 0, calcium: 0, iron: 0, phosphorus: 0, magnesium: 0,
-    potassium: 0, zinc: 0, copper: 0, manganese: 0, selenium: 0, cost: 0
+    vitaminA: 0, vitaminB1: 0, vitaminB2: 0, vitaminB3: 0, vitaminB5: 0, vitaminB6: 0, vitaminB9: 0,
+    vitaminB12: 0, vitaminC: 0, vitaminD: 0, vitaminE: 0, vitaminK: 0,
+    calcium: 0, chromium: 0, copper: 0, fluoride: 0, iodine: 0, iron: 0, magnesium: 0,
+    manganese: 0, molybdenum: 0, phosphorus: 0, potassium: 0, selenium: 0, sodium: 0, zinc: 0, cost: 0
   });
 
   const getProgressColor = (current: number, target: number) => {
@@ -876,7 +909,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       unit,
       isLimit
     });
-    setTempGoalValue(goal);
+    setTempGoalValue(goal || 0);
     setTempNoteValue(nutrientNotes[nutrientKey] || '');
   };
 
@@ -1105,6 +1138,98 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                   type="number"
                   value={tempGoals.vitaminB9}
                   onChange={(e) => setTempGoals({...tempGoals, vitaminB9: parseFloat(e.target.value) || 0})}
+                  className="w-full px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Vit B12 (μg)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={tempGoals.vitaminB12}
+                  onChange={(e) => setTempGoals({...tempGoals, vitaminB12: parseFloat(e.target.value) || 0})}
+                  className="w-full px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Vit C (mg)</label>
+                <input
+                  type="number"
+                  value={tempGoals.vitaminC}
+                  onChange={(e) => setTempGoals({...tempGoals, vitaminC: parseFloat(e.target.value) || 0})}
+                  className="w-full px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Vit A (μg)</label>
+                <input
+                  type="number"
+                  value={tempGoals.vitaminA}
+                  onChange={(e) => setTempGoals({...tempGoals, vitaminA: parseFloat(e.target.value) || 0})}
+                  className="w-full px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Vit E (mg)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={tempGoals.vitaminE}
+                  onChange={(e) => setTempGoals({...tempGoals, vitaminE: parseFloat(e.target.value) || 0})}
+                  className="w-full px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Vit K (μg)</label>
+                <input
+                  type="number"
+                  value={tempGoals.vitaminK}
+                  onChange={(e) => setTempGoals({...tempGoals, vitaminK: parseFloat(e.target.value) || 0})}
+                  className="w-full px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Chromium (μg)</label>
+                <input
+                  type="number"
+                  value={tempGoals.chromium}
+                  onChange={(e) => setTempGoals({...tempGoals, chromium: parseFloat(e.target.value) || 0})}
+                  className="w-full px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Fluoride (μg)</label>
+                <input
+                  type="number"
+                  value={tempGoals.fluoride}
+                  onChange={(e) => setTempGoals({...tempGoals, fluoride: parseFloat(e.target.value) || 0})}
+                  className="w-full px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Iodine (μg)</label>
+                <input
+                  type="number"
+                  value={tempGoals.iodine}
+                  onChange={(e) => setTempGoals({...tempGoals, iodine: parseFloat(e.target.value) || 0})}
+                  className="w-full px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Molybdenum (μg)</label>
+                <input
+                  type="number"
+                  value={tempGoals.molybdenum}
+                  onChange={(e) => setTempGoals({...tempGoals, molybdenum: parseFloat(e.target.value) || 0})}
+                  className="w-full px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Sodium (mg) ⚠️</label>
+                <input
+                  type="number"
+                  value={tempGoals.sodium}
+                  onChange={(e) => setTempGoals({...tempGoals, sodium: parseFloat(e.target.value) || 0})}
                   className="w-full px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm"
                 />
               </div>
@@ -1655,6 +1780,62 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
           <div className="mt-4">
             <h4 className="text-sm font-semibold text-white mb-3">🌟 Vitamins</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-red-500">
+                <div className="text-xs text-gray-400 mb-1">Vit A (μg)</div>
+                <div 
+                  className="text-lg font-bold text-white cursor-pointer hover:text-red-300 transition-colors flex items-center gap-2"
+                  onClick={() => handleNutrientEdit('vitaminA', 'Vitamin A', totals.vitaminA, goals.vitaminA, 'μg')}
+                >
+                  {totals.vitaminA.toFixed(0)}
+                  <span className="text-xs text-gray-500">✏️</span>
+                </div>
+                {goals.vitaminA > 0 && (
+                  <>
+                    <div className="text-xs text-gray-400 mt-1">Goal: {goals.vitaminA}μg</div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="flex-1 bg-gray-600 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full transition-all ${getProgressColor(totals.vitaminA, goals.vitaminA)}`}
+                          style={{ width: `${Math.min((totals.vitaminA / goals.vitaminA) * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-xs font-bold text-white">{getProgressPercentage(totals.vitaminA, goals.vitaminA)}%</span>
+                    </div>
+                  </>
+                )}
+                {nutrientNotes.vitaminA && (
+                  <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.vitaminA}</div>
+                )}
+              </div>
+
+              <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-orange-500">
+                <div className="text-xs text-gray-400 mb-1">Vit C (mg)</div>
+                <div 
+                  className="text-lg font-bold text-white cursor-pointer hover:text-orange-300 transition-colors flex items-center gap-2"
+                  onClick={() => handleNutrientEdit('vitaminC', 'Vitamin C', totals.vitaminC, goals.vitaminC, 'mg')}
+                >
+                  {totals.vitaminC.toFixed(1)}
+                  <span className="text-xs text-gray-500">✏️</span>
+                </div>
+                {goals.vitaminC > 0 && (
+                  <>
+                    <div className="text-xs text-gray-400 mt-1">Goal: {goals.vitaminC}mg</div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="flex-1 bg-gray-600 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full transition-all ${getProgressColor(totals.vitaminC, goals.vitaminC)}`}
+                          style={{ width: `${Math.min((totals.vitaminC / goals.vitaminC) * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-xs font-bold text-white">{getProgressPercentage(totals.vitaminC, goals.vitaminC)}%</span>
+                    </div>
+                  </>
+                )}
+                {nutrientNotes.vitaminC && (
+                  <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.vitaminC}</div>
+                )}
+              </div>
+
               <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-indigo-500">
                 <div className="text-xs text-gray-400 mb-1">Vit D (μg)</div>
                 <div 
@@ -1848,6 +2029,34 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 )}
                 {nutrientNotes.vitaminB9 && (
                   <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.vitaminB9}</div>
+                )}
+              </div>
+
+              <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-red-500">
+                <div className="text-xs text-gray-400 mb-1">Vit B12 (μg)</div>
+                <div 
+                  className="text-lg font-bold text-white cursor-pointer hover:text-red-300 transition-colors flex items-center gap-2"
+                  onClick={() => handleNutrientEdit('vitaminB12', 'Vitamin B12', totals.vitaminB12, goals.vitaminB12, 'μg')}
+                >
+                  {totals.vitaminB12.toFixed(1)}
+                  <span className="text-xs text-gray-500">✏️</span>
+                </div>
+                {goals.vitaminB12 > 0 && (
+                  <>
+                    <div className="text-xs text-gray-400 mt-1">Goal: {goals.vitaminB12}μg</div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="flex-1 bg-gray-600 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full transition-all ${getProgressColor(totals.vitaminB12, goals.vitaminB12)}`}
+                          style={{ width: `${Math.min((totals.vitaminB12 / goals.vitaminB12) * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-xs font-bold text-white">{getProgressPercentage(totals.vitaminB12, goals.vitaminB12)}%</span>
+                    </div>
+                  </>
+                )}
+                {nutrientNotes.vitaminB12 && (
+                  <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.vitaminB12}</div>
                 )}
               </div>
 
@@ -2164,6 +2373,151 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                   <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.selenium}</div>
                 )}
               </div>
+
+              <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-gray-500">
+                <div className="text-xs text-gray-400 mb-1">Chromium (μg)</div>
+                <div 
+                  className="text-lg font-bold text-white cursor-pointer hover:text-gray-300 transition-colors flex items-center gap-2"
+                  onClick={() => handleNutrientEdit('chromium', 'Chromium', totals.chromium, goals.chromium, 'μg')}
+                >
+                  {totals.chromium.toFixed(0)}
+                  <span className="text-xs text-gray-500">✏️</span>
+                </div>
+                {goals.chromium > 0 && (
+                  <>
+                    <div className="text-xs text-gray-400 mt-1">Goal: {goals.chromium}μg</div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="flex-1 bg-gray-600 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full transition-all ${getProgressColor(totals.chromium, goals.chromium)}`}
+                          style={{ width: `${Math.min((totals.chromium / goals.chromium) * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-xs font-bold text-white">{getProgressPercentage(totals.chromium, goals.chromium)}%</span>
+                    </div>
+                  </>
+                )}
+                {nutrientNotes.chromium && (
+                  <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.chromium}</div>
+                )}
+              </div>
+
+              <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-cyan-500">
+                <div className="text-xs text-gray-400 mb-1">Fluoride (μg)</div>
+                <div 
+                  className="text-lg font-bold text-white cursor-pointer hover:text-cyan-300 transition-colors flex items-center gap-2"
+                  onClick={() => handleNutrientEdit('fluoride', 'Fluoride', totals.fluoride, goals.fluoride, 'μg')}
+                >
+                  {totals.fluoride.toFixed(0)}
+                  <span className="text-xs text-gray-500">✏️</span>
+                </div>
+                {goals.fluoride > 0 && (
+                  <>
+                    <div className="text-xs text-gray-400 mt-1">Goal: {goals.fluoride}μg</div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="flex-1 bg-gray-600 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full transition-all ${getProgressColor(totals.fluoride, goals.fluoride)}`}
+                          style={{ width: `${Math.min((totals.fluoride / goals.fluoride) * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-xs font-bold text-white">{getProgressPercentage(totals.fluoride, goals.fluoride)}%</span>
+                    </div>
+                  </>
+                )}
+                {nutrientNotes.fluoride && (
+                  <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.fluoride}</div>
+                )}
+              </div>
+
+              <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-violet-500">
+                <div className="text-xs text-gray-400 mb-1">Iodine (μg)</div>
+                <div 
+                  className="text-lg font-bold text-white cursor-pointer hover:text-violet-300 transition-colors flex items-center gap-2"
+                  onClick={() => handleNutrientEdit('iodine', 'Iodine', totals.iodine, goals.iodine, 'μg')}
+                >
+                  {totals.iodine.toFixed(0)}
+                  <span className="text-xs text-gray-500">✏️</span>
+                </div>
+                {goals.iodine > 0 && (
+                  <>
+                    <div className="text-xs text-gray-400 mt-1">Goal: {goals.iodine}μg</div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="flex-1 bg-gray-600 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full transition-all ${getProgressColor(totals.iodine, goals.iodine)}`}
+                          style={{ width: `${Math.min((totals.iodine / goals.iodine) * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-xs font-bold text-white">{getProgressPercentage(totals.iodine, goals.iodine)}%</span>
+                    </div>
+                  </>
+                )}
+                {nutrientNotes.iodine && (
+                  <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.iodine}</div>
+                )}
+              </div>
+
+              <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-slate-500">
+                <div className="text-xs text-gray-400 mb-1">Molybdenum (μg)</div>
+                <div 
+                  className="text-lg font-bold text-white cursor-pointer hover:text-slate-300 transition-colors flex items-center gap-2"
+                  onClick={() => handleNutrientEdit('molybdenum', 'Molybdenum', totals.molybdenum, goals.molybdenum, 'μg')}
+                >
+                  {totals.molybdenum.toFixed(0)}
+                  <span className="text-xs text-gray-500">✏️</span>
+                </div>
+                {goals.molybdenum > 0 && (
+                  <>
+                    <div className="text-xs text-gray-400 mt-1">Goal: {goals.molybdenum}μg</div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="flex-1 bg-gray-600 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full transition-all ${getProgressColor(totals.molybdenum, goals.molybdenum)}`}
+                          style={{ width: `${Math.min((totals.molybdenum / goals.molybdenum) * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-xs font-bold text-white">{getProgressPercentage(totals.molybdenum, goals.molybdenum)}%</span>
+                    </div>
+                  </>
+                )}
+                {nutrientNotes.molybdenum && (
+                  <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.molybdenum}</div>
+                )}
+              </div>
+
+              <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-amber-500">
+                <div className="text-xs text-gray-400 mb-1">Sodium (mg)</div>
+                <div 
+                  className="text-lg font-bold text-white cursor-pointer hover:text-amber-300 transition-colors flex items-center gap-2"
+                  onClick={() => handleNutrientEdit('sodium', 'Sodium', totals.sodium, goals.sodium, 'mg', true)}
+                >
+                  {totals.sodium.toFixed(0)}
+                  <span className="text-xs text-gray-500">✏️</span>
+                </div>
+                <div className="text-xs text-gray-400 mt-1">Limit: {goals.sodium}mg ⚠️</div>
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="flex-1 bg-gray-600 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full transition-all ${
+                        totals.sodium > goals.sodium 
+                          ? 'bg-red-500' 
+                          : totals.sodium > goals.sodium * 0.75 
+                          ? 'bg-orange-500' 
+                          : 'bg-green-500'
+                      }`}
+                      style={{ width: `${Math.min((totals.sodium / goals.sodium) * 100, 100)}%` }}
+                    ></div>
+                  </div>
+                  <span className="text-xs font-bold text-white">{Math.min(Math.round((totals.sodium / goals.sodium) * 100), 100)}%</span>
+                </div>
+                {totals.sodium > goals.sodium && (
+                  <div className="text-xs text-red-400 mt-1">Over limit</div>
+                )}
+                {nutrientNotes.sodium && (
+                  <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.sodium}</div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -2245,7 +2599,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <input
                   type="number"
                   step="0.1"
-                  value={tempGoalValue}
+                  value={tempGoalValue || 0}
                   onChange={(e) => setTempGoalValue(parseFloat(e.target.value) || 0)}
                   className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 text-sm"
                   placeholder={`Enter ${nutrientEditState.isLimit ? 'limit' : 'goal'}...`}
