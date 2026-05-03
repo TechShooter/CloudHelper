@@ -1,8 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: 'export',
   logging: {
-    incomingRequests: false, //HTTP POST, GET etc. logging on prompt
+    incomingRequests: false,
+  },
+  // Disable image optimization for static export
+  images: {
+    unoptimized: true,
   },
 };
 
