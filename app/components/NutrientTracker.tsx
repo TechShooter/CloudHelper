@@ -590,17 +590,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       }
     });
     
-    // DEBUG: Mostra i primi 5 alimenti con i loro costi
-    console.log('=== DEBUG PRIMI 5 ALIMENTI E COSTI ===');
-    foods.slice(0, 5).forEach((food, idx) => {
-      console.log(`${idx + 1}. ${food.name}:`);
-      console.log(`   - Costo/kg: ${food.costPerKg}`);
-      console.log(`   - Valore origine colonna G: "${food._debugCostPerKg}"`);
-      console.log(`   - Valore parsato: ${food._debugParsedCost}`);
-      console.log(`   - Lunghezza riga: ${food._debugRowLength}`);
-      console.log(`   - Tipo costPerKg: ${typeof food.costPerKg}`);
-    });
-    console.log('=====================================');
+    
     
     return foods;
   };
@@ -621,18 +611,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
 
     const multiplier = grams / 100;
     
-    // DEBUG COSTO DETTAGLIATO
-    console.log('=== DEBUG COSTO DETTAGLIATO ===');
-    console.log('1. Food selezionato:', food.name);
-    console.log('2. Costo per kg dal foglio:', food.costPerKg);
-    console.log('3. Valore originale colonna G:', (food as any)._debugCostPerKg || 'N/A');
-    console.log('4. Grammi inseriti:', grams);
-    console.log('5. Calcolo: (€/kg) × (grammi/1000)');
-    console.log('6. Formula: ' + (food.costPerKg || 0) + ' × (' + grams + '/1000)');
-    console.log('7. Risultato: €' + ((food.costPerKg || 0) * (grams / 1000)).toFixed(2));
-    console.log('8. Tipo di costPerKg:', typeof food.costPerKg);
-    console.log('9. È NaN?:', isNaN(food.costPerKg));
-    console.log('=============================');
+
 
     const newEntry: FoodEntry = {
       id: Date.now().toString(),
@@ -648,24 +627,32 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       fibers: food.fibersPer100g * multiplier,
       sugars: food.sugarsPer100g * multiplier,
       salt: food.saltPer100g * multiplier,
-      vitaminD: food.vitaminDPer100g * multiplier,
+      vitaminA: 0, // Not available in food data
       vitaminB1: food.vitaminB1Per100g * multiplier,
       vitaminB2: food.vitaminB2Per100g * multiplier,
       vitaminB3: food.vitaminB3Per100g * multiplier,
       vitaminB5: food.vitaminB5Per100g * multiplier,
       vitaminB6: food.vitaminB6Per100g * multiplier,
       vitaminB9: food.vitaminB9Per100g * multiplier,
+      vitaminB12: 0, // Not available in food data
+      vitaminC: 0, // Not available in food data
+      vitaminD: food.vitaminDPer100g * multiplier,
       vitaminE: food.vitaminEPer100g * multiplier,
       vitaminK: food.vitaminKPer100g * multiplier,
       calcium: food.calciumPer100g * multiplier,
-      iron: food.ironPer100g * multiplier,
-      phosphorus: food.phosphorusPer100g * multiplier,
-      magnesium: food.magnesiumPer100g * multiplier,
-      potassium: food.potassiumPer100g * multiplier,
-      zinc: food.zincPer100g * multiplier,
+      chromium: 0, // Not available in food data
       copper: food.copperPer100g * multiplier,
+      fluoride: 0, // Not available in food data
+      iodine: 0, // Not available in food data
+      iron: food.ironPer100g * multiplier,
+      magnesium: food.magnesiumPer100g * multiplier,
       manganese: food.manganesePer100g * multiplier,
-      selenium: food.seleniumPer100g * multiplier
+      molybdenum: 0, // Not available in food data
+      phosphorus: food.phosphorusPer100g * multiplier,
+      potassium: food.potassiumPer100g * multiplier,
+      selenium: food.seleniumPer100g * multiplier,
+      sodium: 0, // Not available in food data
+      zinc: food.zincPer100g * multiplier
     };
 
     setEntries(prev => {
@@ -715,17 +702,32 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
         fibers: food.fibersPer100g * multiplier,
         sugars: food.sugarsPer100g * multiplier,
         salt: food.saltPer100g * multiplier,
-        vitaminD: food.vitaminDPer100g * multiplier,
+        vitaminA: 0, // Not available in food data
         vitaminB1: food.vitaminB1Per100g * multiplier,
         vitaminB2: food.vitaminB2Per100g * multiplier,
         vitaminB3: food.vitaminB3Per100g * multiplier,
         vitaminB5: food.vitaminB5Per100g * multiplier,
         vitaminB6: food.vitaminB6Per100g * multiplier,
         vitaminB9: food.vitaminB9Per100g * multiplier,
+        vitaminB12: 0, // Not available in food data
+        vitaminC: 0, // Not available in food data
+        vitaminD: food.vitaminDPer100g * multiplier,
+        vitaminE: food.vitaminEPer100g * multiplier,
+        vitaminK: food.vitaminKPer100g * multiplier,
         calcium: food.calciumPer100g * multiplier,
+        chromium: 0, // Not available in food data
+        copper: food.copperPer100g * multiplier,
+        fluoride: 0, // Not available in food data
+        iodine: 0, // Not available in food data
         iron: food.ironPer100g * multiplier,
+        magnesium: food.magnesiumPer100g * multiplier,
+        manganese: food.manganesePer100g * multiplier,
+        molybdenum: 0, // Not available in food data
         phosphorus: food.phosphorusPer100g * multiplier,
-        magnesium: food.magnesiumPer100g * multiplier
+        potassium: food.potassiumPer100g * multiplier,
+        selenium: food.seleniumPer100g * multiplier,
+        sodium: 0, // Not available in food data
+        zinc: food.zincPer100g * multiplier
       };
     }));
     setEditingEntry(null);
@@ -752,17 +754,32 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
         fibers: food.fibersPer100g * multiplier,
         sugars: food.sugarsPer100g * multiplier,
         salt: food.saltPer100g * multiplier,
-        vitaminD: food.vitaminDPer100g * multiplier,
+        vitaminA: 0, // Not available in food data
         vitaminB1: food.vitaminB1Per100g * multiplier,
         vitaminB2: food.vitaminB2Per100g * multiplier,
         vitaminB3: food.vitaminB3Per100g * multiplier,
         vitaminB5: food.vitaminB5Per100g * multiplier,
         vitaminB6: food.vitaminB6Per100g * multiplier,
         vitaminB9: food.vitaminB9Per100g * multiplier,
+        vitaminB12: 0, // Not available in food data
+        vitaminC: 0, // Not available in food data
+        vitaminD: food.vitaminDPer100g * multiplier,
+        vitaminE: food.vitaminEPer100g * multiplier,
+        vitaminK: food.vitaminKPer100g * multiplier,
         calcium: food.calciumPer100g * multiplier,
+        chromium: 0, // Not available in food data
+        copper: food.copperPer100g * multiplier,
+        fluoride: 0, // Not available in food data
+        iodine: 0, // Not available in food data
         iron: food.ironPer100g * multiplier,
+        magnesium: food.magnesiumPer100g * multiplier,
+        manganese: food.manganesePer100g * multiplier,
+        molybdenum: 0, // Not available in food data
         phosphorus: food.phosphorusPer100g * multiplier,
-        magnesium: food.magnesiumPer100g * multiplier
+        potassium: food.potassiumPer100g * multiplier,
+        selenium: food.seleniumPer100g * multiplier,
+        sodium: 0, // Not available in food data
+        zinc: food.zincPer100g * multiplier
       };
     }).sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()));
     setEditingEntry(null);
@@ -960,7 +977,8 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
     energy: goals.energyKJ,
     protein: goals.protein,
     carbs: goals.carbs,
-    fats: goals.fats
+    fats: goals.fats,
+    fibers: goals.fibers
   };
 
   const currentWeight = weightHistory.length > 0 ? weightHistory[0].weight : null;
@@ -1680,37 +1698,32 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
           </div>
           
           {/* Secondary nutrients */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-            <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-red-500">
-              <div className="text-xs text-gray-400 mb-1">Sat. Fats (g)</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-orange-500">
+              <div className="text-xs text-gray-400 mb-1">Fiber (g)</div>
               <div 
-                className="text-lg font-bold text-white cursor-pointer hover:text-red-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientEdit('saturatedFats', 'Saturated Fats', totals.saturatedFats, goals.saturatedFats, 'g', true)}
+                className="text-xl font-bold text-white cursor-pointer hover:text-orange-300 transition-colors flex items-center gap-2"
+                onClick={() => handleNutrientEdit('fibers', 'Fiber', totals.fibers, goals.fibers, 'g')}
               >
-                {totals.saturatedFats.toFixed(1)}
+                {totals.fibers.toFixed(1)}
                 <span className="text-xs text-gray-500">✏️</span>
               </div>
-              <div className="text-xs text-gray-400 mt-1">Limit: {goals.saturatedFats}g ⚠️</div>
-              <div className="flex items-center gap-2 mt-2">
-                <div className="flex-1 bg-gray-600 rounded-full h-2">
-                  <div 
-                    className={`h-2 rounded-full transition-all ${
-                      totals.saturatedFats > goals.saturatedFats 
-                        ? 'bg-red-500' 
-                        : totals.saturatedFats > goals.saturatedFats * 0.75 
-                        ? 'bg-orange-500' 
-                        : 'bg-green-500'
-                    }`}
-                    style={{ width: `${Math.min((totals.saturatedFats / goals.saturatedFats) * 100, 100)}%` }}
-                  ></div>
-                </div>
-                <span className="text-xs font-bold text-white">{Math.min(Math.round((totals.saturatedFats / goals.saturatedFats) * 100), 100)}%</span>
-              </div>
-              {totals.saturatedFats > goals.saturatedFats && (
-                <div className="text-xs text-red-400 mt-1">Over limit</div>
+              {goals.fibers > 0 && (
+                <>
+                  <div className="text-xs text-gray-400 mt-1">Goal: {goals.fibers}g</div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <div className="flex-1 bg-gray-600 rounded-full h-2">
+                      <div 
+                        className={`h-2 rounded-full transition-all ${getProgressColor(totals.fibers, goals.fibers)}`}
+                        style={{ width: `${Math.min((totals.fibers / goals.fibers) * 100, 100)}%` }}
+                      ></div>
+                    </div>
+                    <span className="text-xs font-bold text-white">{getProgressPercentage(totals.fibers, goals.fibers)}%</span>
+                  </div>
+                </>
               )}
-              {nutrientNotes.saturatedFats && (
-                <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.saturatedFats}</div>
+              {nutrientNotes.fibers && (
+                <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.fibers}</div>
               )}
             </div>
 
@@ -1772,6 +1785,39 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
               )}
               {nutrientNotes.sugars && (
                 <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.sugars}</div>
+              )}
+            </div>
+
+            <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-red-500">
+              <div className="text-xs text-gray-400 mb-1">Sat. Fats (g)</div>
+              <div 
+                className="text-lg font-bold text-white cursor-pointer hover:text-red-300 transition-colors flex items-center gap-2"
+                onClick={() => handleNutrientEdit('saturatedFats', 'Saturated Fats', totals.saturatedFats, goals.saturatedFats, 'g', true)}
+              >
+                {totals.saturatedFats.toFixed(1)}
+                <span className="text-xs text-gray-500">✏️</span>
+              </div>
+              <div className="text-xs text-gray-400 mt-1">Limit: {goals.saturatedFats}g ⚠️</div>
+              <div className="flex items-center gap-2 mt-2">
+                <div className="flex-1 bg-gray-600 rounded-full h-2">
+                  <div 
+                    className={`h-2 rounded-full transition-all ${
+                      totals.saturatedFats > goals.saturatedFats 
+                        ? 'bg-red-500' 
+                        : totals.saturatedFats > goals.saturatedFats * 0.75 
+                        ? 'bg-orange-500' 
+                        : 'bg-green-500'
+                    }`}
+                    style={{ width: `${Math.min((totals.saturatedFats / goals.saturatedFats) * 100, 100)}%` }}
+                  ></div>
+                </div>
+                <span className="text-xs font-bold text-white">{Math.min(Math.round((totals.saturatedFats / goals.saturatedFats) * 100), 100)}%</span>
+              </div>
+              {totals.saturatedFats > goals.saturatedFats && (
+                <div className="text-xs text-red-400 mt-1">Over limit</div>
+              )}
+              {nutrientNotes.saturatedFats && (
+                <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.saturatedFats}</div>
               )}
             </div>
           </div>
