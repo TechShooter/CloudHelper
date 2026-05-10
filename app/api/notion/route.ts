@@ -182,6 +182,23 @@ export async function GET(req: NextRequest) {
       }, { status: response.status });
     }
 
+    // Log what types of objects are returned from search
+    const searchResultsBreakdown = { database: 0, page: 0, other: 0 };
+    data.results?.forEach((item: any) => {
+      if (item.object === 'database') searchResultsBreakdown.database++;
+      else if (item.object === 'page') searchResultsBreakdown.page++;
+      else searchResultsBreakdown.other++;
+    });
+    
+    console.log('[NOTION] Search API results breakdown:', searchResultsBreakdown);
+    console.log('[NOTION] First 3 items from search:', data.results?.slice(0, 3).map((item: any) => ({
+      id: item.id,
+      object: item.object,
+      title: item.title?.[0]?.plain_text || 'N/A',
+      hasDataSources: item.data_sources ? item.data_sources.length : 0,
+      parent: item.parent
+    })));
+
     // Also try to fetch the specific database if provided
     const specificDatabaseId = '29aedf786daa80818d43c896d29bc6b4'; // Tasks to do db
     let specificDbFound = false;
@@ -562,7 +579,7 @@ export async function GET(req: NextRequest) {
       }
     });
 
-    console.log('Parent IDs to fetch:', Array.from(parentIdsToFetch));
+    console.log('[NOTION] Parent IDs to fetch:', Array.from(parentIdsToFetch).length, 'total');
 
     // Fetch missing parent pages/databases
     const parentPromises = Array.from(parentIdsToFetch).slice(0, 10).map(async (parentId) => {
@@ -578,7 +595,7 @@ export async function GET(req: NextRequest) {
         if (dbResponse.ok) {
           const dbData = await dbResponse.json();
           const title = dbData.title?.[0]?.plain_text || 'Untitled Database';
-          console.log('Fetching parent database:', title, parentId);
+          console.log('[NOTION] Fetching parent database:', title, parentId);
           const databasePages: any[] = [];
 
           // Fetch database entries with properties using new structure or fallback
@@ -588,7 +605,7 @@ export async function GET(req: NextRequest) {
             
             // Check if database has data_sources
             if (dbData.data_sources && dbData.data_sources.length > 0) {
-              console.log(`Parent database ${title} has ${dbData.data_sources.length} data sources`);
+              console.log(`[NOTION] Parent database ${title} has ${dbData.data_sources.length} data sources`);
               // Use data source query
               queryUrl = `https://api.notion.com/v1/data_sources/${dbData.data_sources[0].id}/query`;
             } else {
@@ -690,9 +707,39 @@ export async function GET(req: NextRequest) {
 
     const fetchedParents = await Promise.all(parentPromises);
     const validParents = fetchedParents.filter(p => p !== null);
+    
+    // Analyze fetched parents
+    const fetchedByType = { database: 0, page: 0, other: 0 };
+    validParents.forEach(p => {
+      if (p.object === 'database') fetchedByType.database++;
+      else if (p.object === 'page') fetchedByType.page++;
+      else fetchedByType.other++;
+    });
+    
+    console.log('[NOTION] Fetched parents summary:', {
+      totalRequested: Math.min(10, Array.from(parentIdsToFetch).length),
+      successfullyFetched: validParents.length,
+      byType: fetchedByType
+    });
 
     // Combine all pages
     const allPages = [...filteredPages, ...validParents];
+    
+    // Log combined breakdown
+    const combinedByType = { database: 0, data_source: 0, page: 0, other: 0 };
+    allPages.forEach(p => {
+      if (p.object === 'database') combinedByType.database++;
+      else if (p.object === 'data_source') combinedByType.data_source++;
+      else if (p.object === 'page') combinedByType.page++;
+      else combinedByType.other++;
+    });
+    
+    console.log('[NOTION] Combined pages (search + parents):', {
+      total: allPages.length,
+      fromSearch: filteredPages.length,
+      fromParentFetch: validParents.length,
+      byType: combinedByType
+    });
 
     // Build hierarchical structure
     const pageMap = new Map();
