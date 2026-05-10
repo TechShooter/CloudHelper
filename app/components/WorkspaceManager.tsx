@@ -767,6 +767,25 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     return selectedContexts.includes(`notion-${id}`);
   };
 
+  // Helper function to check if some (but not all) children are selected
+  const isPartiallySelected = (page: any): boolean => {
+    if (!page.children || page.children.length === 0) return false;
+    
+    // If the parent itself is selected, it's not partial
+    if (selectedContexts.includes(`notion-${page.id}`)) return false;
+    
+    // Check if any descendant is selected
+    const hasSelectedDescendant = (p: any): boolean => {
+      if (selectedContexts.includes(`notion-${p.id}`)) return true;
+      if (p.children && p.children.length > 0) {
+        return p.children.some((child: any) => hasSelectedDescendant(child));
+      }
+      return false;
+    };
+    
+    return hasSelectedDescendant(page);
+  };
+
   // Helper function to check if a child is selected via its parent database
   const isChildSelectedViaParent = (childId: string): boolean => {
     const child = allNotionPages.find(p => p.id === childId);
@@ -799,7 +818,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     });
   };
 
-  // Modified toggle context to handle database/data source selection
+  // Modified toggle context to handle three-way selection for databases/data sources
   const toggleContext = (id: string) => {
     setSelectedContexts(prev => {
       const pageId = id.replace('notion-', '');
@@ -823,19 +842,42 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       
       console.log('toggleContext - pageId:', pageId);
       console.log('toggleContext - pageToSelect:', pageToSelect);
-      console.log('toggleContext - isDatabase:', pageToSelect?.object === 'database');
-      console.log('toggleContext - isDataSource:', pageToSelect?.object === 'data_source');
       
-      if (prev.includes(id)) {
-        // Deselecting - just remove this item
-        // Children will be automatically excluded by getNotionPages()
-        console.log('toggleContext - removing item:', id);
-        return prev.filter(c => c !== id);
+      // For databases and data sources, implement three-way selection
+      if (pageToSelect && (pageToSelect.object === 'database' || pageToSelect.object === 'data_source')) {
+        const isCurrentlySelected = prev.includes(id);
+        
+        if (isCurrentlySelected) {
+          // Currently selected (all children included) -> deselect completely
+          console.log('toggleContext - deselecting database/data source:', id);
+          return prev.filter(c => c !== id);
+        } else {
+          // Not selected or partially selected -> select all (just add parent)
+          console.log('toggleContext - selecting database/data source:', id);
+          // Remove any individual child selections and add parent
+          const getAllDescendantIds = (p: any): string[] => {
+            const ids: string[] = [];
+            if (p.children && p.children.length > 0) {
+              p.children.forEach((child: any) => {
+                ids.push(`notion-${child.id}`);
+                ids.push(...getAllDescendantIds(child));
+              });
+            }
+            return ids;
+          };
+          const descendantIds = getAllDescendantIds(pageToSelect);
+          // Remove all descendants and add parent
+          return [...prev.filter(c => !descendantIds.includes(c)), id];
+        }
       } else {
-        // Selecting - just add this item
-        // Children will be automatically included by getNotionPages()
-        console.log('toggleContext - adding item:', id);
-        return [...prev, id];
+        // Regular page - simple toggle
+        if (prev.includes(id)) {
+          console.log('toggleContext - removing item:', id);
+          return prev.filter(c => c !== id);
+        } else {
+          console.log('toggleContext - adding item:', id);
+          return [...prev, id];
+        }
       }
     });
   };
@@ -982,25 +1024,37 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
             )}
             {!hasChildren && <span className="w-5 inline-block"></span>}
             
-            <input
-              type="checkbox"
-              checked={
-                isDatabase || isDataSource
-                  ? isDatabaseSelected(page.id)
-                  : selectedContexts.includes(`notion-${page.id}`) || isChildSelectedViaParent(page.id)
-              }
-              onChange={() => toggleContext(`notion-${page.id}`)}
-              className="form-checkbox h-4 w-4 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500"
-              title={
-                (isDatabase || isDataSource) && isDatabaseSelected(page.id)
-                  ? `${isDataSource ? 'Data source' : 'Database'} selected with all its content (${getDatabaseChildren(page.id).length} items included)`
-                  : (isDatabase || isDataSource)
-                    ? `Select to include all ${isDataSource ? 'data source' : 'database'} content`
-                    : isChildSelectedViaParent(page.id)
-                      ? 'Included via parent selection'
-                      : 'Select this page'
-              }
-            />
+            {(() => {
+              const isChecked = (isDatabase || isDataSource)
+                ? isDatabaseSelected(page.id)
+                : selectedContexts.includes(`notion-${page.id}`) || isChildSelectedViaParent(page.id);
+              const isIndeterminate = (isDatabase || isDataSource) && !isChecked && isPartiallySelected(page);
+              
+              return (
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    ref={(el) => {
+                      if (el) el.indeterminate = isIndeterminate;
+                    }}
+                    onChange={() => toggleContext(`notion-${page.id}`)}
+                    className="form-checkbox h-4 w-4 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500"
+                    title={
+                      isIndeterminate
+                        ? `Some children selected - click to select all ${isDataSource ? 'items' : 'content'}`
+                        : (isDatabase || isDataSource) && isChecked
+                          ? `${isDataSource ? 'Data source' : 'Database'} selected with all its content - click to deselect`
+                          : (isDatabase || isDataSource)
+                            ? `Select to include all ${isDataSource ? 'data source' : 'database'} content`
+                            : isChildSelectedViaParent(page.id)
+                              ? 'Included via parent selection'
+                              : 'Select this page'
+                    }
+                  />
+                </div>
+              );
+            })()}
             
             <div className="flex items-center gap-2 flex-1 min-w-0">
               {isDatabase && (

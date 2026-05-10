@@ -14,10 +14,35 @@ function extractProperty(prop: any): string {
   }
   
   // Simple string types
-  if (['text', 'number', 'select', 'date', 'url', 'email', 'phone', 'status'].includes(type)) {
-    if (type === 'text') return prop.text?.content || '';
-    if (type === 'number') return prop.number?.toString() || '';
-    return prop[type]?.name || prop[type]?.start || prop[type] || '';
+  if (type === 'number') {
+    return prop.number !== null && prop.number !== undefined ? prop.number.toString() : '';
+  }
+  
+  if (type === 'select') {
+    return prop.select?.name || '';
+  }
+  
+  if (type === 'status') {
+    return prop.status?.name || '';
+  }
+  
+  if (type === 'date') {
+    if (prop.date?.start) {
+      return prop.date.end ? `${prop.date.start} to ${prop.date.end}` : prop.date.start;
+    }
+    return '';
+  }
+  
+  if (type === 'url') {
+    return prop.url || '';
+  }
+  
+  if (type === 'email') {
+    return prop.email || '';
+  }
+  
+  if (type === 'phone') {
+    return prop.phone_number || '';
   }
   
   // Boolean
@@ -26,12 +51,33 @@ function extractProperty(prop: any): string {
   // Array types
   if (type === 'multi_select') return prop.multi_select?.map((s: any) => s.name).join(', ') || '';
   if (type === 'relation') return prop.relation?.map((r: any) => r.id).join(', ') || '';
-  if (type === 'people') return prop.people?.map((p: any) => p.name).join(', ') || '';
-  if (type === 'files') return prop.files?.map((f: any) => f.name || f.external?.url).join(', ') || '';
+  if (type === 'people') return prop.people?.map((p: any) => p.name || p.id).join(', ') || '';
+  if (type === 'files') return prop.files?.map((f: any) => f.name || f.external?.url || f.file?.url).join(', ') || '';
   
   // Complex types
-  if (type === 'formula') return extractProperty(prop.formula);
-  if (type === 'rollup') return prop.rollup?.array?.map((r: any) => extractProperty(r)).join(', ') || '';
+  if (type === 'formula') {
+    if (prop.formula?.type === 'string') return prop.formula.string || '';
+    if (prop.formula?.type === 'number') return prop.formula.number?.toString() || '';
+    if (prop.formula?.type === 'boolean') return prop.formula.boolean ? 'Yes' : 'No';
+    if (prop.formula?.type === 'date') return prop.formula.date?.start || '';
+    return '';
+  }
+  
+  if (type === 'rollup') {
+    if (prop.rollup?.type === 'number') return prop.rollup.number?.toString() || '';
+    if (prop.rollup?.type === 'date') return prop.rollup.date?.start || '';
+    if (prop.rollup?.type === 'array') return prop.rollup.array?.map((r: any) => extractProperty(r)).filter((v: string) => v).join(', ') || '';
+    return '';
+  }
+  
+  // Created/edited metadata
+  if (type === 'created_time' || type === 'last_edited_time') {
+    return prop[type] || '';
+  }
+  
+  if (type === 'created_by' || type === 'last_edited_by') {
+    return prop[type]?.name || prop[type]?.id || '';
+  }
   
   return '';
 }
@@ -208,9 +254,12 @@ export async function GET(req: NextRequest) {
                       let entryTitle = 'Untitled';
                       let entryProps: string[] = [];
 
+                      console.log('Processing entry:', entry.id, 'Properties:', Object.keys(entry.properties || {}));
+
                       if (entry.properties) {
                         for (const [propName, propValue] of Object.entries(entry.properties)) {
                           const value = extractProperty(propValue as any);
+                          console.log(`Property ${propName} (${(propValue as any).type}):`, value);
                           if (value) {
                             if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
                               entryTitle = value;
@@ -221,10 +270,8 @@ export async function GET(req: NextRequest) {
                         }
                       }
 
-                      let entryContent = `Entry: ${entryTitle}\n`;
-                      if (entryProps.length > 0) {
-                        entryContent += entryProps.join('\n') + '\n';
-                      }
+                      console.log('Entry title:', entryTitle, 'Props:', entryProps);
+                      let entryContent = entryProps.length > 0 ? entryProps.join('\n') : '';
 
                       dataSourcePages.push({
                         id: entry.id,
@@ -242,7 +289,7 @@ export async function GET(req: NextRequest) {
                   dataSourceObjects.push({
                     id: dsRef.id,
                     title: dsTitle,
-                    content: `Data Source: ${dsTitle}\n\nContains ${dataSourcePages.length} items\n`,
+                    content: '', // Empty - content will come from children
                     parent: { type: 'database_id', database_id: databaseId },
                     object: 'data_source',
                     children: dataSourcePages
@@ -257,7 +304,7 @@ export async function GET(req: NextRequest) {
             return {
               id: databaseId,
               title: dbTitle,
-              content: `Database: ${dbTitle}\n\n`,
+              content: '', // Empty - content comes from data sources
               parent: item.parent,
               object: 'database',
               children: dataSourceObjects
@@ -266,6 +313,7 @@ export async function GET(req: NextRequest) {
             // Handle regular page
             const pageId = item.id;
             let title = 'Untitled';
+            let pageProperties: string[] = [];
 
             console.log('Processing page:', item.id, 'Properties:', JSON.stringify(item.properties, null, 2));
 
@@ -282,6 +330,22 @@ export async function GET(req: NextRequest) {
                 title = titleProp.title[0].plain_text;
               }
             }
+
+            // Extract ALL properties (not just title)
+            if (item.properties) {
+              for (const [propName, propValue] of Object.entries(item.properties)) {
+                // Skip title property as it's already used
+                if ((propValue as any).type === 'title') continue;
+                
+                const value = extractProperty(propValue as any);
+                console.log(`Page property ${propName} (${(propValue as any).type}):`, value);
+                if (value) {
+                  pageProperties.push(`${propName}: ${value}`);
+                }
+              }
+            }
+
+            console.log('Page title:', title, 'Properties:', pageProperties);
 
             if (title === 'Untitled' && item.parent?.type === 'page_id') {
               const parentResponse = await fetch(`https://api.notion.com/v1/pages/${item.parent.page_id}`, {
@@ -344,6 +408,12 @@ export async function GET(req: NextRequest) {
             const blocksData = await blocksResponse.json();
             let content = '';
 
+            // Add properties first
+            if (pageProperties.length > 0) {
+              content += pageProperties.join('\n') + '\n\n';
+            }
+
+            // Then add block content
             // Use for loop instead of forEach to handle async nested block extraction
             for (const block of blocksData.results || []) {
               if (block.type === 'paragraph') {
@@ -546,14 +616,24 @@ export async function GET(req: NextRequest) {
 
     // Aggregate content for databases and data sources
     const aggregateContent = (page: any): any => {
-      if ((page.object === 'database' || page.object === 'data_source') && page.children && page.children.length > 0) {
-        let aggregatedContent = page.content || '';
-        const itemType = page.object === 'database' ? 'Data Sources' : 'Items';
-        aggregatedContent += `\n\n=== ${itemType} ===\n\n`;
-        page.children.forEach((child: any, idx: number) => {
-          const processedChild = aggregateContent(child);
-          aggregatedContent += `${itemType === 'Data Sources' ? 'Data Source' : 'Item'} ${idx + 1}: ${processedChild.title}\n${processedChild.content}\n\n---\n\n`;
+      if (page.object === 'database' && page.children && page.children.length > 0) {
+        // Database: aggregate all data sources
+        let aggregatedContent = `Database: ${page.title}\n\n`;
+        page.children.forEach((dataSource: any) => {
+          const processedDS = aggregateContent(dataSource);
+          aggregatedContent += processedDS.content;
         });
+        return { ...page, content: aggregatedContent, children: page.children.map(aggregateContent) };
+      } else if (page.object === 'data_source' && page.children && page.children.length > 0) {
+        // Data source: list all items with their properties
+        let aggregatedContent = `Data Source: ${page.title}\n`;
+        page.children.forEach((item: any, idx: number) => {
+          aggregatedContent += `\n${idx + 1}. ${item.title}\n`;
+          if (item.content && item.content.trim()) {
+            aggregatedContent += `${item.content}\n`;
+          }
+        });
+        aggregatedContent += '\n';
         return { ...page, content: aggregatedContent, children: page.children.map(aggregateContent) };
       }
       return { ...page, children: page.children?.map(aggregateContent) || [] };
