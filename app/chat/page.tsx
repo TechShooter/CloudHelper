@@ -47,7 +47,7 @@ export default function Home() {
               sheetId: '1FvjfZ5a-OMM2ScO2lJewBFIrbnWvgQKJug_Ve32gAQA'
             })
           }).catch(() => null),
-          fetch('/api/notion/stream').catch(() => null)
+          fetch('/api/notion').catch(() => null)
         ]);
         
         if (sheetsRes && sheetsRes.ok) {
@@ -55,32 +55,12 @@ export default function Home() {
           if (sheetsData.sheets) setSheetData(sheetsData.sheets);
         }
         
-        // Stream notion pages
+        // Load notion pages with hierarchy
         if (notionRes && notionRes.ok) {
-          const reader = notionRes.body?.getReader();
-          if (reader) {
-            const decoder = new TextDecoder();
-            const pages: any[] = [];
-            let buffer = '';
-            
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split('\n');
-              buffer = lines.pop() || '';
-              
-              for (const line of lines) {
-                if (!line.trim()) continue;
-                try {
-                  const page = JSON.parse(line);
-                  if (!page.error) {
-                    pages.push(page);
-                    setNotionPages([...pages]);
-                  }
-                } catch {}
-              }
-            }
+          const notionData = await notionRes.json();
+          if (notionData.pages) {
+            setNotionPages(notionData.pages);
+            setHierarchicalNotionPages(notionData.hierarchicalPages || []);
           }
         }
       } catch (error) {
@@ -93,31 +73,12 @@ export default function Home() {
 
   const reloadNotion = async () => {
     try {
-      const res = await fetch('/api/notion/stream');
-      const reader = res.body?.getReader();
-      if (!reader) return;
+      const res = await fetch('/api/notion');
+      const data = await res.json();
       
-      const decoder = new TextDecoder();
-      const pages: any[] = [];
-      let buffer = '';
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const page = JSON.parse(line);
-            if (!page.error) {
-              pages.push(page);
-              setNotionPages([...pages]);
-            }
-          } catch {}
-        }
+      if (data.pages) {
+        setNotionPages(data.pages);
+        setHierarchicalNotionPages(data.hierarchicalPages || []);
       }
     } catch (error) {
       console.error('Failed to reload:', error);

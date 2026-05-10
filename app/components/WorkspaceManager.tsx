@@ -755,8 +755,27 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     }
   };
 
-// Enhanced hierarchical rendering with toggle functionality
-  const renderHierarchicalPages = (pages: any[], level = 0): ReactNode[] => {
+// Helper function to build hierarchy path for a page
+  const buildHierarchyPath = (page: any, allPages: any[]): string => {
+    const path: string[] = [page.title];
+    let currentParent = page.parent;
+    
+    while (currentParent && (currentParent.page_id || currentParent.database_id)) {
+      const parentId = currentParent.page_id || currentParent.database_id;
+      const parentPage = allPages.find(p => p.id === parentId);
+      if (parentPage) {
+        path.unshift(parentPage.title);
+        currentParent = parentPage.parent;
+      } else {
+        break;
+      }
+    }
+    
+    return path.join(' > ');
+  };
+
+  // Enhanced hierarchical rendering with toggle functionality
+  const renderHierarchicalPages = (pages: any[], level = 0, parentPath: string[] = []): ReactNode[] => {
     // Sort pages based on current sort order
     const sortedPages = [...pages].sort((a, b) => {
       if (sortOrder === 'title') {
@@ -775,57 +794,101 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       const isDatabase = page.object === 'database';
       const hasChildren = page.children && page.children.length > 0;
       const isExpanded = expandedPages.has(page.id);
-      const indent = level > 0 ? '  '.repeat(level) : '';
-      const bgColor = isDatabase ? 'bg-purple-900/30' : level === 0 ? 'bg-gray-800' : level === 1 ? 'bg-gray-750' : 'bg-gray-700';
-      const borderLeft = level > 0 ? 'border-l-2 border-purple-500/30' : isDatabase ? 'border-l-4 border-purple-500' : '';
+      const currentPath = [...parentPath, page.title];
+      
+      // Enhanced visual hierarchy with better colors and spacing
+      const bgColor = isDatabase 
+        ? 'bg-purple-900/40 border-purple-600/50' 
+        : level === 0 
+          ? 'bg-gray-800/80' 
+          : level === 1 
+            ? 'bg-gray-750/60' 
+            : 'bg-gray-700/40';
+      
+      const borderLeft = level > 0 
+        ? `border-l-2 ${isDatabase ? 'border-purple-400' : 'border-purple-500/30'}` 
+        : isDatabase 
+          ? 'border-l-4 border-purple-500' 
+          : '';
+      
+      const marginLeft = level > 0 ? (level === 1 ? 'ml-6' : 'ml-10') : '';
       
       const elements: ReactNode[] = [];
       
       elements.push(
-        <div key={page.id} className={`flex items-center justify-between gap-2 text-sm p-2 rounded ${bgColor} ${borderLeft} ${level > 0 ? 'ml-4' : ''}`}>
-          <label className="flex items-center gap-2 flex-1">
+        <div key={page.id} className={`flex items-center justify-between gap-2 text-sm p-2 rounded-lg ${bgColor} ${borderLeft} ${marginLeft} transition-all duration-200 hover:opacity-90`}>
+          <label className="flex items-center gap-2 flex-1 cursor-pointer">
             {hasChildren && (
               <button
-                onClick={() => toggleExpanded(page.id)}
-                className="text-gray-400 hover:text-white mr-1 font-bold cursor-pointer"
-                title={isExpanded ? 'Collapse' : 'Expand'}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleExpanded(page.id);
+                }}
+                className="text-purple-400 hover:text-purple-300 mr-1 font-bold cursor-pointer transition-colors duration-150"
+                title={isExpanded ? 'Collapse children' : 'Expand children'}
               >
-                {isExpanded ? '▼' : '▶'}
+                <span className={`inline-block transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}>
+                  ▶
+                </span>
               </button>
             )}
-            {!hasChildren && <span className="w-4"></span>}
+            {!hasChildren && <span className="w-5 inline-block"></span>}
+            
             <input
               type="checkbox"
               checked={selectedContexts.includes(`notion-${page.id}`)}
               onChange={() => toggleContext(`notion-${page.id}`)}
-              className="form-checkbox h-4 w-4"
+              className="form-checkbox h-4 w-4 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500"
             />
-            <div className="flex items-center gap-2 flex-1">
-              {isDatabase && <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded font-bold">DATABASE</span>}
-              <span className={`${isDatabase ? 'font-bold text-purple-200' : level > 0 ? 'text-xs' : ''} ${level > 1 ? 'text-gray-400' : 'text-purple-300'}`}>
-                {indent}{page.title}
+            
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              {isDatabase && (
+                <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-md font-bold whitespace-nowrap">
+                  DATABASE
+                </span>
+              )}
+              
+              <span className={`
+                ${isDatabase ? 'font-bold text-purple-200' : ''} 
+                ${level > 0 ? 'text-xs' : 'text-sm'} 
+                ${level > 1 ? 'text-gray-400' : 'text-purple-300'}
+                truncate
+              `}>
+                {page.title}
               </span>
+              
+              {level > 0 && (
+                <span className="text-xs text-gray-500 bg-gray-700/30 px-2 py-0.5 rounded whitespace-nowrap" title={currentPath.join(' > ')}>
+                  {parentPath[parentPath.length - 1]} →
+                </span>
+              )}
+              
               {page.url && (
                 <a
                   href={page.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-400 hover:text-blue-300 text-xs"
+                  className="text-blue-400 hover:text-blue-300 text-xs flex-shrink-0"
                   title="Open in Notion"
                 >
                   🔗
                 </a>
               )}
+              
               {hasChildren && (
-                <span className="text-xs text-gray-500">
-                  ({page.children.length} {isDatabase ? 'items' : 'pages'})
+                <span className="text-xs text-gray-500 bg-gray-700/50 px-2 py-0.5 rounded-full whitespace-nowrap">
+                  {page.children.length} {isDatabase ? 'items' : 'sub-pages'}
                 </span>
               )}
             </div>
           </label>
-          <div className="flex items-center gap-1">
+          
+          <div className="flex items-center gap-1 flex-shrink-0">
             <button
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 if (editingTags === page.id) {
                   setEditingTags(null);
                   setTagInput('');
@@ -834,21 +897,26 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                   setTagInput((customTags[page.id] || []).join(', '));
                 }
               }}
-              className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 cursor-pointer"
+              className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 cursor-pointer transition-colors duration-150"
               title="Edit tags"
             >
               🏷️
             </button>
+            
             <button
-              onClick={() => toggleDefaultDoc(`notion-${page.id}`)}
-              className={`text-xs px-2 py-1 rounded cursor-pointer ${
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleDefaultDoc(`notion-${page.id}`);
+              }}
+              className={`text-xs px-2 py-1 rounded cursor-pointer transition-colors duration-150 ${
                 isDefaultDoc(`notion-${page.id}`)
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
               title="Mark as default for this chat"
             >
-              {isDefaultDoc(`notion-${page.id}`) ? '✓ Default' : 'Default'}
+              {isDefaultDoc(`notion-${page.id}`) ? '✓' : '⭐'}
             </button>
           </div>
         </div>
@@ -856,13 +924,14 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       
       if (editingTags === page.id) {
         elements.push(
-          <div key={`${page.id}-tags`} className={`flex gap-2 p-2 bg-gray-750 rounded mt-1 ${level > 0 ? 'ml-4' : ''}`}>
+          <div key={`${page.id}-tags`} className={`flex gap-2 p-2 bg-gray-750/60 rounded-lg mt-1 ${marginLeft} border-l-2 border-purple-500/20`}>
             <input
               type="text"
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
               placeholder="Enter tags separated by commas"
-              className="flex-1 px-2 py-1 text-xs bg-gray-700 text-white rounded border border-gray-600"
+              className="flex-1 px-2 py-1 text-xs bg-gray-700 text-white rounded border border-gray-600 focus:border-purple-500 focus:outline-none"
+              autoFocus
             />
             <button
               onClick={() => {
@@ -871,7 +940,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                 setEditingTags(null);
                 setTagInput('');
               }}
-              className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 cursor-pointer"
+              className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 cursor-pointer transition-colors duration-150"
             >
               Save
             </button>
@@ -880,7 +949,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                 setEditingTags(null);
                 setTagInput('');
               }}
-              className="text-xs bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-700 cursor-pointer"
+              className="text-xs bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-700 cursor-pointer transition-colors duration-150"
             >
               Cancel
             </button>
@@ -888,9 +957,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         );
       }
 
-      // Only render children if expanded
+      // Only render children if expanded - with smooth animation
       if (hasChildren && isExpanded) {
-        elements.push(...renderHierarchicalPages(page.children, level + 1));
+        elements.push(
+          <div key={`${page.id}-children`} className={`${marginLeft} overflow-hidden transition-all duration-300`}>
+            {renderHierarchicalPages(page.children, level + 1, currentPath)}
+          </div>
+        );
       }
 
       return elements;
@@ -1178,7 +1251,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => {
-                              // Expand all pages that have children
+                              // Expand all pages that have children in hierarchical structure
                               const allPages = hierarchicalNotionPages || allNotionPages.map(p => ({ ...p, children: [] }));
                               const pagesWithChildren = new Set<string>();
                               const findPagesWithChildren = (pages: any[]) => {
