@@ -47,7 +47,9 @@ export default function Home() {
               sheetId: '1FvjfZ5a-OMM2ScO2lJewBFIrbnWvgQKJug_Ve32gAQA'
             })
           }).catch(() => null),
-          fetch('/api/notion').catch(() => null)
+          fetch(`/api/notion?t=${Date.now()}`, {
+            cache: 'no-store'
+          }).catch(() => null)
         ]);
         
         if (sheetsRes && sheetsRes.ok) {
@@ -73,7 +75,10 @@ export default function Home() {
 
   const reloadNotion = async () => {
     try {
-      const res = await fetch('/api/notion');
+      // Add cache-busting timestamp to force fresh data
+      const res = await fetch(`/api/notion?t=${Date.now()}`, {
+        cache: 'no-store'
+      });
       const data = await res.json();
       
       if (data.pages) {
