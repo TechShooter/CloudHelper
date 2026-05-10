@@ -149,6 +149,7 @@ export async function GET(req: NextRequest) {
   // This accounts for Notion API latency and multiple parallel requests
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 25000);
+  const startTime = Date.now();
   
   try {
     if (!process.env.NOTION_API_KEY || process.env.NOTION_API_KEY === 'your_notion_integration_token_here') {
@@ -157,7 +158,6 @@ export async function GET(req: NextRequest) {
     }
 
     console.log('[NOTION API] Starting request...');
-    const startTime = Date.now();
 
     const response = await fetch('https://api.notion.com/v1/search', {
       method: 'POST',
