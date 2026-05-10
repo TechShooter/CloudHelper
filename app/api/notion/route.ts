@@ -772,6 +772,12 @@ export async function GET(req: NextRequest) {
       hierarchicalPages: hierarchicalPages, // New hierarchical structure
       totalResults: data.results?.length || 0,
       specificDatabaseFound: specificDbFound
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'CDN-Cache-Control': 'no-store',
+        'Cloudflare-CDN-Cache-Control': 'no-store'
+      }
     });
   } catch (error: any) {
     clearTimeout(timeoutId);
@@ -780,6 +786,13 @@ export async function GET(req: NextRequest) {
       error: error.name === 'AbortError' ? 'Request timeout - Notion API taking too long' : error.message,
       pages: [],
       hierarchicalPages: []
-    }, { status: 500 });
+    }, { 
+      status: 500,
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'CDN-Cache-Control': 'no-store',
+        'Cloudflare-CDN-Cache-Control': 'no-store'
+      }
+    });
   }
 }
