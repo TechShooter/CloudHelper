@@ -702,25 +702,67 @@ export async function GET(req: NextRequest) {
     allPages.forEach(page => {
       pageMap.set(page.id, { ...page, children: page.children || [] });
     });
+    
+    // Analyze page map contents
+    const pageMapByType = { database: 0, data_source: 0, page: 0, other: 0 };
+    allPages.forEach(p => {
+      if (p.object === 'database') pageMapByType.database++;
+      else if (p.object === 'data_source') pageMapByType.data_source++;
+      else if (p.object === 'page') pageMapByType.page++;
+      else pageMapByType.other++;
+    });
+    
+    console.log('[NOTION] Page map created:', {
+      total: pageMap.size,
+      byType: pageMapByType,
+      databaseIds: allPages.filter(p => p.object === 'database').map(p => p.id).slice(0, 5),
+      dataSourceIds: allPages.filter(p => p.object === 'data_source').map(p => p.id).slice(0, 5)
+    });
 
     // Second pass: build hierarchy
+    let parentsNotFound = 0;
+    let rootCount = 0;
+    let hierarchyChildCount = 0;
+    const missingParents: { [key: string]: string[] } = {};
+    
     allPages.forEach(page => {
       const parentId = page.parent?.page_id || page.parent?.database_id || page.parent?.data_source_id;
       
       if (!parentId || page.parent?.type === 'workspace') {
         // Root level page
         rootPages.push(pageMap.get(page.id));
+        rootCount++;
       } else if (pageMap.has(parentId)) {
         // Has a parent in our map - add to parent's children if not already there
         const parent = pageMap.get(parentId);
         const child = pageMap.get(page.id);
         if (!parent.children.find((c: any) => c.id === child.id)) {
           parent.children.push(child);
+          hierarchyChildCount++;
         }
       } else {
         // Parent not found, treat as root
+        if (!missingParents[parentId]) {
+          missingParents[parentId] = [];
+        }
+        missingParents[parentId].push(`${page.id}:${page.title}:${page.object}`);
         rootPages.push(pageMap.get(page.id));
+        parentsNotFound++;
       }
+    });
+    
+    console.log('[NOTION] Hierarchy built:', {
+      totalPages: allPages.length,
+      rootPages: rootCount,
+      hierarchyAssignedChildren: hierarchyChildCount,
+      parentsNotFound: parentsNotFound,
+      totalRootPagesArrayLength: rootPages.length,
+      missingParentIds: Object.keys(missingParents).slice(0, 10),
+      missingParentExamples: Object.entries(missingParents).slice(0, 3).map(([id, children]) => ({
+        parentId: id,
+        childrenCount: children.length,
+        children: children.slice(0, 2)
+      }))
     });
 
     // Aggregate content for databases and data sources
@@ -772,6 +814,23 @@ export async function GET(req: NextRequest) {
     };
 
     const hierarchicalPages = rootPages.map(aggregateContent);
+
+    // Analyze root pages
+    const rootPagesByType = { database: 0, data_source: 0, page: 0, other: 0 };
+    rootPages.forEach(p => {
+      if (p.object === 'database') rootPagesByType.database++;
+      else if (p.object === 'data_source') rootPagesByType.data_source++;
+      else if (p.object === 'page') rootPagesByType.page++;
+      else rootPagesByType.other++;
+    });
+    
+    console.log('[NOTION] Root pages breakdown:', rootPagesByType);
+    console.log('[NOTION] Root pages sample:', rootPages.slice(0, 3).map(p => ({
+      id: p.id,
+      title: p.title,
+      object: p.object,
+      childrenCount: p.children?.length || 0
+    })));
 
     clearTimeout(timeoutId);
     const totalTime = Date.now() - startTime;

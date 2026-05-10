@@ -60,14 +60,28 @@ export default function Home() {
         // Load notion pages with hierarchy
         if (notionRes && notionRes.ok) {
           const notionData = await notionRes.json();
+          
+          // Analyze hierarchical pages
+          const hierarchyBreakdown = { database: 0, data_source: 0, page: 0, other: 0, totalChildren: 0 };
+          notionData.hierarchicalPages?.forEach((p: any) => {
+            if (p.object === 'database') hierarchyBreakdown.database++;
+            else if (p.object === 'data_source') hierarchyBreakdown.data_source++;
+            else if (p.object === 'page') hierarchyBreakdown.page++;
+            else hierarchyBreakdown.other++;
+            hierarchyBreakdown.totalChildren += p.children?.length || 0;
+          });
+          
           console.log('[NOTION API] Response received:', {
             totalPages: notionData.pages?.length,
             totalHierarchical: notionData.hierarchicalPages?.length,
+            hierarchyBreakdown,
             firstPageTitle: notionData.pages?.[0]?.title,
             firstPageObject: notionData.pages?.[0]?.object,
-            firstPageHierarchicalTitle: notionData.hierarchicalPages?.[0]?.title,
-            firstPageHierarchicalObject: notionData.hierarchicalPages?.[0]?.object
+            firstHierarchicalTitle: notionData.hierarchicalPages?.[0]?.title,
+            firstHierarchicalObject: notionData.hierarchicalPages?.[0]?.object,
+            firstHierarchicalChildren: notionData.hierarchicalPages?.[0]?.children?.length || 0
           });
+          
           if (notionData.pages) {
             setNotionPages(notionData.pages);
             setHierarchicalNotionPages(notionData.hierarchicalPages || []);
