@@ -239,6 +239,7 @@ export async function GET(req: NextRequest) {
           console.log('[NOTION] Processing item:', item.id, 'Type:', item.object, 'Title:', item.title?.[0]?.plain_text || 'N/A');
           
           if (item.object === 'database') {
+            console.log('[NOTION] >>> PROCESSING DATABASE:', item.id, 'Title:', item.title?.[0]?.plain_text || 'N/A');
             // Database is a container - fetch its data sources
             const databaseId = item.id;
             const dbTitle = item.title?.[0]?.plain_text || 'Untitled Database';
@@ -246,6 +247,7 @@ export async function GET(req: NextRequest) {
 
             // Fetch each data source under this database
             if (item.data_sources && item.data_sources.length > 0) {
+              console.log('[NOTION] Database has data_sources:', item.data_sources.length);
               // NEW API: Database has data sources
               for (const dsRef of item.data_sources) {
                 try {
@@ -326,7 +328,7 @@ export async function GET(req: NextRequest) {
               }
             } else {
               // FALLBACK: Old database API - query database directly
-              console.log('Database has no data_sources, using fallback query API for:', databaseId, dbTitle);
+              console.log('[NOTION] Database has no data_sources, using fallback query API for:', databaseId, dbTitle);
               try {
                 const queryResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
                   method: 'POST',
@@ -391,6 +393,7 @@ export async function GET(req: NextRequest) {
                 }
 
                 // Return database with pages directly as children (no data source wrapper)
+                console.log('[NOTION] <<< RETURNING DATABASE (fallback success):', databaseId, 'Title:', dbTitle, 'Pages:', databasePages.length);
                 return {
                   id: databaseId,
                   title: dbTitle,
@@ -400,11 +403,22 @@ export async function GET(req: NextRequest) {
                   children: databasePages
                 };
               } catch (error) {
-                console.error('Error querying database (fallback):', databaseId, error);
+                console.error('[NOTION] Error querying database (fallback):', databaseId, error);
+                // Still return the database object even if query failed, so we don't lose it
+                console.log('[NOTION] <<< RETURNING DATABASE (fallback with error):', databaseId, 'Title:', dbTitle);
+                return {
+                  id: databaseId,
+                  title: dbTitle,
+                  content: 'Failed to load database contents',
+                  parent: item.parent,
+                  object: 'database',
+                  children: []
+                };
               }
             }
 
             // Return database with data sources as children
+            console.log('[NOTION] <<< RETURNING DATABASE:', databaseId, 'Title:', dbTitle, 'Children:', dataSourceObjects.length);
             return {
               id: databaseId,
               title: dbTitle,
@@ -557,7 +571,12 @@ export async function GET(req: NextRequest) {
             };
           }
         } catch (error) {
-          console.error('Error processing item:', item.id, error instanceof Error ? error.message : String(error));
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          console.error('[NOTION] Error processing item:', item.id, 'Object:', item.object, 'Title:', item.title?.[0]?.plain_text || 'N/A', 'Error:', errorMsg);
+          // Log full error stack for databases
+          if (item.object === 'database' && error instanceof Error) {
+            console.error('[NOTION] Database error stack:', error.stack);
+          }
           return null;
         }
       })
@@ -565,6 +584,22 @@ export async function GET(req: NextRequest) {
 
     // Filter out null results
     const filteredPages = pages.filter(page => page !== null);
+    
+    const processedBreakdown = { database: 0, data_source: 0, page: 0, other: 0, null: 0 };
+    pages.forEach(p => {
+      if (p === null) processedBreakdown.null++;
+      else if (p.object === 'database') processedBreakdown.database++;
+      else if (p.object === 'data_source') processedBreakdown.data_source++;
+      else if (p.object === 'page') processedBreakdown.page++;
+      else processedBreakdown.other++;
+    });
+    
+    console.log('[NOTION] After processing (including nulls):', {
+      total: pages.length,
+      filtered: filteredPages.length,
+      breakdown: processedBreakdown
+    });
+    
     console.log('[NOTION] Successfully processed pages:', filteredPages.length, 'in', Date.now() - startTime, 'ms');
     console.log('[NOTION] Pages summary:', filteredPages.map(p => ({ id: p.id, title: p.title, object: p.object, children: p.children?.length || 0 })));
 
