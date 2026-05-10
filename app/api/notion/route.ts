@@ -145,15 +145,19 @@ async function extractBlockContent(blockId: string, apiKey: string, indent: stri
 }
 
 export async function GET(req: NextRequest) {
-  // Abort controller with 15 second timeout
+  // Increase timeout for edge runtime - use 25 seconds instead of 15
+  // This accounts for Notion API latency and multiple parallel requests
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
   
   try {
     if (!process.env.NOTION_API_KEY || process.env.NOTION_API_KEY === 'your_notion_integration_token_here') {
       clearTimeout(timeoutId);
       return NextResponse.json({ error: 'Notion API key not configured' }, { status: 400 });
     }
+
+    console.log('[NOTION API] Starting request...');
+    const startTime = Date.now();
 
     const response = await fetch('https://api.notion.com/v1/search', {
       method: 'POST',
@@ -169,6 +173,7 @@ export async function GET(req: NextRequest) {
     });
 
     const data = await response.json();
+    console.log('[NOTION API] Search completed in', Date.now() - startTime, 'ms, results:', data.results?.length);
 
     if (!response.ok) {
       console.error('Notion API error:', data);
@@ -213,6 +218,9 @@ export async function GET(req: NextRequest) {
     const pages = (await Promise.all(
       data.results.map(async (item: any) => {
         try {
+          const itemStartTime = Date.now();
+          console.log('[NOTION] Processing item:', item.id, 'Type:', item.object, 'Title:', item.title?.[0]?.plain_text || 'N/A');
+          
           if (item.object === 'database') {
             // Database is a container - fetch its data sources
             const databaseId = item.id;
@@ -532,7 +540,7 @@ export async function GET(req: NextRequest) {
             };
           }
         } catch (error) {
-          console.log('Error processing item:', item.id, error);
+          console.error('Error processing item:', item.id, error instanceof Error ? error.message : String(error));
           return null;
         }
       })
@@ -540,8 +548,8 @@ export async function GET(req: NextRequest) {
 
     // Filter out null results
     const filteredPages = pages.filter(page => page !== null);
-    console.log('Successfully processed pages:', filteredPages.length);
-    console.log('Processed pages:', filteredPages.map(p => ({ id: p.id, title: p.title, object: p.object })));
+    console.log('[NOTION] Successfully processed pages:', filteredPages.length, 'in', Date.now() - startTime, 'ms');
+    console.log('[NOTION] Pages summary:', filteredPages.map(p => ({ id: p.id, title: p.title, object: p.object, children: p.children?.length || 0 })));
 
     // Collect all parent IDs that need to be fetched (including databases)
     const parentIdsToFetch = new Set<string>();
@@ -766,6 +774,13 @@ export async function GET(req: NextRequest) {
     const hierarchicalPages = rootPages.map(aggregateContent);
 
     clearTimeout(timeoutId);
+    const totalTime = Date.now() - startTime;
+    console.log('[NOTION API] Returning response:', {
+      totalPages: filteredPages.length,
+      hierarchicalPagesCount: hierarchicalPages.length,
+      totalTime: totalTime + 'ms',
+      cacheHeaders: 'no-store'
+    });
     
     return NextResponse.json({
       pages: filteredPages, // Keep flat list for backward compatibility
@@ -781,7 +796,8 @@ export async function GET(req: NextRequest) {
     });
   } catch (error: any) {
     clearTimeout(timeoutId);
-    console.error('Notion API error:', error.message);
+    const totalTime = Date.now() - startTime;
+    console.error('[NOTION API] Error after', totalTime, 'ms:', error.name, error.message);
     return NextResponse.json({ 
       error: error.name === 'AbortError' ? 'Request timeout - Notion API taking too long' : error.message,
       pages: [],

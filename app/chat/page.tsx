@@ -60,6 +60,14 @@ export default function Home() {
         // Load notion pages with hierarchy
         if (notionRes && notionRes.ok) {
           const notionData = await notionRes.json();
+          console.log('[NOTION API] Response received:', {
+            totalPages: notionData.pages?.length,
+            totalHierarchical: notionData.hierarchicalPages?.length,
+            firstPageTitle: notionData.pages?.[0]?.title,
+            firstPageObject: notionData.pages?.[0]?.object,
+            firstPageHierarchicalTitle: notionData.hierarchicalPages?.[0]?.title,
+            firstPageHierarchicalObject: notionData.hierarchicalPages?.[0]?.object
+          });
           if (notionData.pages) {
             setNotionPages(notionData.pages);
             setHierarchicalNotionPages(notionData.hierarchicalPages || []);

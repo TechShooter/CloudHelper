@@ -508,6 +508,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set());
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [customTags, setCustomTags] = useState<{ [pageId: string]: string[] }>({});
+  const [loggedExtractTags] = useState<Set<string>>(new Set());
   const [editingTags, setEditingTags] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState('');
   const [expandedPreviewPages, setExpandedPreviewPages] = useState<Set<string>>(new Set());
@@ -1199,6 +1200,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     const tags: string[] = [];
     const title = page.title?.toLowerCase() || '';
     
+    // Debug logging (only once per page to avoid spam)
+    if (!loggedExtractTags.has(page.id) && page.object !== 'page') {
+      console.log('[extractTags] Page ID:', page.id, 'Title:', page.title, 'Object:', page.object, 'titleLength:', title.length);
+      loggedExtractTags.add(page.id);
+    }
+    
     // Simple keyword-based tagging
     if (title.includes('task') || title.includes('todo') || title.includes('goals')) tags.push('Tasks');
     if (title.includes('timeline') || title.includes('schedule') || title.includes('calendar')) tags.push('Timeline');
@@ -1207,11 +1214,24 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     if (title.includes('emotion') || title.includes('mood') || title.includes('wellbeing')) tags.push('Wellbeing');
     if (title.includes('research') || title.includes('study') || title.includes('analysis')) tags.push('Research');
     
-    // Database indicator
+    // Database and data source indicators - these should be tagged even without keywords
     if (page.object === 'database') tags.push('Database');
     if (page.object === 'data_source') tags.push('Data Source');
     
-    return tags.length > 0 ? tags : ['Other'];
+    // If no tags found, check if we have content with specific patterns
+    if (tags.length === 0 && page.content) {
+      const contentLower = page.content.toLowerCase();
+      if (contentLower.includes('database:') || contentLower.includes('data source:')) {
+        // This is likely a parent page with database content
+        return ['Database'];
+      }
+    }
+    
+    const result = tags.length > 0 ? tags : ['Other'];
+    if (result[0] === 'Other' && title.length === 0) {
+      console.log('[extractTags] WARNING - Page has no title:', page.id, 'Object:', page.object, 'Content preview:', page.content?.substring(0, 50));
+    }
+    return result;
   };
 
   // Group pages by tags
