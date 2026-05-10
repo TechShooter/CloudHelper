@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, forwardRef, useImperativeHandle, Suspense, lazy } from 'react';
-import type { ReactNode } from 'react';
+import type { ReactNode, JSX } from 'react';
 
 // Dynamic imports to reduce bundle size - these components are huge!
 const ChatInterface = lazy(() => import('./ChatInterface'));
@@ -669,10 +669,60 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
   // Filter Notion pages based on selected contexts (user has total control)
   const getNotionPages = () => {
-    // Only return pages that are explicitly selected by the user
-    return allNotionPages.filter((page: any) =>
-      selectedContexts.includes(`notion-${page.id}`)
+    const selectedPageIds = new Set(
+      selectedContexts
+        .filter(ctx => ctx.startsWith('notion-'))
+        .map(ctx => ctx.replace('notion-', ''))
     );
+
+    const resultPages: any[] = [];
+    const processedIds = new Set<string>();
+
+    // Helper to recursively find pages in hierarchical structure
+    const findPageInHierarchy = (pages: any[], targetId: string): any => {
+      for (const page of pages) {
+        if (page.id === targetId) return page;
+        if (page.children && page.children.length > 0) {
+          const found = findPageInHierarchy(page.children, targetId);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    selectedPageIds.forEach(pageId => {
+      // Try to find in flat list first
+      let page = allNotionPages.find(p => p.id === pageId);
+      
+      // If not found, try hierarchical structure
+      if (!page && hierarchicalNotionPages) {
+        page = findPageInHierarchy(hierarchicalNotionPages, pageId);
+      }
+      
+      if (page && !processedIds.has(pageId)) {
+        resultPages.push(page);
+        processedIds.add(pageId);
+
+        // If this is a database or data source, add all its children recursively
+        if (page.object === 'database' || page.object === 'data_source') {
+          const addChildren = (parent: any) => {
+            if (parent.children && parent.children.length > 0) {
+              parent.children.forEach((child: any) => {
+                if (!processedIds.has(child.id)) {
+                  resultPages.push(child);
+                  processedIds.add(child.id);
+                  // Recursively add nested children
+                  addChildren(child);
+                }
+              });
+            }
+          };
+          addChildren(page);
+        }
+      }
+    });
+
+    return resultPages;
   };
 
   // Clean up stale page IDs from selectedContexts when pages are loaded
@@ -697,10 +747,97 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     setSelectedContexts(getAutoContexts());
   }, [activeWorkspace, defaultDocs]);
 
+  // Helper function to get all descendant pages from a database
+  const getAllDescendants = (page: any): any[] => {
+    if (!page.children || page.children.length === 0) {
+      return [page];
+    }
+    
+    let descendants = [page];
+    page.children.forEach((child: any) => {
+      descendants = [...descendants, ...getAllDescendants(child)];
+    });
+    
+    return descendants;
+  };
+
+  // Helper function to check if a database or data source is selected
+  const isDatabaseSelected = (id: string): boolean => {
+    // Check if the database/data source itself is selected
+    return selectedContexts.includes(`notion-${id}`);
+  };
+
+  // Helper function to check if a child is selected via its parent database
+  const isChildSelectedViaParent = (childId: string): boolean => {
+    const child = allNotionPages.find(p => p.id === childId);
+    if (!child || !child.parent) return false;
+    
+    // Check if any parent database is selected
+    let currentParent = child.parent;
+    while (currentParent && (currentParent.page_id || currentParent.database_id)) {
+      const parentId = currentParent.page_id || currentParent.database_id;
+      const parentPage = allNotionPages.find(p => p.id === parentId);
+      if (parentPage && parentPage.object === 'database') {
+        return isDatabaseSelected(parentId);
+      }
+      if (parentPage && parentPage.parent) {
+        currentParent = parentPage.parent;
+      } else {
+        break;
+      }
+    }
+    
+    return false;
+  };
+
+  // Helper function to get all children of a database or data source from allNotionPages
+  const getDatabaseChildren = (parentId: string): any[] => {
+    return allNotionPages.filter(page => {
+      if (!page.parent) return false;
+      const pageParentId = page.parent.page_id || page.parent.database_id || page.parent.data_source_id;
+      return pageParentId === parentId;
+    });
+  };
+
+  // Modified toggle context to handle database/data source selection
   const toggleContext = (id: string) => {
-    setSelectedContexts(prev =>
-      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
-    );
+    setSelectedContexts(prev => {
+      const pageId = id.replace('notion-', '');
+      // Check both arrays for the page
+      let pageToSelect = allNotionPages.find(p => p.id === pageId);
+      
+      // If not found in flat list, search hierarchical structure
+      if (!pageToSelect && hierarchicalNotionPages) {
+        const findInHierarchy = (pages: any[], targetId: string): any => {
+          for (const page of pages) {
+            if (page.id === targetId) return page;
+            if (page.children && page.children.length > 0) {
+              const found = findInHierarchy(page.children, targetId);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        pageToSelect = findInHierarchy(hierarchicalNotionPages, pageId);
+      }
+      
+      console.log('toggleContext - pageId:', pageId);
+      console.log('toggleContext - pageToSelect:', pageToSelect);
+      console.log('toggleContext - isDatabase:', pageToSelect?.object === 'database');
+      console.log('toggleContext - isDataSource:', pageToSelect?.object === 'data_source');
+      
+      if (prev.includes(id)) {
+        // Deselecting - just remove this item
+        // Children will be automatically excluded by getNotionPages()
+        console.log('toggleContext - removing item:', id);
+        return prev.filter(c => c !== id);
+      } else {
+        // Selecting - just add this item
+        // Children will be automatically included by getNotionPages()
+        console.log('toggleContext - adding item:', id);
+        return [...prev, id];
+      }
+    });
   };
 
   const toggleDefaultDoc = (id: string) => {
@@ -781,9 +918,14 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       if (sortOrder === 'title') {
         return a.title.localeCompare(b.title);
       } else if (sortOrder === 'type') {
-        const aType = a.object === 'database' ? 'database' : 'page';
-        const bType = b.object === 'database' ? 'database' : 'page';
-        if (aType !== bType) return aType === 'database' ? -1 : 1;
+        const aType = a.object === 'database' ? 'database' : a.object === 'data_source' ? 'data_source' : 'page';
+        const bType = b.object === 'database' ? 'database' : b.object === 'data_source' ? 'data_source' : 'page';
+        if (aType !== bType) {
+          if (aType === 'database') return -1;
+          if (bType === 'database') return 1;
+          if (aType === 'data_source') return -1;
+          if (bType === 'data_source') return 1;
+        }
         return a.title.localeCompare(b.title);
       }
       // hierarchy - keep original order
@@ -792,24 +934,29 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
     return sortedPages.flatMap(page => {
       const isDatabase = page.object === 'database';
+      const isDataSource = page.object === 'data_source';
       const hasChildren = page.children && page.children.length > 0;
       const isExpanded = expandedPages.has(page.id);
       const currentPath = [...parentPath, page.title];
       
       // Enhanced visual hierarchy with better colors and spacing
       const bgColor = isDatabase 
-        ? 'bg-purple-900/40 border-purple-600/50' 
-        : level === 0 
-          ? 'bg-gray-800/80' 
-          : level === 1 
-            ? 'bg-gray-750/60' 
-            : 'bg-gray-700/40';
+        ? 'bg-blue-900/40 border-blue-600/50' 
+        : isDataSource
+          ? 'bg-purple-900/40 border-purple-600/50'
+          : level === 0 
+            ? 'bg-gray-800/80' 
+            : level === 1 
+              ? 'bg-gray-750/60' 
+              : 'bg-gray-700/40';
       
       const borderLeft = level > 0 
-        ? `border-l-2 ${isDatabase ? 'border-purple-400' : 'border-purple-500/30'}` 
+        ? `border-l-2 ${isDatabase || isDataSource ? 'border-purple-400' : 'border-purple-500/30'}` 
         : isDatabase 
-          ? 'border-l-4 border-purple-500' 
-          : '';
+          ? 'border-l-4 border-blue-500'
+          : isDataSource
+            ? 'border-l-4 border-purple-500' 
+            : '';
       
       const marginLeft = level > 0 ? (level === 1 ? 'ml-6' : 'ml-10') : '';
       
@@ -837,20 +984,38 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
             
             <input
               type="checkbox"
-              checked={selectedContexts.includes(`notion-${page.id}`)}
+              checked={
+                isDatabase || isDataSource
+                  ? isDatabaseSelected(page.id)
+                  : selectedContexts.includes(`notion-${page.id}`) || isChildSelectedViaParent(page.id)
+              }
               onChange={() => toggleContext(`notion-${page.id}`)}
               className="form-checkbox h-4 w-4 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500"
+              title={
+                (isDatabase || isDataSource) && isDatabaseSelected(page.id)
+                  ? `${isDataSource ? 'Data source' : 'Database'} selected with all its content (${getDatabaseChildren(page.id).length} items included)`
+                  : (isDatabase || isDataSource)
+                    ? `Select to include all ${isDataSource ? 'data source' : 'database'} content`
+                    : isChildSelectedViaParent(page.id)
+                      ? 'Included via parent selection'
+                      : 'Select this page'
+              }
             />
             
             <div className="flex items-center gap-2 flex-1 min-w-0">
               {isDatabase && (
-                <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-md font-bold whitespace-nowrap">
+                <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-md font-bold whitespace-nowrap">
                   DATABASE
+                </span>
+              )}
+              {isDataSource && (
+                <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-md font-bold whitespace-nowrap">
+                  DATA SOURCE
                 </span>
               )}
               
               <span className={`
-                ${isDatabase ? 'font-bold text-purple-200' : ''} 
+                ${isDatabase || isDataSource ? 'font-bold text-purple-200' : ''} 
                 ${level > 0 ? 'text-xs' : 'text-sm'} 
                 ${level > 1 ? 'text-gray-400' : 'text-purple-300'}
                 truncate
@@ -878,7 +1043,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
               
               {hasChildren && (
                 <span className="text-xs text-gray-500 bg-gray-700/50 px-2 py-0.5 rounded-full whitespace-nowrap">
-                  {page.children.length} {isDatabase ? 'items' : 'sub-pages'}
+                  {page.children.length} {isDatabase ? 'data sources' : isDataSource ? 'items' : 'sub-pages'}
                 </span>
               )}
             </div>
@@ -990,6 +1155,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     
     // Database indicator
     if (page.object === 'database') tags.push('Database');
+    if (page.object === 'data_source') tags.push('Data Source');
     
     return tags.length > 0 ? tags : ['Other'];
   };
@@ -1609,11 +1775,80 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                         <div>
                           <h4 className="text-sm font-medium text-gray-300 mb-2">Selected Contexts ({selectedContexts.length})</h4>
                           <div className="flex flex-wrap gap-2">
-                            {selectedContexts.map(ctx => (
-                              <span key={ctx} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">
-                                {ctx === 'sheet' ? '📊 Google Sheets' : ctx.startsWith('notion-') ? `📄 ${allNotionPages.find((p: any) => p.id === ctx.replace('notion-', ''))?.title || ctx}` : ctx}
-                              </span>
-                            ))}
+                            {(() => {
+                              const contextItems: JSX.Element[] = [];
+                              const processedIds = new Set<string>();
+                              
+                              selectedContexts.forEach(ctx => {
+                                if (ctx === 'sheet') {
+                                  contextItems.push(
+                                    <span key={ctx} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">
+                                      📊 Google Sheets
+                                    </span>
+                                  );
+                                } else if (ctx.startsWith('notion-')) {
+                                  const pageId = ctx.replace('notion-', '');
+                                  if (!processedIds.has(pageId)) {
+                                    // Find page in flat or hierarchical structure
+                                    let page = allNotionPages.find(p => p.id === pageId);
+                                    if (!page && hierarchicalNotionPages) {
+                                      const findInHierarchy = (pages: any[], targetId: string): any => {
+                                        for (const p of pages) {
+                                          if (p.id === targetId) return p;
+                                          if (p.children && p.children.length > 0) {
+                                            const found = findInHierarchy(p.children, targetId);
+                                            if (found) return found;
+                                          }
+                                        }
+                                        return null;
+                                      };
+                                      page = findInHierarchy(hierarchicalNotionPages, pageId);
+                                    }
+                                    
+                                    if (page) {
+                                      processedIds.add(pageId);
+                                      
+                                      if (page.object === 'database') {
+                                        // Count all descendants (data sources + their items)
+                                        const countDescendants = (p: any): number => {
+                                          let count = 0;
+                                          if (p.children && p.children.length > 0) {
+                                            count += p.children.length;
+                                            p.children.forEach((child: any) => {
+                                              count += countDescendants(child);
+                                            });
+                                          }
+                                          return count;
+                                        };
+                                        const totalItems = countDescendants(page);
+                                        contextItems.push(
+                                          <span key={ctx} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">
+                                            🗄️ {page.title} (+{totalItems} items)
+                                          </span>
+                                        );
+                                      } else if (page.object === 'data_source') {
+                                        // Show data source with count of items
+                                        const itemCount = page.children ? page.children.length : 0;
+                                        contextItems.push(
+                                          <span key={ctx} className="text-xs bg-purple-600 text-white px-2 py-1 rounded">
+                                            📊 {page.title} (+{itemCount} items)
+                                          </span>
+                                        );
+                                      } else {
+                                        // Regular page
+                                        contextItems.push(
+                                          <span key={ctx} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">
+                                            📄 {page.title}
+                                          </span>
+                                        );
+                                      }
+                                    }
+                                  }
+                                }
+                              });
+                              
+                              return contextItems;
+                            })()}
                             {selectedContexts.length === 0 && (
                               <span className="text-sm text-gray-500">No contexts selected</span>
                             )}
