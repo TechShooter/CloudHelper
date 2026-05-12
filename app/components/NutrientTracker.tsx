@@ -198,12 +198,8 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
   };
 
   const getInitialGoals = (): NutrientGoals => {
-    try {
-      const saved = localStorage.getItem('nutrientGoals');
-      if (saved) return JSON.parse(saved);
-    } catch (error) {
-      console.error('Failed to load goals:', error);
-    }
+    // Always return hardcoded defaults - Supabase will be fetched in useEffect
+    // Never use localStorage for goals as it contains stale data
     return {
       energyKJ: 8000,
       protein: 150,
@@ -243,39 +239,23 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
   };
 
   const getInitialWeightHistory = (): WeightEntry[] => {
-    try {
-      const saved = localStorage.getItem('weightHistory');
-      return saved ? JSON.parse(saved) : [];
-    } catch (error) {
-      return [];
-    }
+    // Always return empty array - will load from Supabase in useEffect
+    return [];
   };
 
   const getInitialGoalsText = (): string => {
-    try {
-      const saved = localStorage.getItem('goalsText');
-      return saved || '';
-    } catch (error) {
-      return '';
-    }
+    // Always return empty string - will load from Supabase in useEffect
+    return '';
   };
 
   const getInitialNotesText = (): string => {
-    try {
-      const saved = localStorage.getItem('notesText');
-      return saved || '';
-    } catch (error) {
-      return '';
-    }
+    // Always return empty string - will load from Supabase in useEffect
+    return '';
   };
 
   const getInitialNutrientNotes = (): NutrientNotes => {
-    try {
-      const saved = localStorage.getItem('nutrientNotes');
-      return saved ? JSON.parse(saved) : {};
-    } catch (error) {
-      return {};
-    }
+    // Always return empty object - will load from Supabase in useEffect
+    return {};
   };
 
   const [entries, setEntries] = useState<FoodEntry[]>(getInitialEntries());
