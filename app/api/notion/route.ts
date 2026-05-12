@@ -144,28 +144,37 @@ async function extractBlockContent(blockId: string, apiKey: string, indent: stri
   }
 }
 
-// Helper function to execute promises with concurrency limit
-async function pLimit<T>(
+// Helper function to batch and execute promises
+async function batchFetch<T>(
   tasks: Array<() => Promise<T>>,
-  concurrency: number
+  batchSize: number
 ): Promise<T[]> {
+  console.log(`[batchFetch] Starting with ${tasks.length} tasks, batch size: ${batchSize}`);
   const results: T[] = [];
-  const executing: Promise<void>[] = [];
-
-  for (const task of tasks) {
-    const promise = Promise.resolve().then(task).then(result => {
-      results.push(result);
+  
+  for (let i = 0; i < tasks.length; i += batchSize) {
+    const batch = tasks.slice(i, i + batchSize);
+    const batchNum = Math.floor(i / batchSize) + 1;
+    console.log(`[batchFetch] Processing batch ${batchNum} with ${batch.length} tasks`);
+    
+    const batchResults = await Promise.allSettled(batch.map(task => task()));
+    
+    batchResults.forEach((result, idx) => {
+      const taskNum = i + idx;
+      if (result.status === 'fulfilled' && result.value !== null) {
+        results.push(result.value);
+        console.log(`[batchFetch] Task ${taskNum} completed successfully, result:`, result.value?.id || 'no-id');
+      } else if (result.status === 'fulfilled' && result.value === null) {
+        console.log(`[batchFetch] Task ${taskNum} returned null`);
+      } else {
+        console.error(`[batchFetch] Task ${taskNum} failed:`, result.reason?.message || result.reason);
+      }
     });
-
-    executing.push(promise);
-
-    if (executing.length >= concurrency) {
-      await Promise.race(executing);
-      executing.splice(executing.findIndex(p => p === promise), 1);
-    }
+    
+    console.log(`[batchFetch] Batch ${batchNum} complete, total results so far: ${results.length}`);
   }
-
-  await Promise.all(executing);
+  
+  console.log(`[batchFetch] All batches complete, final results: ${results.length}`);
   return results;
 }
 
@@ -626,7 +635,7 @@ export async function GET(req: NextRequest) {
     });
     
     console.log('[NOTION] Successfully processed pages:', filteredPages.length, 'in', Date.now() - startTime, 'ms');
-    console.log('[NOTION] Pages summary:', filteredPages.map(p => ({ id: p.id, title: p.title, object: p.object, children: p.children?.length || 0 })));
+    console.log('[NOTION] Pages summary:', filteredPages.map(p => ({ id: p.id, title: p.title, object: p.object, children: p.children?.length || 0, parent: p.parent })));
 
     // Collect all parent IDs that need to be fetched (including databases)
     const parentIdsToFetch = new Set<string>();
@@ -637,16 +646,22 @@ export async function GET(req: NextRequest) {
       if (page.parent?.database_id && !filteredPages.find(p => p.id === page.parent.database_id)) {
         parentIdsToFetch.add(page.parent.database_id);
       }
+      if (page.parent?.data_source_id && !filteredPages.find(p => p.id === page.parent.data_source_id)) {
+        parentIdsToFetch.add(page.parent.data_source_id);
+      }
     });
 
     console.log('[NOTION] Parent IDs to fetch:', Array.from(parentIdsToFetch).length, 'total');
+    if (parentIdsToFetch.size > 0) {
+      console.log('[NOTION] First 5 parent IDs:', Array.from(parentIdsToFetch).slice(0, 5));
+    }
 
     // Fetch missing parent pages/databases
     // NOTE: Removed .slice(0, 10) limit to properly resolve all parents on Cloudflare
     // This ensures pages are correctly nested instead of becoming orphan root pages
-    // Using concurrency limit (5 concurrent) to prevent overwhelming Notion API
+    // Using batch fetching (5 per batch) to prevent overwhelming Notion API
 
-    const fetchedParents = await pLimit(
+    const fetchedParents = await batchFetch(
       Array.from(parentIdsToFetch).map(parentId => async () => {
         try {
           // Try to fetch as database first
@@ -769,8 +784,11 @@ export async function GET(req: NextRequest) {
         }
         return null;
       }),
-      5 // Concurrency limit: fetch max 5 parents at a time
+      5 // Batch size: process 5 parents per batch
     );
+    
+    console.log('[NOTION] batchFetch completed, raw results:', fetchedParents.length, 'items');
+    console.log('[NOTION] First parent result sample:', fetchedParents.slice(0, 1).map(p => p ? { id: p.id, title: p.title, object: p.object } : 'null'));
     
     const validParents = fetchedParents.filter(p => p !== null);
     
