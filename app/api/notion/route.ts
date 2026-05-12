@@ -439,11 +439,66 @@ export async function GET(req: NextRequest) {
     // CLOUDFLARE FIX: Force process known databases even if not in search results
     const knownDatabaseIds = [
       '29aedf786daa80818d43c896d29bc6b4', // Tasks to do db
-      // Add other known database IDs as needed
+      // TODO: Add the other database IDs as they are discovered
+      // From local environment, these databases should exist:
+      // - "Recurrent & Routine tasks db" 
+      // - "Projects, Big tasks db"
+      // - "Old tasks ideas, secondary db"
     ];
     let forcedDatabaseResults: any[] = [];
 
-    for (const dbId of knownDatabaseIds) {
+    // CLOUDFLARE DEBUG: Add database discovery mechanism
+    console.log('[NOTION DEBUG] Starting database discovery for Cloudflare compatibility');
+    let discoveredDatabaseIds: string[] = [];
+
+    // Try to discover databases by querying the search API with different filters
+    try {
+      // Search with database filter
+      const dbSearchResponse = await fetch('https://api.notion.com/v1/search', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+          'Notion-Version': '2026-03-11',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          filter: {
+            property: 'object',
+            value: 'database'
+          },
+          page_size: 100
+        })
+      });
+
+      if (dbSearchResponse.ok) {
+        const dbSearchData = await dbSearchResponse.json();
+        console.log('[NOTION DEBUG] Database search returned:', dbSearchData.results?.length, 'databases');
+        
+        dbSearchData.results?.forEach((db: any) => {
+          if (db.id && !discoveredDatabaseIds.includes(db.id)) {
+            discoveredDatabaseIds.push(db.id);
+            console.log('[NOTION DEBUG] Discovered database:', db.id, db.title?.[0]?.plain_text || 'Untitled');
+          }
+        });
+      }
+    } catch (error) {
+      console.log('[NOTION DEBUG] Database search failed:', error);
+    }
+
+    // Additional discovery: Look for database references in page parents
+    console.log('[NOTION DEBUG] Looking for database references in page parents...');
+    data.results?.forEach((item: any) => {
+      if (item.parent?.database_id && !discoveredDatabaseIds.includes(item.parent.database_id)) {
+        discoveredDatabaseIds.push(item.parent.database_id);
+        console.log('[NOTION DEBUG] Found database from page parent:', item.parent.database_id);
+      }
+    });
+
+    // Combine known and discovered database IDs
+    const allDatabaseIds = [...new Set([...knownDatabaseIds, ...discoveredDatabaseIds])];
+    console.log('[NOTION DEBUG] Total databases to process:', allDatabaseIds.length, allDatabaseIds);
+
+    for (const dbId of allDatabaseIds) {
       try {
         const dbResponse = await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
           headers: {
@@ -454,10 +509,17 @@ export async function GET(req: NextRequest) {
 
         if (dbResponse.ok) {
           const dbData = await dbResponse.json();
-          console.log('[NOTION] Known database found:', {
+          const dbTitle = dbData.title?.[0]?.plain_text || 'Untitled Database';
+          console.log('[NOTION] Database found:', {
             id: dbData.id,
-            title: dbData.title?.[0]?.plain_text || 'Untitled Database'
+            title: dbTitle,
+            hasDataSources: !!dbData.data_sources,
+            dataSourceCount: dbData.data_sources?.length || 0
           });
+
+          // IMPORTANT: Log database ID and title for easy identification
+          console.log('[NOTION IMPORTANT] Database ID mapping:', `"${dbTitle}" -> "${dbData.id}"`);
+          console.log('[NOTION IMPORTANT] Add this to knownDatabaseIds if missing:', dbData.id);
 
           // Force process this database even if not in search results
           console.log('[NOTION DEBUG] Forcing database processing for Cloudflare compatibility:', dbId);
@@ -467,7 +529,7 @@ export async function GET(req: NextRequest) {
             console.log('[NOTION DEBUG] Added forced database result:', forcedDb.title, 'with', forcedDb.children?.length || 0, 'children');
           }
         } else {
-          console.log('[NOTION] Known database not accessible:', dbId, dbResponse.status, dbResponse.statusText);
+          console.log('[NOTION] Database not accessible:', dbId, dbResponse.status, dbResponse.statusText);
         }
       } catch (error) {
         console.log('[NOTION] Error checking known database:', dbId, error);
