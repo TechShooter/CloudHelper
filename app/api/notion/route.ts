@@ -163,11 +163,11 @@ async function batchFetch<T>(
       const taskNum = i + idx;
       if (result.status === 'fulfilled' && result.value !== null) {
         results.push(result.value);
-        console.log(`[batchFetch] Task ${taskNum} completed successfully, result:`, result.value?.id || 'no-id');
+        console.log(`[batchFetch] Task ${taskNum} completed successfully, result:`, (result.value as any)?.id || 'no-id');
       } else if (result.status === 'fulfilled' && result.value === null) {
         console.log(`[batchFetch] Task ${taskNum} returned null`);
       } else {
-        console.error(`[batchFetch] Task ${taskNum} failed:`, result.reason?.message || result.reason);
+        console.error(`[batchFetch] Task ${taskNum} failed:`, (result as any).reason?.message || (result as any).reason);
       }
     });
     
