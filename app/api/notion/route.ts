@@ -82,6 +82,202 @@ function extractProperty(prop: any): string {
   return '';
 }
 
+// Helper function to process a database item (extracted for reuse)
+async function processDatabaseItem(item: any): Promise<any> {
+  console.log('[NOTION] >>> PROCESSING DATABASE:', item.id, 'Title:', item.title?.[0]?.plain_text || 'N/A');
+  console.log('[NOTION DEBUG] Database full object:', JSON.stringify(item, null, 2));
+  console.log('[NOTION DEBUG] Database has data_sources:', !!item.data_sources, 'length:', item.data_sources?.length);
+  
+  // Database is a container - fetch its data sources
+  const databaseId = item.id;
+  const dbTitle = item.title?.[0]?.plain_text || 'Untitled Database';
+  const dataSourceObjects: any[] = [];
+
+  // Fetch each data source under this database
+  if (item.data_sources && item.data_sources.length > 0) {
+    console.log('[NOTION] Database has data_sources:', item.data_sources.length);
+    // NEW API: Database has data sources
+    for (const dsRef of item.data_sources) {
+      try {
+        // Fetch full data source details
+        const dsResponse = await fetch(`https://api.notion.com/v1/data_sources/${dsRef.id}`, {
+          headers: {
+            'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+            'Notion-Version': '2026-03-11'
+          }
+        });
+
+        if (!dsResponse.ok) continue;
+        const dataSource = await dsResponse.json();
+        const dsTitle = dataSource.title?.[0]?.plain_text || dsRef.name || 'Untitled Data Source';
+        const dataSourcePages: any[] = [];
+
+        // Query pages in this data source
+        const queryResponse = await fetch(`https://api.notion.com/v1/data_sources/${dsRef.id}/query`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+            'Notion-Version': '2026-03-11',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ page_size: 100 })
+        });
+
+        const queryData = await queryResponse.json();
+
+        if (queryData.results && queryData.results.length > 0) {
+          for (const entry of queryData.results) {
+            let entryTitle = 'Untitled';
+            let entryProps: string[] = [];
+
+            console.log('Processing entry:', entry.id, 'Properties:', Object.keys(entry.properties || {}));
+
+            if (entry.properties) {
+              for (const [propName, propValue] of Object.entries(entry.properties)) {
+                const value = extractProperty(propValue as any);
+                console.log(`Property ${propName} (${(propValue as any).type}):`, value);
+                if (value) {
+                  if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
+                    entryTitle = value;
+                  } else {
+                    entryProps.push(`${propName}: ${value}`);
+                  }
+                }
+              }
+            }
+
+            console.log('Entry title:', entryTitle, 'Props:', entryProps);
+            let entryContent = entryProps.length > 0 ? entryProps.join('\n') : '';
+
+            dataSourcePages.push({
+              id: entry.id,
+              title: entryTitle,
+              content: entryContent,
+              parent: { type: 'data_source_id', data_source_id: dsRef.id },
+              object: 'page',
+              url: entry.url || `https://www.notion.so/${entry.id.replace(/-/g, '')}`,
+              children: []
+            });
+          }
+        }
+
+        // Create data source object with its pages as children
+        dataSourceObjects.push({
+          id: dsRef.id,
+          title: dsTitle,
+          content: '', // Empty - content will come from children
+          parent: { type: 'database_id', database_id: databaseId },
+          object: 'data_source',
+          children: dataSourcePages
+        });
+      } catch (error) {
+        console.error('Error fetching data source:', dsRef.id, error);
+      }
+    }
+  } else {
+    // FALLBACK: Old database API - query database directly
+    console.log('[NOTION] Database has no data_sources, using fallback query API for:', databaseId, dbTitle);
+    console.log('[NOTION DEBUG] Entering fallback path for database:', databaseId);
+    try {
+      const queryResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+          'Notion-Version': '2026-03-11',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          page_size: 100,
+          filter: {
+            property: 'in_trash',
+            checkbox: {
+              equals: false
+            }
+          }
+        })
+      });
+
+      const queryData = await queryResponse.json();
+      console.log(`Database ${dbTitle} query returned ${queryData.results?.length || 0} items, has_more: ${queryData.has_more}`);
+      if (queryData.has_more) {
+        console.warn(`WARNING: Database ${dbTitle} has more items but pagination not implemented!`);
+      }
+      const databasePages: any[] = [];
+
+      if (queryData.results && queryData.results.length > 0) {
+        for (const entry of queryData.results) {
+          let entryTitle = 'Untitled';
+          let entryProps: string[] = [];
+
+          console.log('Processing database entry (fallback):', entry.id, 'Properties:', Object.keys(entry.properties || {}));
+
+          if (entry.properties) {
+            for (const [propName, propValue] of Object.entries(entry.properties)) {
+              const value = extractProperty(propValue as any);
+              console.log(`  Property ${propName} (${(propValue as any).type}):`, value);
+              if (value) {
+                if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
+                  entryTitle = value;
+                } else {
+                  entryProps.push(`${propName}: ${value}`);
+                }
+              }
+            }
+          }
+
+          console.log('  Entry title:', entryTitle, 'Props count:', entryProps.length);
+          let entryContent = entryProps.length > 0 ? entryProps.join('\n') : '';
+
+          databasePages.push({
+            id: entry.id,
+            title: entryTitle,
+            content: entryContent,
+            parent: { type: 'database_id', database_id: databaseId },
+            object: 'page',
+            url: entry.url || `https://www.notion.so/${entry.id.replace(/-/g, '')}`,
+            children: []
+          });
+        }
+        console.log(`Database ${dbTitle} processed ${databasePages.length} pages`);
+      }
+
+      // Return database with pages directly as children (no data source wrapper)
+      console.log('[NOTION] <<< RETURNING DATABASE (fallback success):', databaseId, 'Title:', dbTitle, 'Pages:', databasePages.length);
+      return {
+        id: databaseId,
+        title: dbTitle,
+        content: '', // Empty - content comes from children
+        parent: item.parent,
+        object: 'database',
+        children: databasePages
+      };
+    } catch (error) {
+      console.error('[NOTION] Error querying database (fallback):', databaseId, error);
+      // Still return the database object even if query failed, so we don't lose it
+      console.log('[NOTION] <<< RETURNING DATABASE (fallback with error):', databaseId, 'Title:', dbTitle);
+      return {
+        id: databaseId,
+        title: dbTitle,
+        content: 'Failed to load database contents',
+        parent: item.parent,
+        object: 'database',
+        children: []
+      };
+    }
+  }
+
+  // Return database with data sources as children
+  console.log('[NOTION] <<< RETURNING DATABASE:', databaseId, 'Title:', dbTitle, 'Children:', dataSourceObjects.length);
+  return {
+    id: databaseId,
+    title: dbTitle,
+    content: '', // Empty - content comes from data sources
+    parent: item.parent,
+    object: 'database',
+    children: dataSourceObjects
+  };
+}
+
 // Recursive function to extract blocks including nested children
 async function extractBlockContent(blockId: string, apiKey: string, indent: string = ''): Promise<string> {
   try {
@@ -216,6 +412,12 @@ export async function GET(req: NextRequest) {
       }, { status: response.status });
     }
 
+    // DEBUG: Log full search response structure
+    console.log('[NOTION DEBUG] Full search response:', JSON.stringify(data, null, 2));
+    console.log('[NOTION DEBUG] Response keys:', Object.keys(data));
+    console.log('[NOTION DEBUG] Results type:', typeof data.results);
+    console.log('[NOTION DEBUG] Results length:', data.results?.length);
+
     // Log what types of objects are returned from search
     const searchResultsBreakdown = { database: 0, page: 0, other: 0 };
     data.results?.forEach((item: any) => {
@@ -225,38 +427,58 @@ export async function GET(req: NextRequest) {
     });
     
     console.log('[NOTION] Search API results breakdown:', searchResultsBreakdown);
-    console.log('[NOTION] First 3 items from search:', data.results?.slice(0, 3).map((item: any) => ({
+    console.log('[NOTION] First 5 items from search:', data.results?.slice(0, 5).map((item: any) => ({
       id: item.id,
       object: item.object,
       title: item.title?.[0]?.plain_text || 'N/A',
       hasDataSources: item.data_sources ? item.data_sources.length : 0,
-      parent: item.parent
+      parent: item.parent,
+      properties: item.properties ? Object.keys(item.properties) : 'none'
     })));
 
-    // Also try to fetch the specific database if provided
-    const specificDatabaseId = '29aedf786daa80818d43c896d29bc6b4'; // Tasks to do db
-    let specificDbFound = false;
+    // CLOUDFLARE FIX: Force process known databases even if not in search results
+    const knownDatabaseIds = [
+      '29aedf786daa80818d43c896d29bc6b4', // Tasks to do db
+      // Add other known database IDs as needed
+    ];
+    let forcedDatabaseResults: any[] = [];
 
-    try {
-      const dbResponse = await fetch(`https://api.notion.com/v1/databases/${specificDatabaseId}`, {
-        headers: {
-          'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-          'Notion-Version': '2026-03-11'
-        }
-      });
-
-      if (dbResponse.ok) {
-        const dbData = await dbResponse.json();
-        console.log('Specific database found:', {
-          id: dbData.id,
-          title: dbData.title?.[0]?.plain_text || 'Untitled Database'
+    for (const dbId of knownDatabaseIds) {
+      try {
+        const dbResponse = await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
+          headers: {
+            'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+            'Notion-Version': '2026-03-11'
+          }
         });
-        specificDbFound = true;
-      } else {
-        console.log('Specific database not accessible:', dbResponse.status, dbResponse.statusText);
+
+        if (dbResponse.ok) {
+          const dbData = await dbResponse.json();
+          console.log('[NOTION] Known database found:', {
+            id: dbData.id,
+            title: dbData.title?.[0]?.plain_text || 'Untitled Database'
+          });
+
+          // Force process this database even if not in search results
+          console.log('[NOTION DEBUG] Forcing database processing for Cloudflare compatibility:', dbId);
+          const forcedDb = await processDatabaseItem(dbData);
+          if (forcedDb) {
+            forcedDatabaseResults.push(forcedDb);
+            console.log('[NOTION DEBUG] Added forced database result:', forcedDb.title, 'with', forcedDb.children?.length || 0, 'children');
+          }
+        } else {
+          console.log('[NOTION] Known database not accessible:', dbId, dbResponse.status, dbResponse.statusText);
+        }
+      } catch (error) {
+        console.log('[NOTION] Error checking known database:', dbId, error);
       }
-    } catch (error) {
-      console.log('Error checking specific database:', error);
+    }
+
+    // CLOUDFLARE DEBUG: Check if we found any databases in search results
+    const searchDatabases = data.results?.filter((item: any) => item.object === 'database') || [];
+    console.log('[NOTION DEBUG] Search results contained', searchDatabases.length, 'databases');
+    if (searchDatabases.length === 0 && forcedDatabaseResults.length > 0) {
+      console.log('[NOTION DEBUG] No databases in search results, using', forcedDatabaseResults.length, 'forced databases');
     }
 
     if (!data.results || data.results.length === 0) {
@@ -273,194 +495,7 @@ export async function GET(req: NextRequest) {
           console.log('[NOTION] Processing item:', item.id, 'Type:', item.object, 'Title:', item.title?.[0]?.plain_text || 'N/A');
           
           if (item.object === 'database') {
-            console.log('[NOTION] >>> PROCESSING DATABASE:', item.id, 'Title:', item.title?.[0]?.plain_text || 'N/A');
-            // Database is a container - fetch its data sources
-            const databaseId = item.id;
-            const dbTitle = item.title?.[0]?.plain_text || 'Untitled Database';
-            const dataSourceObjects: any[] = [];
-
-            // Fetch each data source under this database
-            if (item.data_sources && item.data_sources.length > 0) {
-              console.log('[NOTION] Database has data_sources:', item.data_sources.length);
-              // NEW API: Database has data sources
-              for (const dsRef of item.data_sources) {
-                try {
-                  // Fetch full data source details
-                  const dsResponse = await fetch(`https://api.notion.com/v1/data_sources/${dsRef.id}`, {
-                    headers: {
-                      'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-                      'Notion-Version': '2026-03-11'
-                    }
-                  });
-
-                  if (!dsResponse.ok) continue;
-                  const dataSource = await dsResponse.json();
-                  const dsTitle = dataSource.title?.[0]?.plain_text || dsRef.name || 'Untitled Data Source';
-                  const dataSourcePages: any[] = [];
-
-                  // Query pages in this data source
-                  const queryResponse = await fetch(`https://api.notion.com/v1/data_sources/${dsRef.id}/query`, {
-                    method: 'POST',
-                    headers: {
-                      'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-                      'Notion-Version': '2026-03-11',
-                      'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ page_size: 100 })
-                  });
-
-                  const queryData = await queryResponse.json();
-
-                  if (queryData.results && queryData.results.length > 0) {
-                    for (const entry of queryData.results) {
-                      let entryTitle = 'Untitled';
-                      let entryProps: string[] = [];
-
-                      console.log('Processing entry:', entry.id, 'Properties:', Object.keys(entry.properties || {}));
-
-                      if (entry.properties) {
-                        for (const [propName, propValue] of Object.entries(entry.properties)) {
-                          const value = extractProperty(propValue as any);
-                          console.log(`Property ${propName} (${(propValue as any).type}):`, value);
-                          if (value) {
-                            if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
-                              entryTitle = value;
-                            } else {
-                              entryProps.push(`${propName}: ${value}`);
-                            }
-                          }
-                        }
-                      }
-
-                      console.log('Entry title:', entryTitle, 'Props:', entryProps);
-                      let entryContent = entryProps.length > 0 ? entryProps.join('\n') : '';
-
-                      dataSourcePages.push({
-                        id: entry.id,
-                        title: entryTitle,
-                        content: entryContent,
-                        parent: { type: 'data_source_id', data_source_id: dsRef.id },
-                        object: 'page',
-                        url: entry.url || `https://www.notion.so/${entry.id.replace(/-/g, '')}`,
-                        children: []
-                      });
-                    }
-                  }
-
-                  // Create data source object with its pages as children
-                  dataSourceObjects.push({
-                    id: dsRef.id,
-                    title: dsTitle,
-                    content: '', // Empty - content will come from children
-                    parent: { type: 'database_id', database_id: databaseId },
-                    object: 'data_source',
-                    children: dataSourcePages
-                  });
-                } catch (error) {
-                  console.error('Error fetching data source:', dsRef.id, error);
-                }
-              }
-            } else {
-              // FALLBACK: Old database API - query database directly
-              console.log('[NOTION] Database has no data_sources, using fallback query API for:', databaseId, dbTitle);
-              try {
-                const queryResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
-                  method: 'POST',
-                  headers: {
-                    'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-                    'Notion-Version': '2026-03-11',
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify({ 
-                    page_size: 100,
-                    filter: {
-                      property: 'in_trash',
-                      checkbox: {
-                        equals: false
-                      }
-                    }
-                  })
-                });
-
-                const queryData = await queryResponse.json();
-                console.log(`Database ${dbTitle} query returned ${queryData.results?.length || 0} items, has_more: ${queryData.has_more}`);
-                if (queryData.has_more) {
-                  console.warn(`WARNING: Database ${dbTitle} has more items but pagination not implemented!`);
-                }
-                const databasePages: any[] = [];
-
-                if (queryData.results && queryData.results.length > 0) {
-                  for (const entry of queryData.results) {
-                    let entryTitle = 'Untitled';
-                    let entryProps: string[] = [];
-
-                    console.log('Processing database entry (fallback):', entry.id, 'Properties:', Object.keys(entry.properties || {}));
-
-                    if (entry.properties) {
-                      for (const [propName, propValue] of Object.entries(entry.properties)) {
-                        const value = extractProperty(propValue as any);
-                        console.log(`  Property ${propName} (${(propValue as any).type}):`, value);
-                        if (value) {
-                          if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
-                            entryTitle = value;
-                          } else {
-                            entryProps.push(`${propName}: ${value}`);
-                          }
-                        }
-                      }
-                    }
-
-                    console.log('  Entry title:', entryTitle, 'Props count:', entryProps.length);
-                    let entryContent = entryProps.length > 0 ? entryProps.join('\n') : '';
-
-                    databasePages.push({
-                      id: entry.id,
-                      title: entryTitle,
-                      content: entryContent,
-                      parent: { type: 'database_id', database_id: databaseId },
-                      object: 'page',
-                      url: entry.url || `https://www.notion.so/${entry.id.replace(/-/g, '')}`,
-                      children: []
-                    });
-                  }
-                  console.log(`Database ${dbTitle} processed ${databasePages.length} pages`);
-                }
-
-                // Return database with pages directly as children (no data source wrapper)
-                console.log('[NOTION] <<< RETURNING DATABASE (fallback success):', databaseId, 'Title:', dbTitle, 'Pages:', databasePages.length);
-                return {
-                  id: databaseId,
-                  title: dbTitle,
-                  content: '', // Empty - content comes from children
-                  parent: item.parent,
-                  object: 'database',
-                  children: databasePages
-                };
-              } catch (error) {
-                console.error('[NOTION] Error querying database (fallback):', databaseId, error);
-                // Still return the database object even if query failed, so we don't lose it
-                console.log('[NOTION] <<< RETURNING DATABASE (fallback with error):', databaseId, 'Title:', dbTitle);
-                return {
-                  id: databaseId,
-                  title: dbTitle,
-                  content: 'Failed to load database contents',
-                  parent: item.parent,
-                  object: 'database',
-                  children: []
-                };
-              }
-            }
-
-            // Return database with data sources as children
-            console.log('[NOTION] <<< RETURNING DATABASE:', databaseId, 'Title:', dbTitle, 'Children:', dataSourceObjects.length);
-            return {
-              id: databaseId,
-              title: dbTitle,
-              content: '', // Empty - content comes from data sources
-              parent: item.parent,
-              object: 'database',
-              children: dataSourceObjects
-            };
+            return await processDatabaseItem(item);
           } else {
             // Handle regular page
             const pageId = item.id;
@@ -806,8 +841,8 @@ export async function GET(req: NextRequest) {
       byType: fetchedByType
     });
 
-    // Combine all pages
-    const allPages = [...filteredPages, ...validParents];
+    // Combine all pages including forced database results
+    const allPages = [...filteredPages, ...validParents, ...forcedDatabaseResults];
     
     // Log combined breakdown
     const combinedByType = { database: 0, data_source: 0, page: 0, other: 0 };
@@ -976,7 +1011,7 @@ export async function GET(req: NextRequest) {
       pages: filteredPages, // Keep flat list for backward compatibility
       hierarchicalPages: hierarchicalPages, // New hierarchical structure
       totalResults: data.results?.length || 0,
-      specificDatabaseFound: specificDbFound
+      specificDatabaseFound: forcedDatabaseResults.length > 0
     }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
