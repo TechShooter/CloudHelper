@@ -144,6 +144,31 @@ async function extractBlockContent(blockId: string, apiKey: string, indent: stri
   }
 }
 
+// Helper function to execute promises with concurrency limit
+async function pLimit<T>(
+  tasks: Array<() => Promise<T>>,
+  concurrency: number
+): Promise<T[]> {
+  const results: T[] = [];
+  const executing: Promise<void>[] = [];
+
+  for (const task of tasks) {
+    const promise = Promise.resolve().then(task).then(result => {
+      results.push(result);
+    });
+
+    executing.push(promise);
+
+    if (executing.length >= concurrency) {
+      await Promise.race(executing);
+      executing.splice(executing.findIndex(p => p === promise), 1);
+    }
+  }
+
+  await Promise.all(executing);
+  return results;
+}
+
 export async function GET(req: NextRequest) {
   // Increase timeout for edge runtime - use 25 seconds instead of 15
   // This accounts for Notion API latency and multiple parallel requests
@@ -617,130 +642,136 @@ export async function GET(req: NextRequest) {
     console.log('[NOTION] Parent IDs to fetch:', Array.from(parentIdsToFetch).length, 'total');
 
     // Fetch missing parent pages/databases
-    const parentPromises = Array.from(parentIdsToFetch).slice(0, 10).map(async (parentId) => {
-      try {
-        // Try to fetch as database first
-        const dbResponse = await fetch(`https://api.notion.com/v1/databases/${parentId}`, {
-          headers: {
-            'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-            'Notion-Version': '2026-03-11'
-          }
-        });
+    // NOTE: Removed .slice(0, 10) limit to properly resolve all parents on Cloudflare
+    // This ensures pages are correctly nested instead of becoming orphan root pages
+    // Using concurrency limit (5 concurrent) to prevent overwhelming Notion API
 
-        if (dbResponse.ok) {
-          const dbData = await dbResponse.json();
-          const title = dbData.title?.[0]?.plain_text || 'Untitled Database';
-          console.log('[NOTION] Fetching parent database:', title, parentId);
-          const databasePages: any[] = [];
-
-          // Fetch database entries with properties using new structure or fallback
-          try {
-            let queryUrl = '';
-            let queryBody: any = { page_size: 100 };
-            
-            // Check if database has data_sources
-            if (dbData.data_sources && dbData.data_sources.length > 0) {
-              console.log(`[NOTION] Parent database ${title} has ${dbData.data_sources.length} data sources`);
-              // Use data source query
-              queryUrl = `https://api.notion.com/v1/data_sources/${dbData.data_sources[0].id}/query`;
-            } else {
-              console.log(`Parent database ${title} has no data_sources, using fallback`);
-              // Use old database query
-              queryUrl = `https://api.notion.com/v1/databases/${parentId}/query`;
+    const fetchedParents = await pLimit(
+      Array.from(parentIdsToFetch).map(parentId => async () => {
+        try {
+          // Try to fetch as database first
+          const dbResponse = await fetch(`https://api.notion.com/v1/databases/${parentId}`, {
+            headers: {
+              'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+              'Notion-Version': '2026-03-11'
             }
+          });
 
-            const queryResponse = await fetch(queryUrl, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-                'Notion-Version': '2026-03-11',
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify(queryBody)
-            });
+          if (dbResponse.ok) {
+            const dbData = await dbResponse.json();
+            const title = dbData.title?.[0]?.plain_text || 'Untitled Database';
+            console.log('[NOTION] Fetching parent database:', title, parentId);
+            const databasePages: any[] = [];
 
-            const queryData = await queryResponse.json();
-            console.log(`Parent database ${title} query returned ${queryData.results?.length || 0} items`);
+            // Fetch database entries with properties using new structure or fallback
+            try {
+              let queryUrl = '';
+              let queryBody: any = { page_size: 100 };
+              
+              // Check if database has data_sources
+              if (dbData.data_sources && dbData.data_sources.length > 0) {
+                console.log(`[NOTION] Parent database ${title} has ${dbData.data_sources.length} data sources`);
+                // Use data source query
+                queryUrl = `https://api.notion.com/v1/data_sources/${dbData.data_sources[0].id}/query`;
+              } else {
+                console.log(`Parent database ${title} has no data_sources, using fallback`);
+                // Use old database query
+                queryUrl = `https://api.notion.com/v1/databases/${parentId}/query`;
+              }
 
-            if (queryData.results && queryData.results.length > 0) {
-              for (const entry of queryData.results) {
-                let entryTitle = 'Untitled';
-                let entryProps: string[] = [];
+              const queryResponse = await fetch(queryUrl, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+                  'Notion-Version': '2026-03-11',
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(queryBody)
+              });
 
-                if (entry.properties) {
-                  for (const [propName, propValue] of Object.entries(entry.properties)) {
-                    const value = extractProperty(propValue as any);
-                    if (value) {
-                      if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
-                        entryTitle = value;
-                      } else {
-                        entryProps.push(`${propName}: ${value}`);
+              const queryData = await queryResponse.json();
+              console.log(`Parent database ${title} query returned ${queryData.results?.length || 0} items`);
+
+              if (queryData.results && queryData.results.length > 0) {
+                for (const entry of queryData.results) {
+                  let entryTitle = 'Untitled';
+                  let entryProps: string[] = [];
+
+                  if (entry.properties) {
+                    for (const [propName, propValue] of Object.entries(entry.properties)) {
+                      const value = extractProperty(propValue as any);
+                      if (value) {
+                        if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
+                          entryTitle = value;
+                        } else {
+                          entryProps.push(`${propName}: ${value}`);
+                        }
                       }
                     }
                   }
+
+                  let entryContent = entryProps.length > 0 ? entryProps.join('\n') : '';
+
+                  databasePages.push({
+                    id: entry.id,
+                    title: entryTitle,
+                    content: entryContent,
+                    parent: { type: 'database_id', database_id: parentId },
+                    object: 'page',
+                    url: entry.url || `https://www.notion.so/${entry.id.replace(/-/g, '')}`,
+                    children: []
+                  });
                 }
-
-                let entryContent = entryProps.length > 0 ? entryProps.join('\n') : '';
-
-                databasePages.push({
-                  id: entry.id,
-                  title: entryTitle,
-                  content: entryContent,
-                  parent: { type: 'database_id', database_id: parentId },
-                  object: 'page',
-                  url: entry.url || `https://www.notion.so/${entry.id.replace(/-/g, '')}`,
-                  children: []
-                });
               }
+            } catch (error) {
+              console.error('Error fetching parent database entries:', error);
             }
-          } catch (error) {
-            console.error('Error fetching parent database entries:', error);
+
+            return {
+              id: parentId,
+              title: title,
+              content: '',
+              parent: dbData.parent,
+              object: 'database',
+              children: databasePages
+            };
           }
 
-          return {
-            id: parentId,
-            title: title,
-            content: '',
-            parent: dbData.parent,
-            object: 'database',
-            children: databasePages
-          };
+          // Try to fetch as page
+          const pageResponse = await fetch(`https://api.notion.com/v1/pages/${parentId}`, {
+            headers: {
+              'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+              'Notion-Version': '2026-03-11'
+            }
+          });
+
+          if (pageResponse.ok) {
+            const pageData = await pageResponse.json();
+            let title = 'Untitled';
+
+            if (pageData.properties?.title?.title?.[0]?.plain_text) {
+              title = pageData.properties.title.title[0].plain_text;
+            } else if (pageData.properties?.Name?.title?.[0]?.plain_text) {
+              title = pageData.properties.Name.title[0].plain_text;
+            }
+
+            return {
+              id: parentId,
+              title,
+              content: '',
+              parent: pageData.parent,
+              object: 'page',
+              children: []
+            };
+          }
+        } catch (error) {
+          console.log('Could not fetch parent:', parentId, error);
         }
-
-        // Try to fetch as page
-        const pageResponse = await fetch(`https://api.notion.com/v1/pages/${parentId}`, {
-          headers: {
-            'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-            'Notion-Version': '2026-03-11'
-          }
-        });
-
-        if (pageResponse.ok) {
-          const pageData = await pageResponse.json();
-          let title = 'Untitled';
-
-          if (pageData.properties?.title?.title?.[0]?.plain_text) {
-            title = pageData.properties.title.title[0].plain_text;
-          } else if (pageData.properties?.Name?.title?.[0]?.plain_text) {
-            title = pageData.properties.Name.title[0].plain_text;
-          }
-
-          return {
-            id: parentId,
-            title,
-            content: '',
-            parent: pageData.parent,
-            object: 'page',
-            children: []
-          };
-        }
-      } catch (error) {
-        console.log('Could not fetch parent:', parentId, error);
-      }
-      return null;
-    });
-
-    const fetchedParents = await Promise.all(parentPromises);
+        return null;
+      }),
+      5 // Concurrency limit: fetch max 5 parents at a time
+    );
+    
     const validParents = fetchedParents.filter(p => p !== null);
     
     // Analyze fetched parents
@@ -752,7 +783,7 @@ export async function GET(req: NextRequest) {
     });
     
     console.log('[NOTION] Fetched parents summary:', {
-      totalRequested: Math.min(10, Array.from(parentIdsToFetch).length),
+      totalRequested: Array.from(parentIdsToFetch).length,
       successfullyFetched: validParents.length,
       byType: fetchedByType
     });
