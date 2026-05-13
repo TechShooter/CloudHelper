@@ -32,61 +32,87 @@ export default function Home() {
     checkAuth();
   }, [router]);
 
+  // Function to build hierarchy from flat pages
+  const buildHierarchy = (pages: any[]) => {
+    const pageMap = new Map();
+    pages.forEach(page => pageMap.set(page.id, { ...page, children: [] }));
+    
+    const rootPages: any[] = [];
+    pages.forEach(page => {
+      const parentId = page.parent?.page_id || page.parent?.database_id || page.parent?.data_source_id;
+      if (parentId && pageMap.has(parentId)) {
+        pageMap.get(parentId).children.push(pageMap.get(page.id));
+      } else {
+        rootPages.push(pageMap.get(page.id));
+      }
+    });
+    return rootPages;
+  };
+
+  const loadNotionStreaming = async () => {
+    try {
+      const response = await fetch(`/api/notion/stream?t=${Date.now()}`);
+      if (!response.ok) return;
+
+      const reader = response.body?.getReader();
+      if (!reader) return;
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let accumulatedPages: any[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const page = JSON.parse(line);
+            if (page.error) {
+              console.error('Stream error:', page.error);
+              continue;
+            }
+            accumulatedPages.push(page);
+            // Update UI periodically or on every page
+            setNotionPages([...accumulatedPages]);
+            setHierarchicalNotionPages(buildHierarchy(accumulatedPages));
+          } catch (e) {
+            console.error('Error parsing stream line:', e);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load streaming Notion data:', error);
+    }
+  };
+
   // Load data
   useEffect(() => {
     if (checkingAuth) return;
     
     const loadData = async () => {
       try {
-        const [sheetsRes, notionRes] = await Promise.all([
-          fetch('/api/sheets', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              action: 'getAllSheets',
-              sheetId: '1FvjfZ5a-OMM2ScO2lJewBFIrbnWvgQKJug_Ve32gAQA'
-            })
-          }).catch(() => null),
-          fetch(`/api/notion?t=${Date.now()}`, {
-            cache: 'no-store'
-          }).catch(() => null)
-        ]);
+        // Load sheets separately
+        fetch('/api/sheets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            action: 'getAllSheets',
+            sheetId: '1FvjfZ5a-OMM2ScO2lJewBFIrbnWvgQKJug_Ve32gAQA'
+          })
+        }).then(res => {
+          if (res.ok) return res.json();
+        }).then(data => {
+          if (data?.sheets) setSheetData(data.sheets);
+        }).catch(err => console.error('Failed to load sheets:', err));
         
-        if (sheetsRes && sheetsRes.ok) {
-          const sheetsData = await sheetsRes.json();
-          if (sheetsData.sheets) setSheetData(sheetsData.sheets);
-        }
-        
-        // Load notion pages with hierarchy
-        if (notionRes && notionRes.ok) {
-          const notionData = await notionRes.json();
-          
-          // Analyze hierarchical pages
-          const hierarchyBreakdown = { database: 0, data_source: 0, page: 0, other: 0, totalChildren: 0 };
-          notionData.hierarchicalPages?.forEach((p: any) => {
-            if (p.object === 'database') hierarchyBreakdown.database++;
-            else if (p.object === 'data_source') hierarchyBreakdown.data_source++;
-            else if (p.object === 'page') hierarchyBreakdown.page++;
-            else hierarchyBreakdown.other++;
-            hierarchyBreakdown.totalChildren += p.children?.length || 0;
-          });
-          
-          console.log('[NOTION API] Response received:', {
-            totalPages: notionData.pages?.length,
-            totalHierarchical: notionData.hierarchicalPages?.length,
-            hierarchyBreakdown,
-            firstPageTitle: notionData.pages?.[0]?.title,
-            firstPageObject: notionData.pages?.[0]?.object,
-            firstHierarchicalTitle: notionData.hierarchicalPages?.[0]?.title,
-            firstHierarchicalObject: notionData.hierarchicalPages?.[0]?.object,
-            firstHierarchicalChildren: notionData.hierarchicalPages?.[0]?.children?.length || 0
-          });
-          
-          if (notionData.pages) {
-            setNotionPages(notionData.pages);
-            setHierarchicalNotionPages(notionData.hierarchicalPages || []);
-          }
-        }
+        // Load Notion using streaming
+        await loadNotionStreaming();
       } catch (error) {
         console.error('Failed to load data:', error);
       }
@@ -96,20 +122,9 @@ export default function Home() {
   }, [checkingAuth]);
 
   const reloadNotion = async () => {
-    try {
-      // Add cache-busting timestamp to force fresh data
-      const res = await fetch(`/api/notion?t=${Date.now()}`, {
-        cache: 'no-store'
-      });
-      const data = await res.json();
-      
-      if (data.pages) {
-        setNotionPages(data.pages);
-        setHierarchicalNotionPages(data.hierarchicalPages || []);
-      }
-    } catch (error) {
-      console.error('Failed to reload:', error);
-    }
+    setNotionPages([]);
+    setHierarchicalNotionPages([]);
+    await loadNotionStreaming();
   };
 
   if (checkingAuth) {
