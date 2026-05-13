@@ -398,11 +398,19 @@ export async function GET(req: NextRequest) {
       },
       signal: controller.signal,
       body: JSON.stringify({
-        page_size: 50  // Reduced from 100 to 50 for faster response
+        filter: {
+          property: 'object',
+          value: 'page'
+        },
+        page_size: 100,
+        sort: {
+          direction: 'descending',
+          timestamp: 'last_edited_time'
+        }
       })
     });
 
-    const data = await response.json();
+    let data = await response.json();
     console.log('[NOTION API] Search completed in', Date.now() - startTime, 'ms, results:', data.results?.length);
 
     if (!response.ok) {
@@ -410,6 +418,77 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         error: data.message || `Notion API error: ${data.code || 'Unknown'}`
       }, { status: response.status });
+    }
+
+    // DEBUG: Check for specific page "Cosa c'è in casa"
+    console.log('[NOTION DEBUG] Checking for "Cosa c\'è in casa" in search results...');
+    let casaPageInSearch = data.results?.find((item: any) => {
+      if (item.object === 'page') {
+        const title = item.properties?.title?.title?.[0]?.plain_text || 
+                     item.properties?.Name?.title?.[0]?.plain_text || '';
+        return title.toLowerCase().includes('casa');
+      }
+      return false;
+    });
+    
+    console.log('[NOTION DEBUG] "Cosa c\'è in casa" found in filtered search:', !!casaPageInSearch);
+    
+    // If not found in filtered search, try without filters
+    if (!casaPageInSearch) {
+      console.log('[NOTION DEBUG] Page not found in filtered search, trying without filters...');
+      const unrestrictedResponse = await fetch('https://api.notion.com/v1/search', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+          'Notion-Version': '2026-03-11',
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          page_size: 100
+        })
+      });
+      
+      if (unrestrictedResponse.ok) {
+        const unrestrictedData = await unrestrictedResponse.json();
+        console.log('[NOTION DEBUG] Unrestricted search results:', unrestrictedData.results?.length);
+        
+        casaPageInSearch = unrestrictedData.results?.find((item: any) => {
+          if (item.object === 'page') {
+            const title = item.properties?.title?.title?.[0]?.plain_text || 
+                         item.properties?.Name?.title?.[0]?.plain_text || '';
+            return title.toLowerCase().includes('casa');
+          }
+          return false;
+        });
+        
+        console.log('[NOTION DEBUG] "Cosa c\'è in casa" found in unrestricted search:', !!casaPageInSearch);
+        
+        // Use unrestricted data if we found the page there
+        if (casaPageInSearch || unrestrictedData.results?.length > data.results?.length) {
+          data = unrestrictedData;
+          console.log('[NOTION DEBUG] Using unrestricted search results');
+        }
+      }
+    }
+    
+    if (casaPageInSearch) {
+      console.log('[NOTION DEBUG] Casa page search details:', {
+        id: casaPageInSearch.id,
+        title: casaPageInSearch.properties?.title?.title?.[0]?.plain_text || 'No title',
+        archived: casaPageInSearch.archived,
+        in_trash: casaPageInSearch.in_trash,
+        parent: casaPageInSearch.parent
+      });
+    } else {
+      console.log('[NOTION DEBUG] All page titles from search:');
+      data.results?.forEach((item: any, idx: number) => {
+        if (item.object === 'page') {
+          const title = item.properties?.title?.title?.[0]?.plain_text || 
+                       item.properties?.Name?.title?.[0]?.plain_text || 'No title';
+          console.log(`  ${idx + 1}. "${title}" (ID: ${item.id})`);
+        }
+      });
     }
 
     // DEBUG: Log full search response structure
@@ -733,6 +812,19 @@ export async function GET(req: NextRequest) {
     
     console.log('[NOTION] Successfully processed pages:', filteredPages.length, 'in', Date.now() - startTime, 'ms');
     console.log('[NOTION] Pages summary:', filteredPages.map(p => ({ id: p.id, title: p.title, object: p.object, children: p.children?.length || 0, parent: p.parent })));
+    
+    // DEBUG: Check if "Cosa c'è in casa" is in the final filtered pages
+    const casaPageInFiltered = filteredPages.find(p => p.title.toLowerCase().includes('casa'));
+    console.log('[NOTION DEBUG] "Cosa c\'è in casa" in filtered pages:', !!casaPageInFiltered);
+    if (casaPageInFiltered) {
+      console.log('[NOTION DEBUG] Casa page filtered details:', casaPageInFiltered);
+    } else {
+      console.log('[NOTION DEBUG] "Cosa c\'è in casa" NOT found in filtered pages');
+      console.log('[NOTION DEBUG] All filtered page titles:');
+      filteredPages.forEach((p, idx) => {
+        console.log(`  ${idx + 1}. "${p.title}" (ID: ${p.id})`);
+      });
+    }
 
     // Collect all parent IDs that need to be fetched (including databases)
     const parentIdsToFetch = new Set<string>();

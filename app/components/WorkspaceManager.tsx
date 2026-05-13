@@ -1602,13 +1602,114 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                           (hierarchical: {hierarchicalNotionPages?.length || 0}, flat: {allNotionPages?.length || 0})
                         </span>
                       </h4>
-                      {hierarchicalNotionPages && hierarchicalNotionPages.length > 0 ? (
+                      {allNotionPages && allNotionPages.length > 0 ? (
                         <div className="space-y-1">
-                          {renderGroupedPages(filterPagesByTags(hierarchicalNotionPages))}
-                        </div>
-                      ) : allNotionPages && allNotionPages.length > 0 ? (
-                        <div className="space-y-1">
-                          {renderGroupedPages(filterPagesByTags(allNotionPages.map(page => ({ ...page, children: [] }))))}
+                          {(() => {
+                            // Show hierarchical structure first (if available)
+                            const hierarchicalPages = hierarchicalNotionPages || [];
+                            const allFlatPages = allNotionPages.map(page => ({ ...page, children: [] }));
+                            
+                            // First, deduplicate the hierarchical structure itself
+                            const deduplicateHierarchical = (pages: any[]): any[] => {
+                              const seenIds = new Set();
+                              const deduplicated = [];
+                              
+                              const processPage = (page: any): any => {
+                                if (!page.id || typeof page.id !== 'string') return null;
+                                if (seenIds.has(page.id)) return null;
+                                
+                                seenIds.add(page.id);
+                                const dedupPage = { ...page };
+                                
+                                if (page.children && page.children.length > 0) {
+                                  dedupPage.children = page.children
+                                    .map(processPage)
+                                    .filter((child: any) => child !== null);
+                                }
+                                
+                                return dedupPage;
+                              };
+                              
+                              return pages
+                                .map(processPage)
+                                .filter(page => page !== null);
+                            };
+                            
+                            const deduplicatedHierarchicalPages = deduplicateHierarchical(hierarchicalPages);
+                            
+                            // Get IDs of pages actually in hierarchical structure (now properly deduplicated)
+                            const hierarchicalPageIds = new Set();
+                            const collectPageIds = (pages: any[]) => {
+                              pages.forEach(page => {
+                                if (page.id && typeof page.id === 'string') {
+                                  hierarchicalPageIds.add(page.id);
+                                }
+                                if (page.children && page.children.length > 0) {
+                                  collectPageIds(page.children);
+                                }
+                              });
+                            };
+                            collectPageIds(deduplicatedHierarchicalPages);
+                            
+                            // Filter out pages that are actually in hierarchy
+                            const standalonePages = allFlatPages.filter(page => 
+                              page.id && 
+                              typeof page.id === 'string' && 
+                              !hierarchicalPageIds.has(page.id)
+                            );
+                            
+                            // Debug: Show which pages are being marked as standalone vs hierarchical
+                            console.log('[RENDER DEBUG] Total pages in allNotionPages:', allFlatPages.length);
+                            console.log('[RENDER DEBUG] Hierarchical page IDs found:', Array.from(hierarchicalPageIds));
+                            console.log('[RENDER DEBUG] Standalone page IDs:', standalonePages.map(p => p.id));
+                            
+                            console.log('[RENDER DEBUG] Original hierarchical pages:', hierarchicalPages.length);
+                            console.log('[RENDER DEBUG] Deduplicated hierarchical pages:', deduplicatedHierarchicalPages.length);
+                            console.log('[RENDER DEBUG] Standalone pages:', standalonePages.length);
+                            
+                            // Check for "Cosa c'è in casa" in all pages
+                            const casaPageInHierarchical = deduplicatedHierarchicalPages.find(p => p.title.toLowerCase().includes('casa'));
+                            const casaPageInStandalone = standalonePages.find(p => p.title.toLowerCase().includes('casa'));
+                            console.log('[RENDER DEBUG] Casa page in hierarchical:', !!casaPageInHierarchical);
+                            console.log('[RENDER DEBUG] Casa page in standalone:', !!casaPageInStandalone);
+                            
+                            // Log all hierarchical page titles to see what's there
+                            console.log('[RENDER DEBUG] Hierarchical page titles:');
+                            const collectTitles = (pages: any[], depth = 0) => {
+                              pages.forEach(page => {
+                                console.log('  '.repeat(depth) + `"${page.title}" (${page.id})`);
+                                if (page.children && page.children.length > 0) {
+                                  collectTitles(page.children, depth + 1);
+                                }
+                              });
+                            };
+                            collectTitles(deduplicatedHierarchicalPages);
+                            
+
+                            const entertainmentPage = [...deduplicatedHierarchicalPages, ...standalonePages].find(p => p.title === 'Entertainment list');
+                            console.log('[RENDER DEBUG] Entertainment list found in combined render:', !!entertainmentPage);
+                            
+
+                            return (
+                              <>
+                                {/* Hierarchical structure */}
+                                {deduplicatedHierarchicalPages.length > 0 && (
+                                  <div className="mb-4">
+                                    <div className="text-xs text-gray-500 mb-2">Hierarchical Structure</div>
+                                    {renderGroupedPages(filterPagesByTags(deduplicatedHierarchicalPages))}
+                                  </div>
+                                )}
+                                
+                                {/* Standalone pages */}
+                                {standalonePages.length > 0 && (
+                                  <div>
+                                    <div className="text-xs text-gray-500 mb-2">Individual Pages ({standalonePages.length})</div>
+                                    {renderGroupedPages(filterPagesByTags(standalonePages))}
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       ) : loadingNotion ? (
                         <div className="text-sm text-gray-500 p-3 bg-gray-800 rounded">
