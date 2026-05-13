@@ -411,7 +411,7 @@ export async function GET(req: NextRequest) {
     });
 
     let data = await response.json();
-    console.log('[NOTION API] Search completed in', Date.now() - startTime, 'ms, results:', data.results?.length);
+    console.log('[NOTION API] Initial search completed in', Date.now() - startTime, 'ms, results:', data.results?.length);
 
     if (!response.ok) {
       console.error('Notion API error:', data);
@@ -419,6 +419,55 @@ export async function GET(req: NextRequest) {
         error: data.message || `Notion API error: ${data.code || 'Unknown'}`
       }, { status: response.status });
     }
+
+    // Implement pagination to get ALL pages
+    let allResults = [...(data.results || [])];
+    let nextCursor = data.next_cursor;
+    
+    console.log('[NOTION API] Starting pagination to fetch all pages...');
+    let pageCount = 1;
+    
+    while (nextCursor && pageCount < 50) { // Safety limit of 50 pages
+      console.log(`[NOTION API] Fetching page ${pageCount + 1} with cursor...`);
+      
+      const paginatedResponse = await fetch('https://api.notion.com/v1/search', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+          'Notion-Version': '2026-03-11',
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          filter: {
+            property: 'object',
+            value: 'page'
+          },
+          page_size: 100,
+          start_cursor: nextCursor,
+          sort: {
+            direction: 'descending',
+            timestamp: 'last_edited_time'
+          }
+        })
+      });
+      
+      if (paginatedResponse.ok) {
+        const paginatedData = await paginatedResponse.json();
+        allResults = allResults.concat(paginatedData.results || []);
+        nextCursor = paginatedData.next_cursor;
+        pageCount++;
+        console.log(`[NOTION API] Page ${pageCount} fetched, total results so far: ${allResults.length}`);
+      } else {
+        console.error('[NOTION API] Pagination error:', await paginatedResponse.text());
+        break;
+      }
+    }
+    
+    console.log(`[NOTION API] Pagination complete. Total pages fetched: ${allResults.length}`);
+    
+    // Replace data.results with all results
+    data.results = allResults;
 
     // DEBUG: Check for specific page "Cosa c'è in casa"
     console.log('[NOTION DEBUG] Checking for "Cosa c\'è in casa" in search results...');
