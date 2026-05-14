@@ -130,6 +130,175 @@ async function processBlocks(blocks: any[], indent = 0): Promise<string> {
   return content;
 }
 
+// Helper function to process a database item (extracted for reuse)
+async function processDatabaseItem(item: any, apiKey: string): Promise<any> {
+  console.log('[NOTION STREAM] >>> PROCESSING DATABASE:', item.id, 'Title:', item.title?.[0]?.plain_text || 'N/A');
+  
+  const databaseId = item.id;
+  const dbTitle = item.title?.[0]?.plain_text || 'Untitled Database';
+  const dataSourceObjects: any[] = [];
+
+  // Fetch each data source under this database
+  if (item.data_sources && item.data_sources.length > 0) {
+    console.log('[NOTION STREAM] Database has data_sources:', item.data_sources.length);
+    for (const dsRef of item.data_sources) {
+      try {
+        const dsResponse = await fetch(`https://api.notion.com/v1/data_sources/${dsRef.id}`, {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Notion-Version': '2026-03-11'
+          }
+        });
+
+        if (!dsResponse.ok) continue;
+        const dataSource = await dsResponse.json();
+        const dsTitle = dataSource.title?.[0]?.plain_text || dsRef.name || 'Untitled Data Source';
+        const dataSourcePages: any[] = [];
+
+        const queryResponse = await fetch(`https://api.notion.com/v1/data_sources/${dsRef.id}/query`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Notion-Version': '2026-03-11',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ page_size: 100 })
+        });
+
+        const queryData = await queryResponse.json();
+
+        if (queryData.results && queryData.results.length > 0) {
+          for (const entry of queryData.results) {
+            let entryTitle = 'Untitled';
+            let entryProps: string[] = [];
+
+            if (entry.properties) {
+              for (const [propName, propValue] of Object.entries(entry.properties)) {
+                const value = extractProperty(propValue as any);
+                if (value) {
+                  if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
+                    entryTitle = value;
+                  } else {
+                    entryProps.push(`${propName}: ${value}`);
+                  }
+                }
+              }
+            }
+
+            let entryContent = entryProps.length > 0 ? entryProps.join('\n') : '';
+
+            dataSourcePages.push({
+              id: entry.id,
+              title: entryTitle,
+              content: entryContent,
+              parent: { type: 'data_source_id', data_source_id: dsRef.id },
+              object: 'page',
+              url: entry.url || `https://www.notion.so/${entry.id.replace(/-/g, '')}`,
+              children: []
+            });
+          }
+        }
+
+        dataSourceObjects.push({
+          id: dsRef.id,
+          title: dsTitle,
+          content: '',
+          parent: { type: 'database_id', database_id: databaseId },
+          object: 'data_source',
+          children: dataSourcePages
+        });
+      } catch (error) {
+        console.error('[NOTION STREAM] Error fetching data source:', dsRef.id, error);
+      }
+    }
+  } else {
+    // FALLBACK: Old database API
+    console.log('[NOTION STREAM] Database has no data_sources, using fallback query API for:', databaseId);
+    try {
+      const queryResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Notion-Version': '2026-03-11',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          page_size: 100,
+          filter: {
+            property: 'in_trash',
+            checkbox: {
+              equals: false
+            }
+          }
+        })
+      });
+
+      const queryData = await queryResponse.json();
+      const databasePages: any[] = [];
+
+      if (queryData.results && queryData.results.length > 0) {
+        for (const entry of queryData.results) {
+          let entryTitle = 'Untitled';
+          let entryProps: string[] = [];
+
+          if (entry.properties) {
+            for (const [propName, propValue] of Object.entries(entry.properties)) {
+              const value = extractProperty(propValue as any);
+              if (value) {
+                if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
+                  entryTitle = value;
+                } else {
+                  entryProps.push(`${propName}: ${value}`);
+                }
+              }
+            }
+          }
+
+          let entryContent = entryProps.length > 0 ? entryProps.join('\n') : '';
+
+          databasePages.push({
+            id: entry.id,
+            title: entryTitle,
+            content: entryContent,
+            parent: { type: 'database_id', database_id: databaseId },
+            object: 'page',
+            url: entry.url || `https://www.notion.so/${entry.id.replace(/-/g, '')}`,
+            children: []
+          });
+        }
+      }
+
+      return {
+        id: databaseId,
+        title: dbTitle,
+        content: '',
+        parent: item.parent,
+        object: 'database',
+        children: databasePages
+      };
+    } catch (error) {
+      console.error('[NOTION STREAM] Error querying database (fallback):', databaseId, error);
+      return {
+        id: databaseId,
+        title: dbTitle,
+        content: 'Failed to load database contents',
+        parent: item.parent,
+        object: 'database',
+        children: []
+      };
+    }
+  }
+
+  return {
+    id: databaseId,
+    title: dbTitle,
+    content: '',
+    parent: item.parent,
+    object: 'database',
+    children: dataSourceObjects
+  };
+}
+
 async function processPage(item: any, apiKey: string) {
   try {
     const pageId = item.id;
@@ -231,6 +400,8 @@ export async function GET(req: NextRequest) {
           return;
         }
 
+        console.log('[NOTION STREAM] Starting request...');
+
         const response = await fetch('https://api.notion.com/v1/search', {
           method: 'POST',
           headers: {
@@ -238,10 +409,21 @@ export async function GET(req: NextRequest) {
             'Notion-Version': '2026-03-11',
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ page_size: 50 })
+          body: JSON.stringify({
+            filter: {
+              property: 'object',
+              value: 'page'
+            },
+            page_size: 100,
+            sort: {
+              direction: 'descending',
+              timestamp: 'last_edited_time'
+            }
+          })
         });
 
-        const data = await response.json();
+        let data = await response.json();
+        console.log('[NOTION STREAM] Initial search completed, results:', data.results?.length);
 
         if (!response.ok || !data.results) {
           const errorMessage = data.message || data.code || `HTTP ${response.status}`;
@@ -250,179 +432,229 @@ export async function GET(req: NextRequest) {
           return;
         }
 
-        // Process all items (pages and databases)
+        // Implement pagination to get ALL pages
+        let allResults = [...(data.results || [])];
+        let nextCursor = data.next_cursor;
+        
+        console.log('[NOTION STREAM] Starting pagination...');
+        let pageCount = 1;
+        
+        while (nextCursor && pageCount < 50) {
+          console.log(`[NOTION STREAM] Fetching page ${pageCount + 1} with cursor...`);
+          
+          const paginatedResponse = await fetch('https://api.notion.com/v1/search', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Notion-Version': '2026-03-11',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              filter: {
+                property: 'object',
+                value: 'page'
+              },
+              page_size: 100,
+              start_cursor: nextCursor,
+              sort: {
+                direction: 'descending',
+                timestamp: 'last_edited_time'
+              }
+            })
+          });
+          
+          if (paginatedResponse.ok) {
+            const paginatedData = await paginatedResponse.json();
+            allResults = allResults.concat(paginatedData.results || []);
+            nextCursor = paginatedData.next_cursor;
+            pageCount++;
+            console.log(`[NOTION STREAM] Page ${pageCount} fetched, total results so far: ${allResults.length}`);
+          } else {
+            console.error('[NOTION STREAM] Pagination error:', await paginatedResponse.text());
+            break;
+          }
+        }
+        
+        console.log(`[NOTION STREAM] Pagination complete. Total results: ${allResults.length}`);
+        data.results = allResults;
+
+        // CLOUDFLARE FIX: Force process known databases even if not in search results
+        const knownDatabaseIds = [
+          '29aedf786daa80818d43c896d29bc6b4', // Tasks to do db
+        ];
+        let forcedDatabaseResults: any[] = [];
+
+        // Database discovery mechanism
+        console.log('[NOTION STREAM] Starting database discovery');
+        let discoveredDatabaseIds: string[] = [];
+
+        try {
+          const dbSearchResponse = await fetch('https://api.notion.com/v1/search', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Notion-Version': '2026-03-11',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              filter: {
+                property: 'object',
+                value: 'database'
+              },
+              page_size: 100
+            })
+          });
+
+          if (dbSearchResponse.ok) {
+            const dbSearchData = await dbSearchResponse.json();
+            console.log('[NOTION STREAM] Database search returned:', dbSearchData.results?.length, 'databases');
+            
+            dbSearchData.results?.forEach((db: any) => {
+              if (db.id && !discoveredDatabaseIds.includes(db.id)) {
+                discoveredDatabaseIds.push(db.id);
+                console.log('[NOTION STREAM] Discovered database:', db.id, db.title?.[0]?.plain_text || 'Untitled');
+              }
+            });
+          }
+        } catch (error) {
+          console.log('[NOTION STREAM] Database search failed:', error);
+        }
+
+        // Look for database references in page parents
+        data.results?.forEach((item: any) => {
+          if (item.parent?.database_id && !discoveredDatabaseIds.includes(item.parent.database_id)) {
+            discoveredDatabaseIds.push(item.parent.database_id);
+            console.log('[NOTION STREAM] Found database from page parent:', item.parent.database_id);
+          }
+        });
+
+        const allDatabaseIds = [...new Set([...knownDatabaseIds, ...discoveredDatabaseIds])];
+        console.log('[NOTION STREAM] Total databases to process:', allDatabaseIds.length);
+
+        for (const dbId of allDatabaseIds) {
+          try {
+            const dbResponse = await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Notion-Version': '2026-03-11'
+              }
+            });
+
+            if (dbResponse.ok) {
+              const dbData = await dbResponse.json();
+              const forcedDb = await processDatabaseItem(dbData, apiKey);
+              if (forcedDb) {
+                forcedDatabaseResults.push(forcedDb);
+                console.log('[NOTION STREAM] Added forced database:', forcedDb.title);
+              }
+            }
+          } catch (error) {
+            console.log('[NOTION STREAM] Error checking database:', dbId, error);
+          }
+        }
+
+        // Process all search results
+        const processedItems: any[] = [];
+        
         for (const item of data.results) {
           if (item.object === 'page') {
             const page = await processPage(item, apiKey);
             if (page) {
-              controller.enqueue(encoder.encode(JSON.stringify(page) + '\n'));
+              processedItems.push(page);
             }
-          } else if (item.object === 'database' || item.object === 'data_source') {
-            // Process database or data source
-            const databaseId = item.id;
-            const title = item.title?.[0]?.plain_text || 'Untitled Database';
-            const url = `https://www.notion.so/${databaseId.replace(/-/g, '')}`;
-
-            // Fetch database entries to include their content in the database object for chat context
-            let databaseContent = `Database: ${title}\n\n`;
-
-            try {
-              // If this is a data_source object, query it directly
-              if (item.object === 'data_source') {
-                try {
-                  const queryResponse = await fetch(`https://api.notion.com/v1/data_sources/${databaseId}/query`, {
-                    method: 'POST',
-                    headers: {
-                      'Authorization': `Bearer ${apiKey}`,
-                      'Notion-Version': '2026-03-11',
-                      'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ page_size: 100 })
-                  });
-
-                  const queryData = await queryResponse.json();
-                  console.log('Data source query response:', queryData.results?.length, 'entries');
-
-                  if (queryData.results && queryData.results.length > 0) {
-                    for (const entry of queryData.results) {
-                      let entryTitle = 'Untitled';
-                      let entryProps: string[] = [];
-
-                      if (entry.properties) {
-                        for (const [propName, propValue] of Object.entries(entry.properties)) {
-                          const value = extractProperty(propValue as any);
-                          if (value) {
-                            if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
-                              entryTitle = value;
-                            } else {
-                              entryProps.push(`${propName}: ${value}`);
-                            }
-                          }
-                        }
-                      }
-
-                      let entryContent = `Entry: ${entryTitle}\n`;
-                      if (entryProps.length > 0) {
-                        entryContent += entryProps.join('\n') + '\n';
-                      }
-
-                      // Add entry content to database content for prompt preview/chat AI
-                      databaseContent += entryContent;
-                    }
-                  }
-                } catch (error) {
-                  console.error('Error fetching data source entries:', databaseId, error);
-                }
-              } else if (item.data_sources && item.data_sources.length > 0) {
-                // If this is a database object with data_sources, query each data source
-                for (const dataSource of item.data_sources) {
-                  try {
-                    const queryResponse = await fetch(`https://api.notion.com/v1/data_sources/${dataSource.id}/query`, {
-                      method: 'POST',
-                      headers: {
-                        'Authorization': `Bearer ${apiKey}`,
-                        'Notion-Version': '2026-03-11',
-                        'Content-Type': 'application/json'
-                      },
-                      body: JSON.stringify({ page_size: 100 })
-                    });
-
-                    const queryData = await queryResponse.json();
-
-                    if (queryData.results && queryData.results.length > 0) {
-                      for (const entry of queryData.results) {
-                        let entryTitle = 'Untitled';
-                        let entryProps: string[] = [];
-
-                        if (entry.properties) {
-                          for (const [propName, propValue] of Object.entries(entry.properties)) {
-                            const value = extractProperty(propValue as any);
-                            if (value) {
-                              if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
-                              entryTitle = value;
-                              } else {
-                                entryProps.push(`${propName}: ${value}`);
-                              }
-                            }
-                          }
-                        }
-
-                        let entryContent = `Entry: ${entryTitle}\n`;
-                        if (entryProps.length > 0) {
-                          entryContent += entryProps.join('\n') + '\n';
-                        }
-
-                        // Add entry content to database content for prompt preview/chat AI
-                        databaseContent += entryContent;
-                      }
-                    }
-                  } catch (error) {
-                    console.error('Error fetching data source entries:', dataSource.id, error);
-                  }
-                }
-              } else {
-                // Fallback to old database query API
-                const queryResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
-                  method: 'POST',
-                  headers: {
-                    'Authorization': `Bearer ${apiKey}`,
-                    'Notion-Version': '2026-03-11',
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify({ page_size: 100 })
-                });
-
-                const queryData = await queryResponse.json();
-
-                if (queryData.results && queryData.results.length > 0) {
-                  for (const entry of queryData.results) {
-                    let entryTitle = 'Untitled';
-                    let entryProps: string[] = [];
-
-                    if (entry.properties) {
-                      for (const [propName, propValue] of Object.entries(entry.properties)) {
-                        const value = extractProperty(propValue as any);
-                        if (value) {
-                          if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
-                            entryTitle = value;
-                          } else {
-                            entryProps.push(`${propName}: ${value}`);
-                          }
-                        }
-                      }
-                    }
-
-                    let entryContent = `Entry: ${entryTitle}\n`;
-                    if (entryProps.length > 0) {
-                      entryContent += entryProps.join('\n') + '\n';
-                    }
-
-                    // Add entry content to database content for prompt preview
-                    databaseContent += entryContent;
-                  }
-                }
-              }
-            } catch (error) {
-              console.error('Error fetching database entries:', error);
+          } else if (item.object === 'database') {
+            const db = await processDatabaseItem(item, apiKey);
+            if (db) {
+              processedItems.push(db);
             }
-
-            // Send the database/data_source object with full content
-            const database = {
-              id: databaseId,
-              title: title,
-              content: databaseContent,
-              parent: item.parent,
-              object: item.object || 'database',
-              url,
-              children: []
-            };
-
-            controller.enqueue(encoder.encode(JSON.stringify(database) + '\n'));
           }
+        }
+
+        // Combine with forced database results
+        const allItems = [...processedItems, ...forcedDatabaseResults];
+
+        // Build hierarchical structure
+        const pageMap = new Map();
+        const rootPages: any[] = [];
+
+        allItems.forEach(item => {
+          pageMap.set(item.id, { ...item, children: item.children || [] });
+        });
+
+        let rootCount = 0;
+        allItems.forEach(page => {
+          const parentId = page.parent?.page_id || page.parent?.database_id || page.parent?.data_source_id;
+          
+          if (!parentId || page.parent?.type === 'workspace') {
+            // Root level page (workspace parent check)
+            rootPages.push(pageMap.get(page.id));
+            rootCount++;
+          } else if (pageMap.has(parentId)) {
+            const parent = pageMap.get(parentId);
+            const child = pageMap.get(page.id);
+            if (!parent.children.find((c: any) => c.id === child.id)) {
+              parent.children.push(child);
+            }
+          } else {
+            // Parent not found, treat as root
+            rootPages.push(pageMap.get(page.id));
+          }
+        });
+
+        console.log('[NOTION STREAM] Hierarchy built:', rootCount, 'root pages');
+
+        // Aggregate content for databases and data sources
+        const aggregateContent = (page: any): any => {
+          if (page.object === 'database' && page.children && page.children.length > 0) {
+            const hasDataSources = page.children.some((child: any) => child.object === 'data_source');
+            
+            if (hasDataSources) {
+              let aggregatedContent = `Database: ${page.title}\n\n`;
+              page.children.forEach((dataSource: any) => {
+                const processedDS = aggregateContent(dataSource);
+                aggregatedContent += processedDS.content;
+              });
+              return { ...page, content: aggregatedContent, children: page.children.map(aggregateContent) };
+            } else {
+              let aggregatedContent = `Database: ${page.title}\n\n`;
+              page.children.forEach((item: any, idx: number) => {
+                aggregatedContent += `${idx + 1}. ${item.title}\n`;
+                if (item.content && item.content.trim()) {
+                  aggregatedContent += `${item.content}\n`;
+                }
+                aggregatedContent += '\n';
+              });
+              return { ...page, content: aggregatedContent, children: page.children.map(aggregateContent) };
+            }
+          } else if (page.object === 'data_source' && page.children && page.children.length > 0) {
+            let aggregatedContent = `Data Source: ${page.title}\n`;
+            page.children.forEach((item: any, idx: number) => {
+              aggregatedContent += `\n${idx + 1}. ${item.title}\n`;
+              if (item.content && item.content.trim()) {
+                aggregatedContent += `${item.content}\n`;
+              }
+            });
+            aggregatedContent += '\n';
+            return { ...page, content: aggregatedContent, children: page.children.map(aggregateContent) };
+          }
+          return { ...page, children: page.children?.map(aggregateContent) || [] };
+        };
+
+        const hierarchicalPages = rootPages.map(aggregateContent);
+
+        // Stream all items (both flat and hierarchical)
+        for (const item of allItems) {
+          controller.enqueue(encoder.encode(JSON.stringify(item) + '\n'));
+        }
+
+        // Also stream hierarchical structure
+        for (const rootPage of hierarchicalPages) {
+          controller.enqueue(encoder.encode(JSON.stringify({ ...rootPage, isHierarchical: true }) + '\n'));
         }
 
         controller.close();
       } catch (error: any) {
+        console.error('[NOTION STREAM] Error:', error);
         controller.enqueue(encoder.encode(JSON.stringify({ error: error.message }) + '\n'));
         controller.close();
       }
