@@ -317,7 +317,8 @@ async function extractBlockContent(blockId: string, apiKey: string, indent: stri
 // Helper function to batch and execute promises
 async function batchFetch<T>(
   tasks: Array<() => Promise<T>>,
-  batchSize: number
+  batchSize: number,
+  delayBetweenBatches: number = 100
 ): Promise<T[]> {
   const results: T[] = [];
 
@@ -336,9 +337,49 @@ async function batchFetch<T>(
         // Skip failed tasks
       }
     });
+
+    // Add delay between batches to prevent rate limiting (except after last batch)
+    if (i + batchSize < tasks.length) {
+      await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+    }
   }
 
   return results;
+}
+
+// Helper to retry requests with exponential backoff for 429 errors
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit = {},
+  maxRetries: number = 2
+): Promise<Response> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      
+      // Don't retry on abort or other critical errors
+      if (response.status === 429 && attempt < maxRetries - 1) {
+        // Rate limited - wait before retrying
+        const retryAfter = response.headers.get('retry-after');
+        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : Math.pow(2, attempt) * 300;
+        
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+      
+      return response;
+    } catch (error: any) {
+      // If it's an abort error, don't retry
+      if (error?.name === 'AbortError') {
+        throw error;
+      }
+      
+      if (attempt === maxRetries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 300));
+    }
+  }
+  
+  throw new Error('Max retries exceeded');
 }
 
 export async function GET(req: NextRequest) {
@@ -482,7 +523,7 @@ export async function GET(req: NextRequest) {
 
     for (const dbId of allDatabaseIds) {
       try {
-        const dbResponse = await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
+        const dbResponse = await fetchWithRetry(`https://api.notion.com/v1/databases/${dbId}`, {
           headers: {
             'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
             'Notion-Version': '2026-03-11'
@@ -546,7 +587,7 @@ export async function GET(req: NextRequest) {
             }
 
             if (title === 'Untitled' && item.parent?.type === 'page_id') {
-              const parentResponse = await fetch(`https://api.notion.com/v1/pages/${item.parent.page_id}`, {
+              const parentResponse = await fetchWithRetry(`https://api.notion.com/v1/pages/${item.parent.page_id}`, {
                 headers: {
                   'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
                   'Notion-Version': '2026-03-11'
@@ -687,7 +728,7 @@ export async function GET(req: NextRequest) {
       Array.from(parentIdsToFetch).map(parentId => async () => {
         try {
           // Try to fetch as database first
-          const dbResponse = await fetch(`https://api.notion.com/v1/databases/${parentId}`, {
+          const dbResponse = await fetchWithRetry(`https://api.notion.com/v1/databases/${parentId}`, {
             headers: {
               'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
               'Notion-Version': '2026-03-11'
@@ -702,7 +743,7 @@ export async function GET(req: NextRequest) {
             // Fetch database entries with properties using new structure or fallback
             try {
               let queryUrl = '';
-              let queryBody: any = { page_size: 100 };
+              let queryBody: any = { page_size: 50 };
               
               // Check if database has data_sources
               if (dbData.data_sources && dbData.data_sources.length > 0) {
@@ -713,7 +754,7 @@ export async function GET(req: NextRequest) {
                 queryUrl = `https://api.notion.com/v1/databases/${parentId}/query`;
               }
 
-              const queryResponse = await fetch(queryUrl, {
+              const queryResponse = await fetchWithRetry(queryUrl, {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
@@ -770,7 +811,7 @@ export async function GET(req: NextRequest) {
           }
 
           // Try to fetch as page
-          const pageResponse = await fetch(`https://api.notion.com/v1/pages/${parentId}`, {
+          const pageResponse = await fetchWithRetry(`https://api.notion.com/v1/pages/${parentId}`, {
             headers: {
               'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
               'Notion-Version': '2026-03-11'
@@ -800,7 +841,7 @@ export async function GET(req: NextRequest) {
         }
         return null;
       }),
-      5 // Batch size: process 5 parents per batch
+      5 // Batch size: 5 parents per batch with conservative retry logic
     );
 
     const validParents = fetchedParents.filter(p => p !== null);
@@ -859,6 +900,7 @@ export async function GET(req: NextRequest) {
         else if (parent?.type === 'agent_id') parentId = parent.agent_id;
         
         if (parentId && pageMap.has(parentId)) {
+          // Parent exists in our map - add as child
           const parentNode = pageMap.get(parentId);
           if (!parentNode.children.find((c: any) => c.id === page.id)) {
             parentNode.children.push(pageMap.get(page.id));
@@ -867,8 +909,8 @@ export async function GET(req: NextRequest) {
             parentsToChildren.set(parentId, []);
           }
           parentsToChildren.get(parentId)!.push(page.id);
-        } else if (!parentId) {
-          // No recognizable parent, treat as root
+        } else {
+          // Either no parent type or parent not found in our data - treat as root
           rootPages.push(pageMap.get(page.id));
         }
       }

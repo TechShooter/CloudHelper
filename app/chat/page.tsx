@@ -15,6 +15,7 @@ export default function Home() {
   const [sheetData, setSheetData] = useState<any>(null);
   const [notionPages, setNotionPages] = useState<any[]>([]);
   const [hierarchicalNotionPages, setHierarchicalNotionPages] = useState<any[]>([]);
+  const [notionError, setNotionError] = useState<string | null>(null);
   const workspaceManagerRef = useRef<any>(null);
 
   // Check auth on mount - dynamic import of supabase
@@ -53,20 +54,27 @@ export default function Home() {
     try {
       const response = await fetch(`/api/notion?t=${Date.now()}`);
       if (!response.ok) {
+        const errorMsg = response.status === 429 
+          ? '⚠️ Notion API Rate Limit: Too many requests. Please wait a moment and try again.'
+          : `Failed to fetch Notion data: ${response.status}`;
         console.error('Failed to fetch Notion data:', response.status);
+        setNotionError(errorMsg);
         return;
       }
 
       const data = await response.json();
       if (data.error) {
         console.error('Notion API error:', data.error);
+        setNotionError(`Notion API Error: ${data.error}`);
         return;
       }
 
       setNotionPages(data.pages || []);
       setHierarchicalNotionPages(data.hierarchicalPages || []);
+      setNotionError(null); // Clear error on success
     } catch (error) {
       console.error('Failed to load Notion data:', error);
+      setNotionError(`Error loading Notion data: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -136,6 +144,7 @@ export default function Home() {
             notionPages={notionPages}
             allNotionPages={notionPages}
             hierarchicalNotionPages={hierarchicalNotionPages}
+            notionError={notionError}
             onReloadNotion={reloadNotion}
           />
         </Suspense>

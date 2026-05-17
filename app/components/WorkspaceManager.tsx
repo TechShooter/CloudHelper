@@ -129,10 +129,11 @@ interface Props {
   notionPages: any[];
   allNotionPages: any[];
   hierarchicalNotionPages?: any[];
+  notionError?: string | null;
   onReloadNotion?: () => Promise<void>;
 }
 
-export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData, notionPages, allNotionPages, hierarchicalNotionPages, onReloadNotion }: Props, ref) {
+export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData, notionPages, allNotionPages, hierarchicalNotionPages, notionError, onReloadNotion }: Props, ref) {
   const [activeWorkspace, setActiveWorkspace] = useState('general');
   const [activeTab, setActiveTab] = useState<'chat' | 'docs' | 'calendar' | 'nutrients'>('chat');
   const [workspaces] = useState<Workspace[]>(DEFAULT_WORKSPACES);
@@ -1531,6 +1532,17 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left Column - Main Content */}
                 <div className="lg:col-span-2">
+                  {/* Error Message */}
+                  {notionError && (
+                    <div className="mb-4 p-4 bg-red-900 bg-opacity-50 border border-red-600 rounded text-red-200 flex items-start gap-3">
+                      <span className="text-xl mt-0.5">⚠️</span>
+                      <div>
+                        <div className="font-semibold">Notion Error</div>
+                        <div className="text-sm mt-1">{notionError}</div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold text-white">Manage accessible documents</h3>
                     <div className="flex items-center gap-2">
