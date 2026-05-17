@@ -1299,7 +1299,11 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                   checked={isSelected}
                   onChange={(e) => {
                     e.stopPropagation();
-                    togglePageSelection(`notion-${page.id}`);
+                    setSelectedContexts(prev => 
+                      prev.includes(`notion-${page.id}`)
+                        ? prev.filter(ctx => ctx !== `notion-${page.id}`)
+                        : [...prev, `notion-${page.id}`]
+                    );
                   }}
                   className="w-4 h-4 rounded cursor-pointer"
                 />
