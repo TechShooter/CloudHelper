@@ -84,10 +84,6 @@ function extractProperty(prop: any): string {
 
 // Helper function to process a database item (extracted for reuse)
 async function processDatabaseItem(item: any): Promise<any> {
-  console.log('[NOTION] >>> PROCESSING DATABASE:', item.id, 'Title:', item.title?.[0]?.plain_text || 'N/A');
-  console.log('[NOTION DEBUG] Database full object:', JSON.stringify(item, null, 2));
-  console.log('[NOTION DEBUG] Database has data_sources:', !!item.data_sources, 'length:', item.data_sources?.length);
-  
   // Database is a container - fetch its data sources
   const databaseId = item.id;
   const dbTitle = item.title?.[0]?.plain_text || 'Untitled Database';
@@ -95,7 +91,6 @@ async function processDatabaseItem(item: any): Promise<any> {
 
   // Fetch each data source under this database
   if (item.data_sources && item.data_sources.length > 0) {
-    console.log('[NOTION] Database has data_sources:', item.data_sources.length);
     // NEW API: Database has data sources
     for (const dsRef of item.data_sources) {
       try {
@@ -130,12 +125,9 @@ async function processDatabaseItem(item: any): Promise<any> {
             let entryTitle = 'Untitled';
             let entryProps: string[] = [];
 
-            console.log('Processing entry:', entry.id, 'Properties:', Object.keys(entry.properties || {}));
-
             if (entry.properties) {
               for (const [propName, propValue] of Object.entries(entry.properties)) {
                 const value = extractProperty(propValue as any);
-                console.log(`Property ${propName} (${(propValue as any).type}):`, value);
                 if (value) {
                   if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
                     entryTitle = value;
@@ -146,7 +138,6 @@ async function processDatabaseItem(item: any): Promise<any> {
               }
             }
 
-            console.log('Entry title:', entryTitle, 'Props:', entryProps);
             let entryContent = entryProps.length > 0 ? entryProps.join('\n') : '';
 
             dataSourcePages.push({
@@ -171,13 +162,10 @@ async function processDatabaseItem(item: any): Promise<any> {
           children: dataSourcePages
         });
       } catch (error) {
-        console.error('Error fetching data source:', dsRef.id, error);
       }
     }
   } else {
     // FALLBACK: Old database API - query database directly
-    console.log('[NOTION] Database has no data_sources, using fallback query API for:', databaseId, dbTitle);
-    console.log('[NOTION DEBUG] Entering fallback path for database:', databaseId);
     try {
       const queryResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
         method: 'POST',
@@ -198,10 +186,6 @@ async function processDatabaseItem(item: any): Promise<any> {
       });
 
       const queryData = await queryResponse.json();
-      console.log(`Database ${dbTitle} query returned ${queryData.results?.length || 0} items, has_more: ${queryData.has_more}`);
-      if (queryData.has_more) {
-        console.warn(`WARNING: Database ${dbTitle} has more items but pagination not implemented!`);
-      }
       const databasePages: any[] = [];
 
       if (queryData.results && queryData.results.length > 0) {
@@ -209,12 +193,9 @@ async function processDatabaseItem(item: any): Promise<any> {
           let entryTitle = 'Untitled';
           let entryProps: string[] = [];
 
-          console.log('Processing database entry (fallback):', entry.id, 'Properties:', Object.keys(entry.properties || {}));
-
           if (entry.properties) {
             for (const [propName, propValue] of Object.entries(entry.properties)) {
               const value = extractProperty(propValue as any);
-              console.log(`  Property ${propName} (${(propValue as any).type}):`, value);
               if (value) {
                 if ((propValue as any).type === 'title' && (!entryTitle || entryTitle === 'Untitled')) {
                   entryTitle = value;
@@ -225,7 +206,6 @@ async function processDatabaseItem(item: any): Promise<any> {
             }
           }
 
-          console.log('  Entry title:', entryTitle, 'Props count:', entryProps.length);
           let entryContent = entryProps.length > 0 ? entryProps.join('\n') : '';
 
           databasePages.push({
@@ -238,11 +218,9 @@ async function processDatabaseItem(item: any): Promise<any> {
             children: []
           });
         }
-        console.log(`Database ${dbTitle} processed ${databasePages.length} pages`);
       }
 
       // Return database with pages directly as children (no data source wrapper)
-      console.log('[NOTION] <<< RETURNING DATABASE (fallback success):', databaseId, 'Title:', dbTitle, 'Pages:', databasePages.length);
       return {
         id: databaseId,
         title: dbTitle,
@@ -252,9 +230,7 @@ async function processDatabaseItem(item: any): Promise<any> {
         children: databasePages
       };
     } catch (error) {
-      console.error('[NOTION] Error querying database (fallback):', databaseId, error);
       // Still return the database object even if query failed, so we don't lose it
-      console.log('[NOTION] <<< RETURNING DATABASE (fallback with error):', databaseId, 'Title:', dbTitle);
       return {
         id: databaseId,
         title: dbTitle,
@@ -267,7 +243,6 @@ async function processDatabaseItem(item: any): Promise<any> {
   }
 
   // Return database with data sources as children
-  console.log('[NOTION] <<< RETURNING DATABASE:', databaseId, 'Title:', dbTitle, 'Children:', dataSourceObjects.length);
   return {
     id: databaseId,
     title: dbTitle,
@@ -335,7 +310,6 @@ async function extractBlockContent(blockId: string, apiKey: string, indent: stri
 
     return content;
   } catch (error) {
-    console.error('Error extracting block content:', error);
     return '';
   }
 }
@@ -345,32 +319,25 @@ async function batchFetch<T>(
   tasks: Array<() => Promise<T>>,
   batchSize: number
 ): Promise<T[]> {
-  console.log(`[batchFetch] Starting with ${tasks.length} tasks, batch size: ${batchSize}`);
   const results: T[] = [];
-  
+
   for (let i = 0; i < tasks.length; i += batchSize) {
     const batch = tasks.slice(i, i + batchSize);
-    const batchNum = Math.floor(i / batchSize) + 1;
-    console.log(`[batchFetch] Processing batch ${batchNum} with ${batch.length} tasks`);
-    
+
     const batchResults = await Promise.allSettled(batch.map(task => task()));
-    
+
     batchResults.forEach((result, idx) => {
       const taskNum = i + idx;
       if (result.status === 'fulfilled' && result.value !== null) {
         results.push(result.value);
-        console.log(`[batchFetch] Task ${taskNum} completed successfully, result:`, (result.value as any)?.id || 'no-id');
       } else if (result.status === 'fulfilled' && result.value === null) {
-        console.log(`[batchFetch] Task ${taskNum} returned null`);
+        // Skip null results
       } else {
-        console.error(`[batchFetch] Task ${taskNum} failed:`, (result as any).reason?.message || (result as any).reason);
+        // Skip failed tasks
       }
     });
-    
-    console.log(`[batchFetch] Batch ${batchNum} complete, total results so far: ${results.length}`);
   }
-  
-  console.log(`[batchFetch] All batches complete, final results: ${results.length}`);
+
   return results;
 }
 
@@ -386,8 +353,6 @@ export async function GET(req: NextRequest) {
       clearTimeout(timeoutId);
       return NextResponse.json({ error: 'Notion API key not configured' }, { status: 400 });
     }
-
-    console.log('[NOTION API] Starting request...');
 
     const response = await fetch('https://api.notion.com/v1/search', {
       method: 'POST',
@@ -411,10 +376,8 @@ export async function GET(req: NextRequest) {
     });
 
     let data = await response.json();
-    console.log('[NOTION API] Initial search completed in', Date.now() - startTime, 'ms, results:', data.results?.length);
 
     if (!response.ok) {
-      console.error('Notion API error:', data);
       return NextResponse.json({
         error: data.message || `Notion API error: ${data.code || 'Unknown'}`
       }, { status: response.status });
@@ -423,12 +386,10 @@ export async function GET(req: NextRequest) {
     // Implement pagination to get ALL pages
     let allResults = [...(data.results || [])];
     let nextCursor = data.next_cursor;
-    
-    console.log('[NOTION API] Starting pagination to fetch all pages...');
+
     let pageCount = 1;
-    
+
     while (nextCursor && pageCount < 50) { // Safety limit of 50 pages
-      console.log(`[NOTION API] Fetching page ${pageCount + 1} with cursor...`);
       
       const paginatedResponse = await fetch('https://api.notion.com/v1/search', {
         method: 'POST',
@@ -457,112 +418,13 @@ export async function GET(req: NextRequest) {
         allResults = allResults.concat(paginatedData.results || []);
         nextCursor = paginatedData.next_cursor;
         pageCount++;
-        console.log(`[NOTION API] Page ${pageCount} fetched, total results so far: ${allResults.length}`);
       } else {
-        console.error('[NOTION API] Pagination error:', await paginatedResponse.text());
         break;
       }
     }
     
-    console.log(`[NOTION API] Pagination complete. Total pages fetched: ${allResults.length}`);
-    
     // Replace data.results with all results
     data.results = allResults;
-
-    // DEBUG: Check for specific page "Cosa c'è in casa"
-    console.log('[NOTION DEBUG] Checking for "Cosa c\'è in casa" in search results...');
-    let casaPageInSearch = data.results?.find((item: any) => {
-      if (item.object === 'page') {
-        const title = item.properties?.title?.title?.[0]?.plain_text || 
-                     item.properties?.Name?.title?.[0]?.plain_text || '';
-        return title.toLowerCase().includes('casa');
-      }
-      return false;
-    });
-    
-    console.log('[NOTION DEBUG] "Cosa c\'è in casa" found in filtered search:', !!casaPageInSearch);
-    
-    // If not found in filtered search, try without filters
-    if (!casaPageInSearch) {
-      console.log('[NOTION DEBUG] Page not found in filtered search, trying without filters...');
-      const unrestrictedResponse = await fetch('https://api.notion.com/v1/search', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-          'Notion-Version': '2026-03-11',
-          'Content-Type': 'application/json'
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          page_size: 100
-        })
-      });
-      
-      if (unrestrictedResponse.ok) {
-        const unrestrictedData = await unrestrictedResponse.json();
-        console.log('[NOTION DEBUG] Unrestricted search results:', unrestrictedData.results?.length);
-        
-        casaPageInSearch = unrestrictedData.results?.find((item: any) => {
-          if (item.object === 'page') {
-            const title = item.properties?.title?.title?.[0]?.plain_text || 
-                         item.properties?.Name?.title?.[0]?.plain_text || '';
-            return title.toLowerCase().includes('casa');
-          }
-          return false;
-        });
-        
-        console.log('[NOTION DEBUG] "Cosa c\'è in casa" found in unrestricted search:', !!casaPageInSearch);
-        
-        // Use unrestricted data if we found the page there
-        if (casaPageInSearch || unrestrictedData.results?.length > data.results?.length) {
-          data = unrestrictedData;
-          console.log('[NOTION DEBUG] Using unrestricted search results');
-        }
-      }
-    }
-    
-    if (casaPageInSearch) {
-      console.log('[NOTION DEBUG] Casa page search details:', {
-        id: casaPageInSearch.id,
-        title: casaPageInSearch.properties?.title?.title?.[0]?.plain_text || 'No title',
-        archived: casaPageInSearch.archived,
-        in_trash: casaPageInSearch.in_trash,
-        parent: casaPageInSearch.parent
-      });
-    } else {
-      console.log('[NOTION DEBUG] All page titles from search:');
-      data.results?.forEach((item: any, idx: number) => {
-        if (item.object === 'page') {
-          const title = item.properties?.title?.title?.[0]?.plain_text || 
-                       item.properties?.Name?.title?.[0]?.plain_text || 'No title';
-          console.log(`  ${idx + 1}. "${title}" (ID: ${item.id})`);
-        }
-      });
-    }
-
-    // DEBUG: Log full search response structure
-    console.log('[NOTION DEBUG] Full search response:', JSON.stringify(data, null, 2));
-    console.log('[NOTION DEBUG] Response keys:', Object.keys(data));
-    console.log('[NOTION DEBUG] Results type:', typeof data.results);
-    console.log('[NOTION DEBUG] Results length:', data.results?.length);
-
-    // Log what types of objects are returned from search
-    const searchResultsBreakdown = { database: 0, page: 0, other: 0 };
-    data.results?.forEach((item: any) => {
-      if (item.object === 'database') searchResultsBreakdown.database++;
-      else if (item.object === 'page') searchResultsBreakdown.page++;
-      else searchResultsBreakdown.other++;
-    });
-    
-    console.log('[NOTION] Search API results breakdown:', searchResultsBreakdown);
-    console.log('[NOTION] First 5 items from search:', data.results?.slice(0, 5).map((item: any) => ({
-      id: item.id,
-      object: item.object,
-      title: item.title?.[0]?.plain_text || 'N/A',
-      hasDataSources: item.data_sources ? item.data_sources.length : 0,
-      parent: item.parent,
-      properties: item.properties ? Object.keys(item.properties) : 'none'
-    })));
 
     // CLOUDFLARE FIX: Force process known databases even if not in search results
     const knownDatabaseIds = [
@@ -575,8 +437,7 @@ export async function GET(req: NextRequest) {
     ];
     let forcedDatabaseResults: any[] = [];
 
-    // CLOUDFLARE DEBUG: Add database discovery mechanism
-    console.log('[NOTION DEBUG] Starting database discovery for Cloudflare compatibility');
+    // Database discovery mechanism
     let discoveredDatabaseIds: string[] = [];
 
     // Try to discover databases by querying the search API with different filters
@@ -600,31 +461,24 @@ export async function GET(req: NextRequest) {
 
       if (dbSearchResponse.ok) {
         const dbSearchData = await dbSearchResponse.json();
-        console.log('[NOTION DEBUG] Database search returned:', dbSearchData.results?.length, 'databases');
-        
         dbSearchData.results?.forEach((db: any) => {
           if (db.id && !discoveredDatabaseIds.includes(db.id)) {
             discoveredDatabaseIds.push(db.id);
-            console.log('[NOTION DEBUG] Discovered database:', db.id, db.title?.[0]?.plain_text || 'Untitled');
           }
         });
       }
     } catch (error) {
-      console.log('[NOTION DEBUG] Database search failed:', error);
     }
 
     // Additional discovery: Look for database references in page parents
-    console.log('[NOTION DEBUG] Looking for database references in page parents...');
     data.results?.forEach((item: any) => {
       if (item.parent?.database_id && !discoveredDatabaseIds.includes(item.parent.database_id)) {
         discoveredDatabaseIds.push(item.parent.database_id);
-        console.log('[NOTION DEBUG] Found database from page parent:', item.parent.database_id);
       }
     });
 
     // Combine known and discovered database IDs
     const allDatabaseIds = [...new Set([...knownDatabaseIds, ...discoveredDatabaseIds])];
-    console.log('[NOTION DEBUG] Total databases to process:', allDatabaseIds.length, allDatabaseIds);
 
     for (const dbId of allDatabaseIds) {
       try {
@@ -637,38 +491,13 @@ export async function GET(req: NextRequest) {
 
         if (dbResponse.ok) {
           const dbData = await dbResponse.json();
-          const dbTitle = dbData.title?.[0]?.plain_text || 'Untitled Database';
-          console.log('[NOTION] Database found:', {
-            id: dbData.id,
-            title: dbTitle,
-            hasDataSources: !!dbData.data_sources,
-            dataSourceCount: dbData.data_sources?.length || 0
-          });
-
-          // IMPORTANT: Log database ID and title for easy identification
-          console.log('[NOTION IMPORTANT] Database ID mapping:', `"${dbTitle}" -> "${dbData.id}"`);
-          console.log('[NOTION IMPORTANT] Add this to knownDatabaseIds if missing:', dbData.id);
-
-          // Force process this database even if not in search results
-          console.log('[NOTION DEBUG] Forcing database processing for Cloudflare compatibility:', dbId);
           const forcedDb = await processDatabaseItem(dbData);
           if (forcedDb) {
             forcedDatabaseResults.push(forcedDb);
-            console.log('[NOTION DEBUG] Added forced database result:', forcedDb.title, 'with', forcedDb.children?.length || 0, 'children');
           }
-        } else {
-          console.log('[NOTION] Database not accessible:', dbId, dbResponse.status, dbResponse.statusText);
         }
       } catch (error) {
-        console.log('[NOTION] Error checking known database:', dbId, error);
       }
-    }
-
-    // CLOUDFLARE DEBUG: Check if we found any databases in search results
-    const searchDatabases = data.results?.filter((item: any) => item.object === 'database') || [];
-    console.log('[NOTION DEBUG] Search results contained', searchDatabases.length, 'databases');
-    if (searchDatabases.length === 0 && forcedDatabaseResults.length > 0) {
-      console.log('[NOTION DEBUG] No databases in search results, using', forcedDatabaseResults.length, 'forced databases');
     }
 
     if (!data.results || data.results.length === 0) {
@@ -681,9 +510,6 @@ export async function GET(req: NextRequest) {
     const pages = (await Promise.all(
       data.results.map(async (item: any) => {
         try {
-          const itemStartTime = Date.now();
-          console.log('[NOTION] Processing item:', item.id, 'Type:', item.object, 'Title:', item.title?.[0]?.plain_text || 'N/A');
-          
           if (item.object === 'database') {
             return await processDatabaseItem(item);
           } else {
@@ -691,8 +517,6 @@ export async function GET(req: NextRequest) {
             const pageId = item.id;
             let title = 'Untitled';
             let pageProperties: string[] = [];
-
-            console.log('Processing page:', item.id, 'Properties:', JSON.stringify(item.properties, null, 2));
 
             if (item.properties?.title?.title?.[0]?.plain_text) {
               title = item.properties.title.title[0].plain_text;
@@ -713,16 +537,13 @@ export async function GET(req: NextRequest) {
               for (const [propName, propValue] of Object.entries(item.properties)) {
                 // Skip title property as it's already used
                 if ((propValue as any).type === 'title') continue;
-                
+
                 const value = extractProperty(propValue as any);
-                console.log(`Page property ${propName} (${(propValue as any).type}):`, value);
                 if (value) {
                   pageProperties.push(`${propName}: ${value}`);
                 }
               }
             }
-
-            console.log('Page title:', title, 'Properties:', pageProperties);
 
             if (title === 'Untitled' && item.parent?.type === 'page_id') {
               const parentResponse = await fetch(`https://api.notion.com/v1/pages/${item.parent.page_id}`, {
@@ -734,8 +555,6 @@ export async function GET(req: NextRequest) {
               const parentData = await parentResponse.json();
               title = parentData.properties?.title?.title?.[0]?.plain_text || title;
             }
-
-            console.log('Initial title for page', pageId, ':', title);
 
             // If still Untitled, try to get title from first content block
             if (title === 'Untitled') {
@@ -764,9 +583,7 @@ export async function GET(req: NextRequest) {
                     }
                   }
                 }
-                console.log('Updated title from content:', title);
               } catch (error) {
-                console.log('Could not fetch content for title:', error);
               }
             }
 
@@ -830,12 +647,6 @@ export async function GET(req: NextRequest) {
             };
           }
         } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          console.error('[NOTION] Error processing item:', item.id, 'Object:', item.object, 'Title:', item.title?.[0]?.plain_text || 'N/A', 'Error:', errorMsg);
-          // Log full error stack for databases
-          if (item.object === 'database' && error instanceof Error) {
-            console.error('[NOTION] Database error stack:', error.stack);
-          }
           return null;
         }
       })
@@ -852,28 +663,6 @@ export async function GET(req: NextRequest) {
       else if (p.object === 'page') processedBreakdown.page++;
       else processedBreakdown.other++;
     });
-    
-    console.log('[NOTION] After processing (including nulls):', {
-      total: pages.length,
-      filtered: filteredPages.length,
-      breakdown: processedBreakdown
-    });
-    
-    console.log('[NOTION] Successfully processed pages:', filteredPages.length, 'in', Date.now() - startTime, 'ms');
-    console.log('[NOTION] Pages summary:', filteredPages.map(p => ({ id: p.id, title: p.title, object: p.object, children: p.children?.length || 0, parent: p.parent })));
-    
-    // DEBUG: Check if "Cosa c'è in casa" is in the final filtered pages
-    const casaPageInFiltered = filteredPages.find(p => p.title.toLowerCase().includes('casa'));
-    console.log('[NOTION DEBUG] "Cosa c\'è in casa" in filtered pages:', !!casaPageInFiltered);
-    if (casaPageInFiltered) {
-      console.log('[NOTION DEBUG] Casa page filtered details:', casaPageInFiltered);
-    } else {
-      console.log('[NOTION DEBUG] "Cosa c\'è in casa" NOT found in filtered pages');
-      console.log('[NOTION DEBUG] All filtered page titles:');
-      filteredPages.forEach((p, idx) => {
-        console.log(`  ${idx + 1}. "${p.title}" (ID: ${p.id})`);
-      });
-    }
 
     // Collect all parent IDs that need to be fetched (including databases)
     const parentIdsToFetch = new Set<string>();
@@ -888,11 +677,6 @@ export async function GET(req: NextRequest) {
         parentIdsToFetch.add(page.parent.data_source_id);
       }
     });
-
-    console.log('[NOTION] Parent IDs to fetch:', Array.from(parentIdsToFetch).length, 'total');
-    if (parentIdsToFetch.size > 0) {
-      console.log('[NOTION] First 5 parent IDs:', Array.from(parentIdsToFetch).slice(0, 5));
-    }
 
     // Fetch missing parent pages/databases
     // NOTE: Removed .slice(0, 10) limit to properly resolve all parents on Cloudflare
@@ -913,7 +697,6 @@ export async function GET(req: NextRequest) {
           if (dbResponse.ok) {
             const dbData = await dbResponse.json();
             const title = dbData.title?.[0]?.plain_text || 'Untitled Database';
-            console.log('[NOTION] Fetching parent database:', title, parentId);
             const databasePages: any[] = [];
 
             // Fetch database entries with properties using new structure or fallback
@@ -923,11 +706,9 @@ export async function GET(req: NextRequest) {
               
               // Check if database has data_sources
               if (dbData.data_sources && dbData.data_sources.length > 0) {
-                console.log(`[NOTION] Parent database ${title} has ${dbData.data_sources.length} data sources`);
                 // Use data source query
                 queryUrl = `https://api.notion.com/v1/data_sources/${dbData.data_sources[0].id}/query`;
               } else {
-                console.log(`Parent database ${title} has no data_sources, using fallback`);
                 // Use old database query
                 queryUrl = `https://api.notion.com/v1/databases/${parentId}/query`;
               }
@@ -943,7 +724,6 @@ export async function GET(req: NextRequest) {
               });
 
               const queryData = await queryResponse.json();
-              console.log(`Parent database ${title} query returned ${queryData.results?.length || 0} items`);
 
               if (queryData.results && queryData.results.length > 0) {
                 for (const entry of queryData.results) {
@@ -977,7 +757,6 @@ export async function GET(req: NextRequest) {
                 }
               }
             } catch (error) {
-              console.error('Error fetching parent database entries:', error);
             }
 
             return {
@@ -1018,30 +797,20 @@ export async function GET(req: NextRequest) {
             };
           }
         } catch (error) {
-          console.log('Could not fetch parent:', parentId, error);
         }
         return null;
       }),
       5 // Batch size: process 5 parents per batch
     );
-    
-    console.log('[NOTION] batchFetch completed, raw results:', fetchedParents.length, 'items');
-    console.log('[NOTION] First parent result sample:', fetchedParents.slice(0, 1).map(p => p ? { id: p.id, title: p.title, object: p.object } : 'null'));
-    
+
     const validParents = fetchedParents.filter(p => p !== null);
-    
+
     // Analyze fetched parents
     const fetchedByType = { database: 0, page: 0, other: 0 };
     validParents.forEach(p => {
       if (p.object === 'database') fetchedByType.database++;
       else if (p.object === 'page') fetchedByType.page++;
       else fetchedByType.other++;
-    });
-    
-    console.log('[NOTION] Fetched parents summary:', {
-      totalRequested: Array.from(parentIdsToFetch).length,
-      successfullyFetched: validParents.length,
-      byType: fetchedByType
     });
 
     // Combine all pages including forced database results
@@ -1055,83 +824,62 @@ export async function GET(req: NextRequest) {
       else if (p.object === 'page') combinedByType.page++;
       else combinedByType.other++;
     });
-    
-    console.log('[NOTION] Combined pages (search + parents):', {
-      total: allPages.length,
-      fromSearch: filteredPages.length,
-      fromParentFetch: validParents.length,
-      byType: combinedByType
-    });
 
-    // Build hierarchical structure
+    // Build unified hierarchical structure following Notion's API model:
+    // Workspace → Pages/Databases → Data Sources → Pages
     const pageMap = new Map();
-    const rootPages: any[] = [];
-
-    // First pass: create map with children arrays (preserve existing children from data sources)
+    
+    // First pass: create map with children arrays
     allPages.forEach(page => {
-      pageMap.set(page.id, { ...page, children: page.children || [] });
+      pageMap.set(page.id, { 
+        ...page, 
+        children: page.children || [],
+        _expanded: false // Track expansion state
+      });
     });
     
-    // Analyze page map contents
-    const pageMapByType = { database: 0, data_source: 0, page: 0, other: 0 };
-    allPages.forEach(p => {
-      if (p.object === 'database') pageMapByType.database++;
-      else if (p.object === 'data_source') pageMapByType.data_source++;
-      else if (p.object === 'page') pageMapByType.page++;
-      else pageMapByType.other++;
-    });
-    
-    console.log('[NOTION] Page map created:', {
-      total: pageMap.size,
-      byType: pageMapByType,
-      databaseIds: allPages.filter(p => p.object === 'database').map(p => p.id).slice(0, 5),
-      dataSourceIds: allPages.filter(p => p.object === 'data_source').map(p => p.id).slice(0, 5)
-    });
-
-    // Second pass: build hierarchy
-    let parentsNotFound = 0;
-    let rootCount = 0;
-    let hierarchyChildCount = 0;
-    const missingParents: { [key: string]: string[] } = {};
+    // Second pass: build hierarchy by connecting parents and children
+    const rootPages: any[] = []; // Workspace-level items
+    const parentsToChildren = new Map<string, string[]>(); // Track which items are children
     
     allPages.forEach(page => {
-      const parentId = page.parent?.page_id || page.parent?.database_id || page.parent?.data_source_id;
+      const parent = page.parent;
       
-      if (!parentId || page.parent?.type === 'workspace') {
-        // Root level page
+      if (parent?.type === 'workspace') {
+        // Root level - add to rootPages
         rootPages.push(pageMap.get(page.id));
-        rootCount++;
-      } else if (pageMap.has(parentId)) {
-        // Has a parent in our map - add to parent's children if not already there
-        const parent = pageMap.get(parentId);
-        const child = pageMap.get(page.id);
-        if (!parent.children.find((c: any) => c.id === child.id)) {
-          parent.children.push(child);
-          hierarchyChildCount++;
-        }
       } else {
-        // Parent not found, treat as root
-        if (!missingParents[parentId]) {
-          missingParents[parentId] = [];
+        // Has a parent - add to parent's children if parent exists in our map
+        let parentId: string | null = null;
+        
+        if (parent?.type === 'page_id') parentId = parent.page_id;
+        else if (parent?.type === 'database_id') parentId = parent.database_id;
+        else if (parent?.type === 'data_source_id') parentId = parent.data_source_id;
+        else if (parent?.type === 'block_id') parentId = parent.block_id;
+        else if (parent?.type === 'agent_id') parentId = parent.agent_id;
+        
+        if (parentId && pageMap.has(parentId)) {
+          const parentNode = pageMap.get(parentId);
+          if (!parentNode.children.find((c: any) => c.id === page.id)) {
+            parentNode.children.push(pageMap.get(page.id));
+          }
+          if (!parentsToChildren.has(parentId)) {
+            parentsToChildren.set(parentId, []);
+          }
+          parentsToChildren.get(parentId)!.push(page.id);
+        } else if (!parentId) {
+          // No recognizable parent, treat as root
+          rootPages.push(pageMap.get(page.id));
         }
-        missingParents[parentId].push(`${page.id}:${page.title}:${page.object}`);
-        rootPages.push(pageMap.get(page.id));
-        parentsNotFound++;
       }
     });
     
-    console.log('[NOTION] Hierarchy built:', {
-      totalPages: allPages.length,
-      rootPages: rootCount,
-      hierarchyAssignedChildren: hierarchyChildCount,
-      parentsNotFound: parentsNotFound,
-      totalRootPagesArrayLength: rootPages.length,
-      missingParentIds: Object.keys(missingParents).slice(0, 10),
-      missingParentExamples: Object.entries(missingParents).slice(0, 3).map(([id, children]) => ({
-        parentId: id,
-        childrenCount: children.length,
-        children: children.slice(0, 2)
-      }))
+    // Sort root pages: databases first, then pages
+    rootPages.sort((a, b) => {
+      const aIsDb = a.object === 'database' ? 0 : 1;
+      const bIsDb = b.object === 'database' ? 0 : 1;
+      if (aIsDb !== bIsDb) return aIsDb - bIsDb;
+      return (a.title || '').localeCompare(b.title || '');
     });
 
     // Aggregate content for databases and data sources
@@ -1139,8 +887,7 @@ export async function GET(req: NextRequest) {
       if (page.object === 'database' && page.children && page.children.length > 0) {
         // Check if children are data sources or direct pages
         const hasDataSources = page.children.some((child: any) => child.object === 'data_source');
-        console.log(`Aggregating database: ${page.title}, children: ${page.children.length}, hasDataSources: ${hasDataSources}`);
-        
+
         if (hasDataSources) {
           // Database with data sources: aggregate all data sources
           let aggregatedContent = `Database: ${page.title}\n\n`;
@@ -1148,73 +895,43 @@ export async function GET(req: NextRequest) {
             const processedDS = aggregateContent(dataSource);
             aggregatedContent += processedDS.content;
           });
-          console.log(`Database ${page.title} aggregated content length: ${aggregatedContent.length}`);
           return { ...page, content: aggregatedContent, children: page.children.map(aggregateContent) };
         } else {
           // Database with direct pages (fallback/old API): list all items
           let aggregatedContent = `Database: ${page.title}\n\n`;
           page.children.forEach((item: any, idx: number) => {
-            console.log(`  Adding item ${idx + 1}: ${item.title}, content length: ${item.content?.length || 0}`);
             aggregatedContent += `${idx + 1}. ${item.title}\n`;
             if (item.content && item.content.trim()) {
               aggregatedContent += `${item.content}\n`;
             }
             aggregatedContent += '\n';
           });
-          console.log(`Database ${page.title} aggregated content length: ${aggregatedContent.length}`);
           return { ...page, content: aggregatedContent, children: page.children.map(aggregateContent) };
         }
       } else if (page.object === 'data_source' && page.children && page.children.length > 0) {
         // Data source: list all items with their properties
-        console.log(`Aggregating data source: ${page.title}, children: ${page.children.length}`);
         let aggregatedContent = `Data Source: ${page.title}\n`;
         page.children.forEach((item: any, idx: number) => {
-          console.log(`  Adding item ${idx + 1}: ${item.title}, content length: ${item.content?.length || 0}`);
           aggregatedContent += `\n${idx + 1}. ${item.title}\n`;
           if (item.content && item.content.trim()) {
             aggregatedContent += `${item.content}\n`;
           }
         });
         aggregatedContent += '\n';
-        console.log(`Data source ${page.title} aggregated content length: ${aggregatedContent.length}`);
         return { ...page, content: aggregatedContent, children: page.children.map(aggregateContent) };
       }
       return { ...page, children: page.children?.map(aggregateContent) || [] };
     };
 
-    const hierarchicalPages = rootPages.map(aggregateContent);
-
-    // Analyze root pages
-    const rootPagesByType = { database: 0, data_source: 0, page: 0, other: 0 };
-    rootPages.forEach(p => {
-      if (p.object === 'database') rootPagesByType.database++;
-      else if (p.object === 'data_source') rootPagesByType.data_source++;
-      else if (p.object === 'page') rootPagesByType.page++;
-      else rootPagesByType.other++;
-    });
-    
-    console.log('[NOTION] Root pages breakdown:', rootPagesByType);
-    console.log('[NOTION] Root pages sample:', rootPages.slice(0, 3).map(p => ({
-      id: p.id,
-      title: p.title,
-      object: p.object,
-      childrenCount: p.children?.length || 0
-    })));
-
     clearTimeout(timeoutId);
     const totalTime = Date.now() - startTime;
-    console.log('[NOTION API] Returning response:', {
-      totalPages: filteredPages.length,
-      hierarchicalPagesCount: hierarchicalPages.length,
-      totalTime: totalTime + 'ms',
-      cacheHeaders: 'no-store'
-    });
-    
+
     return NextResponse.json({
-      pages: filteredPages, // Keep flat list for backward compatibility
-      hierarchicalPages: hierarchicalPages, // New hierarchical structure
+      pages: filteredPages, // Flat list for backward compatibility
+      hierarchicalPages: rootPages.map(aggregateContent), // Unified hierarchical structure
       totalResults: data.results?.length || 0,
-      specificDatabaseFound: forcedDatabaseResults.length > 0
+      specificDatabaseFound: forcedDatabaseResults.length > 0,
+      totalPages: allPages.length
     }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -1225,7 +942,6 @@ export async function GET(req: NextRequest) {
   } catch (error: any) {
     clearTimeout(timeoutId);
     const totalTime = Date.now() - startTime;
-    console.error('[NOTION API] Error after', totalTime, 'ms:', error.name, error.message);
     return NextResponse.json({ 
       error: error.name === 'AbortError' ? 'Request timeout - Notion API taking too long' : error.message,
       pages: [],

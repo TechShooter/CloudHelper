@@ -51,43 +51,22 @@ export default function Home() {
 
   const loadNotionStreaming = async () => {
     try {
-      const response = await fetch(`/api/notion/stream?t=${Date.now()}`);
-      if (!response.ok) return;
-
-      const reader = response.body?.getReader();
-      if (!reader) return;
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let accumulatedPages: any[] = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const page = JSON.parse(line);
-            if (page.error) {
-              console.error('Stream error:', page.error);
-              continue;
-            }
-            accumulatedPages.push(page);
-            // Update UI periodically or on every page
-            setNotionPages([...accumulatedPages]);
-            setHierarchicalNotionPages(buildHierarchy(accumulatedPages));
-          } catch (e) {
-            console.error('Error parsing stream line:', e);
-          }
-        }
+      const response = await fetch(`/api/notion?t=${Date.now()}`);
+      if (!response.ok) {
+        console.error('Failed to fetch Notion data:', response.status);
+        return;
       }
+
+      const data = await response.json();
+      if (data.error) {
+        console.error('Notion API error:', data.error);
+        return;
+      }
+
+      setNotionPages(data.pages || []);
+      setHierarchicalNotionPages(data.hierarchicalPages || []);
     } catch (error) {
-      console.error('Failed to load streaming Notion data:', error);
+      console.error('Failed to load Notion data:', error);
     }
   };
 

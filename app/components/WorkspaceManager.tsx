@@ -503,7 +503,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   const [selectedContexts, setSelectedContexts] = useState<string[]>([]);
   const [loadingNotion, setLoadingNotion] = useState(false);
   const [sortOrder, setSortOrder] = useState<'title' | 'type' | 'hierarchy'>('hierarchy');
-  const [groupByTags, setGroupByTags] = useState(true);
+  const [groupByTags, setGroupByTags] = useState(false);
+  const [groupByParent, setGroupByParent] = useState(true);
   const [defaultDocs, setDefaultDocs] = useState<{ [workspaceId: string]: string[] }>({});
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set());
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
@@ -1237,7 +1238,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   // Group pages by tags
   const groupPagesByTags = (pages: any[]): { [tag: string]: any[] } => {
     const groups: { [tag: string]: any[] } = {};
-    
+
     pages.forEach(page => {
       const tags = extractTags(page);
       tags.forEach(tag => {
@@ -1245,8 +1246,92 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         groups[tag].push(page);
       });
     });
-    
+
     return groups;
+  };
+
+  // Render hierarchical pages with toggles
+  const renderHierarchicalNotionPages = (pages: any[], depth = 0): ReactNode => {
+    return (
+      <>
+        {pages.map(page => {
+          const hasChildren = page.children && page.children.length > 0;
+          const isExpanded = expandedPages.has(page.id);
+          const isSelected = selectedContexts.includes(`notion-${page.id}`);
+          
+          // Determine icon based on object type
+          const getIcon = (obj: string) => {
+            switch (obj) {
+              case 'database': return '🗄️';
+              case 'data_source': return '📊';
+              case 'page': return '📄';
+              case 'block': return '📌';
+              case 'agent': return '🤖';
+              default: return '📄';
+            }
+          };
+          
+          const icon = getIcon(page.object);
+          const indentPx = depth * 16; // 16px per level
+
+          return (
+            <div key={page.id} style={{ marginLeft: indentPx }}>
+              <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-700/50 rounded transition-colors">
+                {hasChildren ? (
+                  <button
+                    onClick={() => toggleExpanded(page.id)}
+                    className="text-xs text-gray-400 hover:text-white transition-transform duration-200"
+                    style={{
+                      transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                      width: '16px',
+                      display: 'inline-block'
+                    }}
+                  >
+                    ▶
+                  </button>
+                ) : (
+                  <span className="w-4"></span>
+                )}
+                
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    togglePageSelection(`notion-${page.id}`);
+                  }}
+                  className="w-4 h-4 rounded cursor-pointer"
+                />
+                
+                <span className="text-sm">{icon}</span>
+                
+                <span className="text-xs text-gray-300 flex-1 truncate cursor-pointer hover:text-white"
+                  onClick={() => setSelectedContexts(prev => 
+                    prev.includes(`notion-${page.id}`)
+                      ? prev.filter(ctx => ctx !== `notion-${page.id}`)
+                      : [...prev, `notion-${page.id}`]
+                  )}
+                >
+                  {page.title || 'Untitled'}
+                </span>
+                
+                {hasChildren && (
+                  <span className="text-xs text-gray-500">
+                    ({page.children.length})
+                  </span>
+                )}
+              </div>
+              
+              {hasChildren && isExpanded && (
+                <div className="mt-1">
+                  {renderHierarchicalNotionPages(page.children, depth + 1)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </>
+    );
   };
 
   // Get all available tags
@@ -1283,27 +1368,32 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
   // Render grouped pages
   const renderGroupedPages = (pages: any[]): ReactNode => {
-    if (!groupByTags) {
-      return <>{renderHierarchicalPages(pages)}</>;
+    if (groupByParent) {
+      // Show unified hierarchical view
+      return renderHierarchicalNotionPages(hierarchicalNotionPages || []);
     }
-    
-    const groups = groupPagesByTags(pages);
-    const sortedTags = Object.keys(groups).sort();
-    
-    return (
-      <>
-        {sortedTags.map(tag => (
-          <div key={`group-${tag}`} className="mb-3">
-            <h5 className="text-xs font-medium text-purple-400 mb-2 px-2 py-1 bg-purple-900/20 rounded">
-              {tag} ({groups[tag].length})
-            </h5>
-            <div className="space-y-1 ml-2">
-              <>{renderHierarchicalPages(groups[tag])}</>
+
+    if (groupByTags) {
+      const groups = groupPagesByTags(pages);
+      const sortedTags = Object.keys(groups).sort();
+
+      return (
+        <>
+          {sortedTags.map(tag => (
+            <div key={`group-${tag}`} className="mb-3">
+              <h5 className="text-xs font-medium text-purple-400 mb-2 px-2 py-1 bg-purple-900/20 rounded">
+                {tag} ({groups[tag].length})
+              </h5>
+              <div className="space-y-1 ml-2">
+                <>{renderHierarchicalPages(groups[tag])}</>
+              </div>
             </div>
-          </div>
-        ))}
-      </>
-    );
+          ))}
+        </>
+      );
+    }
+
+    return <>{renderHierarchicalPages(pages)}</>;
   };
 
   return (
@@ -1479,15 +1569,34 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                             <option value="type">Type</option>
                           </select>
                         </div>
-                        <label className="flex items-center gap-2 text-sm text-gray-300">
-                          <input
-                            type="checkbox"
-                            checked={groupByTags}
-                            onChange={(e) => setGroupByTags(!groupByTags)}
-                            className="form-checkbox h-4 w-4"
-                          />
-                          Group by tags
-                        </label>
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-2 text-sm text-gray-300">
+                            <input
+                              type="radio"
+                              name="grouping"
+                              checked={!groupByTags}
+                              onChange={() => {
+                                setGroupByParent(true);
+                                setGroupByTags(false);
+                              }}
+                              className="form-radio h-4 w-4"
+                            />
+                            Hierarchical
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-gray-300">
+                            <input
+                              type="radio"
+                              name="grouping"
+                              checked={groupByTags}
+                              onChange={() => {
+                                setGroupByParent(false);
+                                setGroupByTags(true);
+                              }}
+                              className="form-radio h-4 w-4"
+                            />
+                            By Tags
+                          </label>
+                        </div>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => {
@@ -1692,19 +1801,10 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
                             return (
                               <>
-                                {/* Hierarchical structure */}
+                                {/* Hierarchical structure - contains all pages */}
                                 {deduplicatedHierarchicalPages.length > 0 && (
                                   <div className="mb-4">
-                                    <div className="text-xs text-gray-500 mb-2">Hierarchical Structure</div>
                                     {renderGroupedPages(filterPagesByTags(deduplicatedHierarchicalPages))}
-                                  </div>
-                                )}
-                                
-                                {/* Standalone pages */}
-                                {standalonePages.length > 0 && (
-                                  <div>
-                                    <div className="text-xs text-gray-500 mb-2">Individual Pages ({standalonePages.length})</div>
-                                    {renderGroupedPages(filterPagesByTags(standalonePages))}
                                   </div>
                                 )}
                               </>

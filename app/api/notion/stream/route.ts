@@ -132,15 +132,12 @@ async function processBlocks(blocks: any[], indent = 0): Promise<string> {
 
 // Helper function to process a database item (extracted for reuse)
 async function processDatabaseItem(item: any, apiKey: string): Promise<any> {
-  console.log('[NOTION STREAM] >>> PROCESSING DATABASE:', item.id, 'Title:', item.title?.[0]?.plain_text || 'N/A');
-  
   const databaseId = item.id;
   const dbTitle = item.title?.[0]?.plain_text || 'Untitled Database';
   const dataSourceObjects: any[] = [];
 
   // Fetch each data source under this database
   if (item.data_sources && item.data_sources.length > 0) {
-    console.log('[NOTION STREAM] Database has data_sources:', item.data_sources.length);
     for (const dsRef of item.data_sources) {
       try {
         const dsResponse = await fetch(`https://api.notion.com/v1/data_sources/${dsRef.id}`, {
@@ -208,12 +205,11 @@ async function processDatabaseItem(item: any, apiKey: string): Promise<any> {
           children: dataSourcePages
         });
       } catch (error) {
-        console.error('[NOTION STREAM] Error fetching data source:', dsRef.id, error);
+        // Silently continue on error
       }
     }
   } else {
     // FALLBACK: Old database API
-    console.log('[NOTION STREAM] Database has no data_sources, using fallback query API for:', databaseId);
     try {
       const queryResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
         method: 'POST',
@@ -277,7 +273,6 @@ async function processDatabaseItem(item: any, apiKey: string): Promise<any> {
         children: databasePages
       };
     } catch (error) {
-      console.error('[NOTION STREAM] Error querying database (fallback):', databaseId, error);
       return {
         id: databaseId,
         title: dbTitle,
@@ -400,8 +395,6 @@ export async function GET(req: NextRequest) {
           return;
         }
 
-        console.log('[NOTION STREAM] Starting request...');
-
         const response = await fetch('https://api.notion.com/v1/search', {
           method: 'POST',
           headers: {
@@ -423,7 +416,6 @@ export async function GET(req: NextRequest) {
         });
 
         let data = await response.json();
-        console.log('[NOTION STREAM] Initial search completed, results:', data.results?.length);
 
         if (!response.ok || !data.results) {
           const errorMessage = data.message || data.code || `HTTP ${response.status}`;
@@ -435,13 +427,9 @@ export async function GET(req: NextRequest) {
         // Implement pagination to get ALL pages
         let allResults = [...(data.results || [])];
         let nextCursor = data.next_cursor;
-        
-        console.log('[NOTION STREAM] Starting pagination...');
         let pageCount = 1;
         
         while (nextCursor && pageCount < 50) {
-          console.log(`[NOTION STREAM] Fetching page ${pageCount + 1} with cursor...`);
-          
           const paginatedResponse = await fetch('https://api.notion.com/v1/search', {
             method: 'POST',
             headers: {
@@ -468,14 +456,11 @@ export async function GET(req: NextRequest) {
             allResults = allResults.concat(paginatedData.results || []);
             nextCursor = paginatedData.next_cursor;
             pageCount++;
-            console.log(`[NOTION STREAM] Page ${pageCount} fetched, total results so far: ${allResults.length}`);
           } else {
-            console.error('[NOTION STREAM] Pagination error:', await paginatedResponse.text());
             break;
           }
         }
         
-        console.log(`[NOTION STREAM] Pagination complete. Total results: ${allResults.length}`);
         data.results = allResults;
 
         // CLOUDFLARE FIX: Force process known databases even if not in search results
@@ -485,7 +470,6 @@ export async function GET(req: NextRequest) {
         let forcedDatabaseResults: any[] = [];
 
         // Database discovery mechanism
-        console.log('[NOTION STREAM] Starting database discovery');
         let discoveredDatabaseIds: string[] = [];
 
         try {
@@ -507,29 +491,24 @@ export async function GET(req: NextRequest) {
 
           if (dbSearchResponse.ok) {
             const dbSearchData = await dbSearchResponse.json();
-            console.log('[NOTION STREAM] Database search returned:', dbSearchData.results?.length, 'databases');
-            
             dbSearchData.results?.forEach((db: any) => {
               if (db.id && !discoveredDatabaseIds.includes(db.id)) {
                 discoveredDatabaseIds.push(db.id);
-                console.log('[NOTION STREAM] Discovered database:', db.id, db.title?.[0]?.plain_text || 'Untitled');
               }
             });
           }
         } catch (error) {
-          console.log('[NOTION STREAM] Database search failed:', error);
+          // Silently continue on error
         }
 
         // Look for database references in page parents
         data.results?.forEach((item: any) => {
           if (item.parent?.database_id && !discoveredDatabaseIds.includes(item.parent.database_id)) {
             discoveredDatabaseIds.push(item.parent.database_id);
-            console.log('[NOTION STREAM] Found database from page parent:', item.parent.database_id);
           }
         });
 
         const allDatabaseIds = [...new Set([...knownDatabaseIds, ...discoveredDatabaseIds])];
-        console.log('[NOTION STREAM] Total databases to process:', allDatabaseIds.length);
 
         for (const dbId of allDatabaseIds) {
           try {
@@ -545,11 +524,10 @@ export async function GET(req: NextRequest) {
               const forcedDb = await processDatabaseItem(dbData, apiKey);
               if (forcedDb) {
                 forcedDatabaseResults.push(forcedDb);
-                console.log('[NOTION STREAM] Added forced database:', forcedDb.title);
               }
             }
           } catch (error) {
-            console.log('[NOTION STREAM] Error checking database:', dbId, error);
+            // Silently continue on error
           }
         }
 
@@ -581,14 +559,12 @@ export async function GET(req: NextRequest) {
           pageMap.set(item.id, { ...item, children: item.children || [] });
         });
 
-        let rootCount = 0;
         allItems.forEach(page => {
           const parentId = page.parent?.page_id || page.parent?.database_id || page.parent?.data_source_id;
           
           if (!parentId || page.parent?.type === 'workspace') {
             // Root level page (workspace parent check)
             rootPages.push(pageMap.get(page.id));
-            rootCount++;
           } else if (pageMap.has(parentId)) {
             const parent = pageMap.get(parentId);
             const child = pageMap.get(page.id);
@@ -600,8 +576,6 @@ export async function GET(req: NextRequest) {
             rootPages.push(pageMap.get(page.id));
           }
         });
-
-        console.log('[NOTION STREAM] Hierarchy built:', rootCount, 'root pages');
 
         // Aggregate content for databases and data sources
         const aggregateContent = (page: any): any => {
@@ -654,7 +628,6 @@ export async function GET(req: NextRequest) {
 
         controller.close();
       } catch (error: any) {
-        console.error('[NOTION STREAM] Error:', error);
         controller.enqueue(encoder.encode(JSON.stringify({ error: error.message }) + '\n'));
         controller.close();
       }
