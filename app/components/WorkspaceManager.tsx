@@ -130,10 +130,11 @@ interface Props {
   allNotionPages: any[];
   hierarchicalNotionPages?: any[];
   notionError?: string | null;
+  isLoadingNotion?: boolean;
   onReloadNotion?: () => Promise<void>;
 }
 
-export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData, notionPages, allNotionPages, hierarchicalNotionPages, notionError, onReloadNotion }: Props, ref) {
+export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData, notionPages, allNotionPages, hierarchicalNotionPages, notionError, isLoadingNotion, onReloadNotion }: Props, ref) {
   const [activeWorkspace, setActiveWorkspace] = useState('general');
   const [activeTab, setActiveTab] = useState<'chat' | 'docs' | 'calendar' | 'nutrients'>('chat');
   const [workspaces] = useState<Workspace[]>(DEFAULT_WORKSPACES);
@@ -503,6 +504,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   const currentWorkspace = workspaces.find(w => w.id === activeWorkspace) || workspaces[0];
   const [selectedContexts, setSelectedContexts] = useState<string[]>([]);
   const [loadingNotion, setLoadingNotion] = useState(false);
+  
+  // Sync isLoadingNotion prop with local state
+  useEffect(() => {
+    if (isLoadingNotion !== undefined) {
+      setLoadingNotion(isLoadingNotion);
+    }
+  }, [isLoadingNotion]);
   const [sortOrder, setSortOrder] = useState<'title' | 'type' | 'hierarchy'>('hierarchy');
   const [groupByTags, setGroupByTags] = useState(false);
   const [groupByParent, setGroupByParent] = useState(true);
@@ -1828,8 +1836,14 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                           })()}
                         </div>
                       ) : loadingNotion ? (
-                        <div className="text-sm text-gray-500 p-3 bg-gray-800 rounded">
-                          Loading Notion pages...
+                        <div className="text-sm text-gray-400 p-4 bg-gray-800 rounded border border-gray-700">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="inline-block animate-spin">⟳</span>
+                            <span>Loading Notion pages...</span>
+                          </div>
+                          <div className="text-xs text-gray-500 ml-6">
+                            Processing and organizing your Notion data. Pages will appear below as they load.
+                          </div>
                         </div>
                       ) : (
                         <div className="text-sm text-gray-500 p-3 bg-gray-800 rounded">

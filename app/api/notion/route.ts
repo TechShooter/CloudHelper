@@ -321,29 +321,44 @@ async function batchFetch<T>(
   delayBetweenBatches: number = 100
 ): Promise<T[]> {
   const results: T[] = [];
+  console.log(`[BATCH-FETCH] 🔄 Starting batch fetch: ${tasks.length} tasks, batch size: ${batchSize}`);
+  const batchStart = Date.now();
 
   for (let i = 0; i < tasks.length; i += batchSize) {
     const batch = tasks.slice(i, i + batchSize);
+    const batchNum = Math.floor(i / batchSize) + 1;
+    const totalBatches = Math.ceil(tasks.length / batchSize);
+    console.log(`[BATCH-FETCH] 📦 Batch ${batchNum}/${totalBatches}: Processing ${batch.length} tasks (items ${i + 1}-${Math.min(i + batchSize, tasks.length)})`);
+    const batchItemStart = Date.now();
 
     const batchResults = await Promise.allSettled(batch.map(task => task()));
 
+    let successCount = 0;
+    let failureCount = 0;
     batchResults.forEach((result, idx) => {
       const taskNum = i + idx;
       if (result.status === 'fulfilled' && result.value !== null) {
         results.push(result.value);
+        successCount++;
       } else if (result.status === 'fulfilled' && result.value === null) {
         // Skip null results
       } else {
-        // Skip failed tasks
+        failureCount++;
+        console.log(`[BATCH-FETCH] ❌ Task ${taskNum} failed:`, result.reason?.message || result.reason);
       }
     });
 
+    console.log(`[BATCH-FETCH] ✅ Batch ${batchNum} complete: ${successCount} success, ${failureCount} failed (${Date.now() - batchItemStart}ms)`);
+
     // Add delay between batches to prevent rate limiting (except after last batch)
     if (i + batchSize < tasks.length) {
+      console.log(`[BATCH-FETCH] ⏸️  Waiting ${delayBetweenBatches}ms before batch ${batchNum + 1}...`);
       await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
     }
   }
-
+  
+  const totalBatchTime = Date.now() - batchStart;
+  console.log(`[BATCH-FETCH] ✅ Batch fetch complete in ${totalBatchTime}ms: ${results.length} successful results`);
   return results;
 }
 
@@ -417,6 +432,7 @@ export async function GET(req: NextRequest) {
     });
 
     let data = await response.json();
+    console.log(`[NOTION-API] ✅ Initial search: ${data.results?.length || 0} results, has_more: ${!!data.next_cursor}`);
 
     if (!response.ok) {
       return NextResponse.json({
@@ -429,8 +445,10 @@ export async function GET(req: NextRequest) {
     let nextCursor = data.next_cursor;
 
     let pageCount = 1;
+    console.log('[NOTION-API] 📖 Starting pagination loop...');
 
     while (nextCursor && pageCount < 50) { // Safety limit of 50 pages
+      console.log(`[NOTION-API] 📄 Page ${pageCount}: fetching with cursor...`);
       
       const paginatedResponse = await fetch('https://api.notion.com/v1/search', {
         method: 'POST',
@@ -456,14 +474,18 @@ export async function GET(req: NextRequest) {
       
       if (paginatedResponse.ok) {
         const paginatedData = await paginatedResponse.json();
+        const newCount = paginatedData.results?.length || 0;
         allResults = allResults.concat(paginatedData.results || []);
         nextCursor = paginatedData.next_cursor;
+        console.log(`[NOTION-API] ✅ Page ${pageCount}: +${newCount} results (total: ${allResults.length})`);
         pageCount++;
       } else {
+        console.log(`[NOTION-API] ⚠️ Pagination stopped at page ${pageCount}`);
         break;
       }
     }
     
+    console.log(`[NOTION-API] 📚 Pagination complete: ${allResults.length} total results in ${pageCount} pages`);
     // Replace data.results with all results
     data.results = allResults;
 
@@ -548,14 +570,30 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const pages = (await Promise.all(
-      data.results.map(async (item: any) => {
-        try {
-          if (item.object === 'database') {
-            return await processDatabaseItem(item);
-          } else {
-            // Handle regular page
-            const pageId = item.id;
+    // Process pages in batches and stream results for progressive display
+    const BATCH_SIZE = 3;
+    const allProcessedPages: any[] = [];
+    const allHierarchicalPages: any[] = [];
+    
+    console.log(`[NOTION-API] 🚀 Starting batch processing of ${data.results.length} items in batches of ${BATCH_SIZE}...`);
+
+    // Process in batches
+    for (let i = 0; i < data.results.length; i += BATCH_SIZE) {
+      const batch = data.results.slice(i, Math.min(i + BATCH_SIZE, data.results.length));
+      console.log(`[NOTION-API] 📦 Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(data.results.length / BATCH_SIZE)} (items ${i + 1}-${Math.min(i + BATCH_SIZE, data.results.length)})`);
+      
+      const batchResults = await Promise.all(
+        batch.map(async (item: any, idx: number) => {
+          const globalIdx = i + idx;
+          try {
+            console.log(`[NOTION-API] 🔄 Processing item ${globalIdx + 1}/${data.results.length}: ${item.object}...`);
+            if (item.object === 'database') {
+              console.log(`[NOTION-API] 📊 Processing database: ${item.id}`);
+              return await processDatabaseItem(item);
+            } else {
+              // Handle regular page
+              const pageId = item.id;
+              console.log(`[NOTION-API] 📖 Processing page: ${pageId}`);
             let title = 'Untitled';
             let pageProperties: string[] = [];
 
@@ -633,6 +671,7 @@ export async function GET(req: NextRequest) {
               title = `Untitled page (${pageId.slice(0, 6)})`;
             }
 
+            console.log(`[NOTION-API] 📦 Fetching blocks for page: ${pageId.slice(0, 6)}... (${title})`);
             const blocksResponse = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children?page_size=100`, {
               headers: {
                 'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
@@ -641,6 +680,7 @@ export async function GET(req: NextRequest) {
             });
 
             const blocksData = await blocksResponse.json();
+            console.log(`[NOTION-API] ✅ Blocks fetched for ${pageId.slice(0, 6)}: ${blocksData.results?.length || 0} blocks`);
             let content = '';
 
             // Add properties first
@@ -688,13 +728,28 @@ export async function GET(req: NextRequest) {
             };
           }
         } catch (error) {
+          console.log(`[NOTION-API] ❌ Error processing item:`, error);
           return null;
         }
       })
-    )).flat().filter(item => item !== null);
+      ).then(results => results.filter(item => item !== null));
+      
+      // Add batch results to accumulated pages
+      allProcessedPages.push(...batchResults);
+      console.log(`[NOTION-API] ✅ Batch complete: +${batchResults.length} pages (total: ${allProcessedPages.length})`);
+      
+      // Small delay between batches to avoid overwhelming Notion API
+      if (i + BATCH_SIZE < data.results.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+
+    // Use accumulated pages from batch processing
+    const pages = allProcessedPages;
 
     // Filter out null results
     const filteredPages = pages.filter(page => page !== null);
+    console.log(`[NOTION-API] ✅ All pages processed: ${filteredPages.length} valid pages`);
     
     const processedBreakdown = { database: 0, data_source: 0, page: 0, other: 0, null: 0 };
     pages.forEach(p => {
@@ -704,25 +759,34 @@ export async function GET(req: NextRequest) {
       else if (p.object === 'page') processedBreakdown.page++;
       else processedBreakdown.other++;
     });
+    console.log(`[NOTION-API] 📊 Breakdown:`, processedBreakdown);
 
     // Collect all parent IDs that need to be fetched (including databases)
+    console.log(`[NOTION-API] 🔍 Collecting missing parent IDs...`);
     const parentIdsToFetch = new Set<string>();
+    const pageIdSet = new Set(filteredPages.map(p => p.id)); // O(1) lookup instead of O(n) find
+    
+    const collectionStart = Date.now();
     filteredPages.forEach(page => {
-      if (page.parent?.page_id && !filteredPages.find(p => p.id === page.parent.page_id)) {
+      if (page.parent?.page_id && !pageIdSet.has(page.parent.page_id)) {
         parentIdsToFetch.add(page.parent.page_id);
       }
-      if (page.parent?.database_id && !filteredPages.find(p => p.id === page.parent.database_id)) {
+      if (page.parent?.database_id && !pageIdSet.has(page.parent.database_id)) {
         parentIdsToFetch.add(page.parent.database_id);
       }
-      if (page.parent?.data_source_id && !filteredPages.find(p => p.id === page.parent.data_source_id)) {
+      if (page.parent?.data_source_id && !pageIdSet.has(page.parent.data_source_id)) {
         parentIdsToFetch.add(page.parent.data_source_id);
       }
     });
+    console.log(`[NOTION-API] ✅ Parent ID collection took ${Date.now() - collectionStart}ms`);
+    console.log(`[NOTION-API] 👨‍👩‍👧 Missing parent IDs to fetch: ${parentIdsToFetch.size}`);
 
     // Fetch missing parent pages/databases
     // NOTE: Removed .slice(0, 10) limit to properly resolve all parents on Cloudflare
     // This ensures pages are correctly nested instead of becoming orphan root pages
     // Using batch fetching (5 per batch) to prevent overwhelming Notion API
+    
+    console.log(`[NOTION-API] ⏳ Starting batch fetch of ${parentIdsToFetch.size} missing parents...`);
 
     const fetchedParents = await batchFetch(
       Array.from(parentIdsToFetch).map(parentId => async () => {
@@ -845,6 +909,7 @@ export async function GET(req: NextRequest) {
     );
 
     const validParents = fetchedParents.filter(p => p !== null);
+    console.log(`[NOTION-API] ✅ Parent fetch complete: ${validParents.length}/${parentIdsToFetch.size} parents resolved`);
 
     // Analyze fetched parents
     const fetchedByType = { database: 0, page: 0, other: 0 };
@@ -853,10 +918,22 @@ export async function GET(req: NextRequest) {
       else if (p.object === 'page') fetchedByType.page++;
       else fetchedByType.other++;
     });
+    console.log(`[NOTION-API] 📊 Fetched parents breakdown:`, fetchedByType);
 
     // Combine all pages including forced database results
+    console.log(`[NOTION-API] 🔀 Combining pages: ${filteredPages.length} filtered + ${validParents.length} parents + ${forcedDatabaseResults.length} forced`);
     const allPages = [...filteredPages, ...validParents, ...forcedDatabaseResults];
-    
+    console.log(`[NOTION-API] ✅ Combined total: ${allPages.length} pages`);
+
+    // Filter out pages that are children of data sources from the flat output
+    // They will appear as children of their data source in the hierarchical structure
+    const flatPages = allPages.filter(item => {
+      if (item.object === 'page' && item.parent?.type === 'data_source_id') {
+        return false;
+      }
+      return true;
+    });
+
     // Log combined breakdown
     const combinedByType = { database: 0, data_source: 0, page: 0, other: 0 };
     allPages.forEach(p => {
@@ -868,9 +945,15 @@ export async function GET(req: NextRequest) {
 
     // Build unified hierarchical structure following Notion's API model:
     // Workspace → Pages/Databases → Data Sources → Pages
+    console.log(`[NOTION-API] 🏗️  Building hierarchical structure from ${allPages.length} pages...`);
+    const hierarchyStart = Date.now();
+    
     const pageMap = new Map();
+    const childPageIds = new Set<string>(); // Track all page IDs that are children to avoid duplication
+    const parentToChildrenMap = new Map<string, Set<string>>(); // Track children added per parent
     
     // First pass: create map with children arrays
+    console.log(`[NOTION-API] 📍 Pass 1: Creating page map...`);
     allPages.forEach(page => {
       pageMap.set(page.id, { 
         ...page, 
@@ -878,19 +961,30 @@ export async function GET(req: NextRequest) {
         _expanded: false // Track expansion state
       });
     });
+    console.log(`[NOTION-API] ✅ Page map created: ${pageMap.size} entries`);
     
-    // Second pass: build hierarchy by connecting parents and children
-    const rootPages: any[] = []; // Workspace-level items
-    const parentsToChildren = new Map<string, string[]>(); // Track which items are children
+    // Pre-pass: Collect all page IDs that are already nested as children in any parent
+    // This prevents them from appearing as standalone roots
+    console.log(`[NOTION-API] 📍 Pre-pass: Collecting nested children...`);
+    let nestedChildCount = 0;
+    allPages.forEach(page => {
+      if (page.children && Array.isArray(page.children)) {
+        page.children.forEach((child: any) => {
+          childPageIds.add(child.id);
+          nestedChildCount++;
+        });
+      }
+    });
+    console.log(`[NOTION-API] ✅ Nested children collected: ${nestedChildCount} children in ${childPageIds.size} unique IDs`);
     
+    // Second pass: connect parents and children, mark children
+    console.log(`[NOTION-API] 📍 Pass 2: Connecting parents and children...`);
+    let connectionsAdded = 0;
     allPages.forEach(page => {
       const parent = page.parent;
       
-      if (parent?.type === 'workspace') {
-        // Root level - add to rootPages
-        rootPages.push(pageMap.get(page.id));
-      } else {
-        // Has a parent - add to parent's children if parent exists in our map
+      if (parent?.type !== 'workspace') {
+        // Has a specific parent - try to add to parent's children if parent exists
         let parentId: string | null = null;
         
         if (parent?.type === 'page_id') parentId = parent.page_id;
@@ -900,21 +994,43 @@ export async function GET(req: NextRequest) {
         else if (parent?.type === 'agent_id') parentId = parent.agent_id;
         
         if (parentId && pageMap.has(parentId)) {
-          // Parent exists in our map - add as child
+          // Parent exists in our map - add as child and mark to exclude from roots
           const parentNode = pageMap.get(parentId);
-          if (!parentNode.children.find((c: any) => c.id === page.id)) {
+          
+          // Track which children we've added to this parent (avoid duplicates)
+          if (!parentToChildrenMap.has(parentId)) {
+            parentToChildrenMap.set(parentId, new Set());
+          }
+          const parentChildren = parentToChildrenMap.get(parentId)!;
+          
+          // Only add if not already added
+          if (!parentChildren.has(page.id)) {
             parentNode.children.push(pageMap.get(page.id));
+            parentChildren.add(page.id);
+            connectionsAdded++;
           }
-          if (!parentsToChildren.has(parentId)) {
-            parentsToChildren.set(parentId, []);
-          }
-          parentsToChildren.get(parentId)!.push(page.id);
-        } else {
-          // Either no parent type or parent not found in our data - treat as root
-          rootPages.push(pageMap.get(page.id));
+          
+          childPageIds.add(page.id); // Mark as child (will not be in rootPages)
         }
       }
     });
+    console.log(`[NOTION-API] ✅ Pass 2 complete: ${connectionsAdded} connections added`);
+    
+    // Build rootPages: only pages that are NOT children of anyone
+    console.log(`[NOTION-API] 📍 Pass 3: Building root pages (excluding ${childPageIds.size} children)...`);
+    const rootPages: any[] = [];
+    const excludedPages: string[] = [];
+    allPages.forEach(page => {
+      if (!childPageIds.has(page.id)) {
+        rootPages.push(pageMap.get(page.id));
+      } else {
+        excludedPages.push(`${page.id} (${page.title})`);
+      }
+    });
+    const hierarchyTime = Date.now() - hierarchyStart;
+    console.log(`[NOTION-API] ✅ Hierarchy building complete in ${hierarchyTime}ms`);
+    console.log(`[NOTION-API] 🌳 Root pages built: ${rootPages.length} roots`);
+    console.log(`[NOTION-API] 🚫 Excluded from roots: ${excludedPages.length} pages`);
     
     // Sort root pages: databases first, then pages
     rootPages.sort((a, b) => {
@@ -965,12 +1081,22 @@ export async function GET(req: NextRequest) {
       return { ...page, children: page.children?.map(aggregateContent) || [] };
     };
 
+    console.log(`[NOTION-API] 🔗 Starting aggregateContent processing...`);
+    const aggregateStart = Date.now();
+    const hierarchicalPagesAggregated = rootPages.map(aggregateContent);
+    console.log(`[NOTION-API] ✅ AggregateContent took ${Date.now() - aggregateStart}ms for ${rootPages.length} roots`);
+
     clearTimeout(timeoutId);
     const totalTime = Date.now() - startTime;
+    
+    console.log(`[NOTION-API] 🎉 FINAL RESPONSE READY:`);
+    console.log(`[NOTION-API]   - Flat pages: ${flatPages.length}`);
+    console.log(`[NOTION-API]   - Hierarchical pages: ${hierarchicalPagesAggregated.length}`);
+    console.log(`[NOTION-API]   - Total time: ${totalTime}ms`);
 
     return NextResponse.json({
-      pages: filteredPages, // Flat list for backward compatibility
-      hierarchicalPages: rootPages.map(aggregateContent), // Unified hierarchical structure
+      pages: flatPages, // Flat list for backward compatibility (filtered to remove data source children)
+      hierarchicalPages: hierarchicalPagesAggregated, // Unified hierarchical structure
       totalResults: data.results?.length || 0,
       specificDatabaseFound: forcedDatabaseResults.length > 0,
       totalPages: allPages.length

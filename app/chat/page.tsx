@@ -16,6 +16,7 @@ export default function Home() {
   const [notionPages, setNotionPages] = useState<any[]>([]);
   const [hierarchicalNotionPages, setHierarchicalNotionPages] = useState<any[]>([]);
   const [notionError, setNotionError] = useState<string | null>(null);
+  const [isLoadingNotion, setIsLoadingNotion] = useState(false);
   const workspaceManagerRef = useRef<any>(null);
 
   // Check auth on mount - dynamic import of supabase
@@ -52,29 +53,73 @@ export default function Home() {
 
   const loadNotionStreaming = async () => {
     try {
+      setIsLoadingNotion(true);
+      setHierarchicalNotionPages([]); // Clear old data
+      setNotionPages([]);
+      setNotionError(null);
+      
+      console.log('[FRONTEND] 🚀 [1/5] Starting Notion data load...');
+      const fetchStart = Date.now();
+      
       const response = await fetch(`/api/notion?t=${Date.now()}`);
+      const fetchTime = Date.now() - fetchStart;
+      console.log(`[FRONTEND] ✅ [2/5] Fetch response received in ${fetchTime}ms`);
+      
       if (!response.ok) {
         const errorMsg = response.status === 429 
           ? '⚠️ Notion API Rate Limit: Too many requests. Please wait a moment and try again.'
           : `Failed to fetch Notion data: ${response.status}`;
         console.error('Failed to fetch Notion data:', response.status);
         setNotionError(errorMsg);
+        setIsLoadingNotion(false);
         return;
       }
 
+      // Read the complete response
+      console.log('[FRONTEND] ⏳ [3/5] Parsing JSON response...');
+      const parseStart = Date.now();
       const data = await response.json();
+      const parseTime = Date.now() - parseStart;
+      console.log(`[FRONTEND] ✅ Parsed in ${parseTime}ms`);
+      
+      console.log('[FRONTEND] 📊 Response data:', {
+        pages: data.pages?.length,
+        hierarchical: data.hierarchicalPages?.length,
+        totalPages: data.totalPages,
+        hasError: !!data.error
+      });
+      
       if (data.error) {
         console.error('Notion API error:', data.error);
         setNotionError(`Notion API Error: ${data.error}`);
+        setIsLoadingNotion(false);
         return;
       }
 
-      setNotionPages(data.pages || []);
-      setHierarchicalNotionPages(data.hierarchicalPages || []);
+      // Update state with received data - trigger progressive rendering
+      console.log('[FRONTEND] 🔄 [4/5] Updating React state...');
+      const updateStart = Date.now();
+      
+      if (data.hierarchicalPages && data.hierarchicalPages.length > 0) {
+        console.log(`[FRONTEND] 📊 Setting ${data.hierarchicalPages.length} hierarchical pages...`);
+        setHierarchicalNotionPages(data.hierarchicalPages);
+      }
+      
+      if (data.pages && data.pages.length > 0) {
+        console.log(`[FRONTEND] 📋 Setting ${data.pages.length} flat pages...`);
+        setNotionPages(data.pages);
+      }
+      
+      const updateTime = Date.now() - updateStart;
+      console.log(`[FRONTEND] ✅ State update completed in ${updateTime}ms`);
+      
       setNotionError(null); // Clear error on success
+      console.log('[FRONTEND] ✅ [5/5] Load complete!');
+      setIsLoadingNotion(false);
     } catch (error) {
       console.error('Failed to load Notion data:', error);
       setNotionError(`Error loading Notion data: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setIsLoadingNotion(false);
     }
   };
 
@@ -145,6 +190,7 @@ export default function Home() {
             allNotionPages={notionPages}
             hierarchicalNotionPages={hierarchicalNotionPages}
             notionError={notionError}
+            isLoadingNotion={isLoadingNotion}
             onReloadNotion={reloadNotion}
           />
         </Suspense>
