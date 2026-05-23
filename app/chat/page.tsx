@@ -23,6 +23,7 @@ export default function Home() {
     details: string;
   } | null>(null);
   const [debugInfo, setDebugInfo] = useState<any>(null);
+  const notionAbortControllerRef = useRef<AbortController | null>(null);
   const workspaceManagerRef = useRef<any>(null);
 
   // Check auth on mount - dynamic import of supabase
@@ -45,9 +46,29 @@ export default function Home() {
   const buildHierarchy = (pages: any[]) => {
     const pageMap = new Map<string, any>();
 
+    const formatPlaceholderTitle = (parentId: string, parentType: string) => {
+      const shortId = parentId?.slice(0, 6);
+      if (parentType === 'page_id') {
+        return `Loading parent page (${shortId})...`;
+      }
+      if (parentType === 'database_id') {
+        return `Loading parent database (${shortId})...`;
+      }
+      if (parentType === 'data_source_id') {
+        return `Loading parent data source (${shortId})...`;
+      }
+      if (parentType === 'block_id') {
+        return `Loading parent block (${shortId})...`;
+      }
+      if (parentType === 'agent_id') {
+        return `Loading parent agent (${shortId})...`;
+      }
+      return `Loading ${parentType.replace('_', ' ')} (${shortId})...`;
+    };
+
     const ensureParentNode = (parentId: string, parentType: string) => {
       if (!pageMap.has(parentId)) {
-        const placeholderTitle = `Loading ${parentType.replace('_', ' ')}...`;
+        const placeholderTitle = formatPlaceholderTitle(parentId, parentType);
         pageMap.set(parentId, {
           id: parentId,
           title: placeholderTitle,
@@ -92,6 +113,15 @@ export default function Home() {
     return rootPages;
   };
 
+  const stopNotionLoading = () => {
+    if (notionAbortControllerRef.current) {
+      notionAbortControllerRef.current.abort();
+      notionAbortControllerRef.current = null;
+      setLoadingStatus({ step: 'Notion load stopped', stage: 0, details: 'Notion loading was cancelled.' });
+      setIsLoadingNotion(false);
+    }
+  };
+
   const loadNotionStreaming = async () => {
     try {
       setIsLoadingNotion(true);
@@ -103,7 +133,9 @@ export default function Home() {
       console.log('[FRONTEND] 🚀 [1/5] Starting Notion stream...');
       setLoadingStatus({ step: 'Starting Notion stream', stage: 1, details: 'Connecting to Notion...' });
 
-      const response = await fetch(`/api/notion-stream?t=${Date.now()}`);
+      const controller = new AbortController();
+      notionAbortControllerRef.current = controller;
+      const response = await fetch(`/api/notion-stream?t=${Date.now()}`, { signal: controller.signal });
       console.log('[FRONTEND] ✅ [2/5] Stream response received:', response.status);
 
       if (!response.ok) {
@@ -204,10 +236,17 @@ export default function Home() {
       if (!streamError) {
         setIsLoadingNotion(false);
       }
-    } catch (error) {
-      console.error('Failed to load Notion stream:', error);
-      setNotionError(`Error loading Notion stream: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        console.log('[FRONTEND] Notion stream aborted by user');
+        setLoadingStatus({ step: 'Notion load stopped', stage: 0, details: 'Notion loading was cancelled.' });
+      } else {
+        console.error('Failed to load Notion stream:', error);
+        setNotionError(`Error loading Notion stream: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
       setIsLoadingNotion(false);
+    } finally {
+      notionAbortControllerRef.current = null;
     }
   };
 
@@ -247,6 +286,10 @@ export default function Home() {
     await loadNotionStreaming();
   };
 
+  const stopNotion = () => {
+    stopNotionLoading();
+  };
+
   if (checkingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900">
@@ -280,6 +323,7 @@ export default function Home() {
             notionError={notionError}
             isLoadingNotion={isLoadingNotion}
             onReloadNotion={reloadNotion}
+            onStopNotion={stopNotion}
           />
         </Suspense>
       </div>

@@ -201,6 +201,95 @@ async function fetchWithRetry(
   throw new Error('Max retries exceeded');
 }
 
+async function resolveBlockParentToPage(blockId: string, apiKey: string, visited = new Set<string>()): Promise<string | null> {
+  if (visited.has(blockId)) return null;
+  visited.add(blockId);
+
+  try {
+    const response = await fetchWithRetry(`https://api.notion.com/v1/blocks/${blockId}`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Notion-Version': '2026-03-11'
+      }
+    });
+
+    if (!response.ok) return null;
+
+    const blockData = await response.json();
+    
+    if (blockData.parent?.page_id) {
+      return blockData.parent.page_id;
+    }
+    
+    if (blockData.parent?.block_id) {
+      return await resolveBlockParentToPage(blockData.parent.block_id, apiKey, visited);
+    }
+    
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function resolveDataSourceParentToPage(dataSourceId: string, apiKey: string): Promise<string | null> {
+  try {
+    const response = await fetchWithRetry(`https://api.notion.com/v1/data_sources/${dataSourceId}`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Notion-Version': '2026-03-11'
+      }
+    });
+
+    if (!response.ok) return null;
+
+    const dataSourceData = await response.json();
+    
+    if (dataSourceData.parent?.page_id) {
+      return dataSourceData.parent.page_id;
+    }
+    
+    if (dataSourceData.parent?.block_id) {
+      return await resolveBlockParentToPage(dataSourceData.parent.block_id, apiKey);
+    }
+    
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function processDatabaseItem(item: any, apiKey: string): Promise<any> {
+  try {
+    let title = item.properties?.title?.title?.[0]?.plain_text || item.title?.title?.[0]?.plain_text || 'Untitled Database';
+    
+    // Resolve block_id and data_source_id parents to their actual page parents
+    let resolvedParent = item.parent;
+    if (resolvedParent?.block_id) {
+      const pageId = await resolveBlockParentToPage(resolvedParent.block_id, apiKey);
+      if (pageId) {
+        resolvedParent = { type: 'page_id', page_id: pageId };
+      }
+    }
+    if (resolvedParent?.data_source_id) {
+      const pageId = await resolveDataSourceParentToPage(resolvedParent.data_source_id, apiKey);
+      if (pageId) {
+        resolvedParent = { type: 'page_id', page_id: pageId };
+      }
+    }
+
+    return {
+      id: item.id,
+      title,
+      content: '',
+      parent: resolvedParent,
+      object: 'database'
+    };
+  } catch (error) {
+    console.log('[NOTION-STREAM] ❌ Error processing database:', error);
+    return null;
+  }
+}
+
 export async function GET(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -293,7 +382,7 @@ export async function GET(req: NextRequest) {
             batch.map(async (item: any, idx: number) => {
               try {
                 if (item.object === 'database') {
-                  return await processDatabaseItem(item);
+                  return await processDatabaseItem(item, apiKey);
                 }
 
                 const pageId = item.id;
@@ -413,11 +502,26 @@ export async function GET(req: NextRequest) {
                   }
                 }
 
+                // Resolve block_id and data_source_id parents to their actual page parents
+                let resolvedParent = item.parent;
+                if (resolvedParent?.block_id) {
+                  const pageId = await resolveBlockParentToPage(resolvedParent.block_id, apiKey);
+                  if (pageId) {
+                    resolvedParent = { type: 'page_id', page_id: pageId };
+                  }
+                }
+                if (resolvedParent?.data_source_id) {
+                  const pageId = await resolveDataSourceParentToPage(resolvedParent.data_source_id, apiKey);
+                  if (pageId) {
+                    resolvedParent = { type: 'page_id', page_id: pageId };
+                  }
+                }
+
                 return {
                   id: pageId,
                   title,
                   content,
-                  parent: item.parent,
+                  parent: resolvedParent,
                   object: 'page'
                 };
               } catch (error) {

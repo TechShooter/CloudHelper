@@ -132,9 +132,10 @@ interface Props {
   notionError?: string | null;
   isLoadingNotion?: boolean;
   onReloadNotion?: () => Promise<void>;
+  onStopNotion?: () => void;
 }
 
-export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData, notionPages, allNotionPages, hierarchicalNotionPages, notionError, isLoadingNotion, onReloadNotion }: Props, ref) {
+export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData, notionPages, allNotionPages, hierarchicalNotionPages, notionError, isLoadingNotion, onReloadNotion, onStopNotion }: Props, ref) {
   const [activeWorkspace, setActiveWorkspace] = useState('general');
   const [activeTab, setActiveTab] = useState<'chat' | 'docs' | 'calendar' | 'nutrients'>('chat');
   const [workspaces] = useState<Workspace[]>(DEFAULT_WORKSPACES);
@@ -1569,6 +1570,14 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                       >
                         {loadingNotion ? 'Loading...' : '↻ Reload'}
                       </button>
+                      {loadingNotion && onStopNotion && (
+                        <button
+                          onClick={onStopNotion}
+                          className="text-sm bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 cursor-pointer"
+                        >
+                          ✕ Stop
+                        </button>
+                      )}
                     </div>
                   </div>
 
