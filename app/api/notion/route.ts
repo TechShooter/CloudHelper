@@ -344,7 +344,9 @@ async function batchFetch<T>(
         // Skip null results
       } else {
         failureCount++;
-        console.log(`[BATCH-FETCH] ❌ Task ${taskNum} failed:`, result.reason?.message || result.reason);
+        // Properly access the reason property for rejected promises
+        const error = (result as PromiseRejectedResult).reason;
+        console.log(`[BATCH-FETCH] ❌ Task ${taskNum} failed:`, error?.message || error);
       }
     });
 
@@ -976,10 +978,16 @@ export async function GET(req: NextRequest) {
       }
     });
     console.log(`[NOTION-API] ✅ Nested children collected: ${nestedChildCount} children in ${childPageIds.size} unique IDs`);
-    
+    if (childPageIds.size > 0) {
+      console.log(`[NOTION-API] Pre-pass children IDs sample:`, Array.from(childPageIds).slice(0, 10));
+    }
+
     // Second pass: connect parents and children, mark children
     console.log(`[NOTION-API] 📍 Pass 2: Connecting parents and children...`);
     let connectionsAdded = 0;
+    const orphanedPages: Array<{id: string, title: string, parentType?: string, parentId?: string}> = [];
+    
+    const connectionExamples: string[] = [];
     allPages.forEach(page => {
       const parent = page.parent;
       
@@ -1008,13 +1016,35 @@ export async function GET(req: NextRequest) {
             parentNode.children.push(pageMap.get(page.id));
             parentChildren.add(page.id);
             connectionsAdded++;
+            
+            // Collect examples for logging
+            if (connectionExamples.length < 5) {
+              connectionExamples.push(`"${page.title}" → "${parentNode.title}"`);
+            }
           }
           
           childPageIds.add(page.id); // Mark as child (will not be in rootPages)
+        } else if (parentId) {
+          // Parent NOT found - will become orphan/root
+          orphanedPages.push({
+            id: page.id,
+            title: page.title,
+            parentType: parent?.type,
+            parentId: parentId
+          });
         }
       }
     });
     console.log(`[NOTION-API] ✅ Pass 2 complete: ${connectionsAdded} connections added`);
+    if (connectionExamples.length > 0) {
+      console.log(`[NOTION-API] Connection examples:`, connectionExamples.join(', '));
+    }
+    if (orphanedPages.length > 0) {
+      console.log(`[NOTION-API] 🚨 Orphaned pages (${orphanedPages.length}): Missing parents that should be in pageMap`);
+      orphanedPages.slice(0, 5).forEach(p => {
+        console.log(`[NOTION-API]   - "${p.title}" (${p.id}): parent_${p.parentType}=${p.parentId}`);
+      });
+    }
     
     // Build rootPages: only pages that are NOT children of anyone
     console.log(`[NOTION-API] 📍 Pass 3: Building root pages (excluding ${childPageIds.size} children)...`);
@@ -1030,7 +1060,19 @@ export async function GET(req: NextRequest) {
     const hierarchyTime = Date.now() - hierarchyStart;
     console.log(`[NOTION-API] ✅ Hierarchy building complete in ${hierarchyTime}ms`);
     console.log(`[NOTION-API] 🌳 Root pages built: ${rootPages.length} roots`);
-    console.log(`[NOTION-API] 🚫 Excluded from roots: ${excludedPages.length} pages`);
+    console.log(`[NOTION-API] � Root pages list:`);
+    rootPages.forEach((page, idx) => {
+      const childCount = page.children?.length || 0;
+      console.log(`[NOTION-API]   ${idx + 1}. "${page.title}" (${page.id}) [${page.object}] - ${childCount} children, parent_type=${page.parent?.type}`);
+    });
+    console.log(`[NOTION-API] �🚫 Excluded from roots: ${excludedPages.length} pages`);
+    
+    // Verify no children are appearing as roots (would indicate a bug)
+    const pageIdsAtRoot = new Set(rootPages.map(p => p.id));
+    const childrenAsRoots = Array.from(childPageIds).filter(id => pageIdsAtRoot.has(id));
+    if (childrenAsRoots.length > 0) {
+      console.error(`[NOTION-API] BUG DETECTED - ${childrenAsRoots.length} children appearing as roots:`, childrenAsRoots);
+    }
     
     // Sort root pages: databases first, then pages
     rootPages.sort((a, b) => {
@@ -1094,12 +1136,34 @@ export async function GET(req: NextRequest) {
     console.log(`[NOTION-API]   - Hierarchical pages: ${hierarchicalPagesAggregated.length}`);
     console.log(`[NOTION-API]   - Total time: ${totalTime}ms`);
 
+    // Collect debug info for UI display
+    const debugInfo = {
+      timing: {
+        total: totalTime,
+        searchPagination: 'included'
+      },
+      counts: {
+        initialResults: data.results?.length || 0,
+        flatPages: flatPages.length,
+        hierarchicalPages: hierarchicalPagesAggregated.length,
+        totalProcessed: allPages.length,
+        rootPages: rootPages.length,
+        childPages: childPageIds.size,
+        parentsFetched: validParents.length,
+        forcedDatabases: forcedDatabaseResults.length,
+        orphanedPages: orphanedPages.length
+      },
+      types: combinedByType,
+      orphanedPagesList: orphanedPages.slice(0, 10)  // Show first 10 orphaned pages
+    };
+
     return NextResponse.json({
       pages: flatPages, // Flat list for backward compatibility (filtered to remove data source children)
       hierarchicalPages: hierarchicalPagesAggregated, // Unified hierarchical structure
       totalResults: data.results?.length || 0,
       specificDatabaseFound: forcedDatabaseResults.length > 0,
-      totalPages: allPages.length
+      totalPages: allPages.length,
+      debug: debugInfo
     }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -1114,7 +1178,7 @@ export async function GET(req: NextRequest) {
       error: error.name === 'AbortError' ? 'Request timeout - Notion API taking too long' : error.message,
       pages: [],
       hierarchicalPages: []
-    }, { 
+    }, {
       status: 500,
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',

@@ -17,6 +17,12 @@ export default function Home() {
   const [hierarchicalNotionPages, setHierarchicalNotionPages] = useState<any[]>([]);
   const [notionError, setNotionError] = useState<string | null>(null);
   const [isLoadingNotion, setIsLoadingNotion] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState<{
+    step: string;
+    stage: number;
+    details: string;
+  } | null>(null);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
   const workspaceManagerRef = useRef<any>(null);
 
   // Check auth on mount - dynamic import of supabase
@@ -57,68 +63,115 @@ export default function Home() {
       setHierarchicalNotionPages([]); // Clear old data
       setNotionPages([]);
       setNotionError(null);
-      
-      console.log('[FRONTEND] 🚀 [1/5] Starting Notion data load...');
-      const fetchStart = Date.now();
-      
-      const response = await fetch(`/api/notion?t=${Date.now()}`);
-      const fetchTime = Date.now() - fetchStart;
-      console.log(`[FRONTEND] ✅ [2/5] Fetch response received in ${fetchTime}ms`);
-      
+      setDebugInfo(null);
+
+      console.log('[FRONTEND] 🚀 [1/5] Starting Notion stream...');
+      setLoadingStatus({ step: 'Starting Notion stream', stage: 1, details: 'Connecting to Notion...' });
+
+      const response = await fetch(`/api/notion-stream?t=${Date.now()}`);
+      console.log('[FRONTEND] ✅ [2/5] Stream response received:', response.status);
+
       if (!response.ok) {
-        const errorMsg = response.status === 429 
+        const text = await response.text();
+        const errorMsg = response.status === 429
           ? '⚠️ Notion API Rate Limit: Too many requests. Please wait a moment and try again.'
-          : `Failed to fetch Notion data: ${response.status}`;
-        console.error('Failed to fetch Notion data:', response.status);
+          : `Failed to fetch Notion stream: ${response.status}`;
+        console.error('Failed to fetch Notion stream:', response.status, text);
         setNotionError(errorMsg);
         setIsLoadingNotion(false);
         return;
       }
 
-      // Read the complete response
-      console.log('[FRONTEND] ⏳ [3/5] Parsing JSON response...');
-      const parseStart = Date.now();
-      const data = await response.json();
-      const parseTime = Date.now() - parseStart;
-      console.log(`[FRONTEND] ✅ Parsed in ${parseTime}ms`);
-      
-      console.log('[FRONTEND] 📊 Response data:', {
-        pages: data.pages?.length,
-        hierarchical: data.hierarchicalPages?.length,
-        totalPages: data.totalPages,
-        hasError: !!data.error
-      });
-      
-      if (data.error) {
-        console.error('Notion API error:', data.error);
-        setNotionError(`Notion API Error: ${data.error}`);
+      if (!response.body) {
+        const text = await response.text();
+        const data = JSON.parse(text);
+
+        if (data.error) {
+          setNotionError(`Notion API Error: ${data.error}`);
+        } else {
+          setNotionPages(data.pages || []);
+          setHierarchicalNotionPages(buildHierarchy(data.pages || []));
+          if (data.debug) {
+            setDebugInfo(data.debug);
+          }
+        }
+
         setIsLoadingNotion(false);
         return;
       }
 
-      // Update state with received data - trigger progressive rendering
-      console.log('[FRONTEND] 🔄 [4/5] Updating React state...');
-      const updateStart = Date.now();
-      
-      if (data.hierarchicalPages && data.hierarchicalPages.length > 0) {
-        console.log(`[FRONTEND] 📊 Setting ${data.hierarchicalPages.length} hierarchical pages...`);
-        setHierarchicalNotionPages(data.hierarchicalPages);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let processedPages = 0;
+      let streamError = false;
+
+      const handleStreamLine = (line: string) => {
+        if (!line.trim()) return;
+        try {
+          const message = JSON.parse(line);
+
+          if (message.type === 'status') {
+            setLoadingStatus({
+              step: message.step || 'Loading Notion',
+              stage: message.stage || 2,
+              details: message.details || ''
+            });
+          }
+
+          if (message.type === 'page_batch') {
+            const newPages = message.pages || [];
+            processedPages += newPages.length;
+            setNotionPages(prev => {
+              const updated = [...prev, ...newPages];
+              setHierarchicalNotionPages(buildHierarchy(updated));
+              return updated;
+            });
+            setLoadingStatus({
+              step: 'Receiving pages',
+              stage: 3,
+              details: `${processedPages}/${message.totalPages || '?'} pages loaded`
+            });
+          }
+
+          if (message.type === 'done') {
+            setLoadingStatus({
+              step: 'Notion stream complete',
+              stage: 5,
+              details: message.details || 'Loaded all pages'
+            });
+          }
+
+          if (message.type === 'error') {
+            console.error('[FRONTEND] Stream error:', message.message);
+            setNotionError(`Notion stream error: ${message.message}`);
+            streamError = true;
+          }
+        } catch (error) {
+          console.warn('[FRONTEND] Failed to parse stream message:', error, line);
+        }
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        lines.forEach(handleStreamLine);
+        if (streamError) break;
       }
-      
-      if (data.pages && data.pages.length > 0) {
-        console.log(`[FRONTEND] 📋 Setting ${data.pages.length} flat pages...`);
-        setNotionPages(data.pages);
+
+      if (buffer && !streamError) {
+        handleStreamLine(buffer);
       }
-      
-      const updateTime = Date.now() - updateStart;
-      console.log(`[FRONTEND] ✅ State update completed in ${updateTime}ms`);
-      
-      setNotionError(null); // Clear error on success
-      console.log('[FRONTEND] ✅ [5/5] Load complete!');
-      setIsLoadingNotion(false);
+
+      if (!streamError) {
+        setIsLoadingNotion(false);
+      }
     } catch (error) {
-      console.error('Failed to load Notion data:', error);
-      setNotionError(`Error loading Notion data: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Failed to load Notion stream:', error);
+      setNotionError(`Error loading Notion stream: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setIsLoadingNotion(false);
     }
   };
@@ -179,7 +232,7 @@ export default function Home() {
         </div>
       </header>
       
-      <div className="flex-1 flex overflow-x-auto">
+      <div className="flex-1 flex flex-col overflow-x-auto">
         <Suspense fallback={<div className="text-white p-4">Caricamento...</div>}>
           <WorkspaceManager
             ref={workspaceManagerRef}

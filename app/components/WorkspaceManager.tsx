@@ -203,7 +203,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
     saveTab();
   }, [activeTab]);
-  
+
   // Prompt control state
   const [promptSettings, setPromptSettings] = useState({
     includeSheets: true,
@@ -348,7 +348,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       fibers: acc.fibers + (entry.fibers || 0),
       sugars: acc.sugars + (entry.sugars || 0),
       salt: acc.salt + (entry.salt || 0)
-    }), { 
+    }), {
       energy: 0, protein: 0, carbs: 0, fats: 0, saturatedFats: 0, fibers: 0, sugars: 0, salt: 0
     });
 
@@ -422,7 +422,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       copper: acc.copper + (entry.copper || 0),
       manganese: acc.manganese + (entry.manganese || 0),
       selenium: acc.selenium + (entry.selenium || 0)
-    }), { 
+    }), {
       vitaminD: 0, vitaminB1: 0, vitaminB2: 0, vitaminB3: 0, vitaminB5: 0, vitaminB6: 0, vitaminB9: 0,
       vitaminE: 0, vitaminK: 0, calcium: 0, iron: 0, phosphorus: 0, magnesium: 0,
       potassium: 0, zinc: 0, copper: 0, manganese: 0, selenium: 0
@@ -504,7 +504,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   const currentWorkspace = workspaces.find(w => w.id === activeWorkspace) || workspaces[0];
   const [selectedContexts, setSelectedContexts] = useState<string[]>([]);
   const [loadingNotion, setLoadingNotion] = useState(false);
-  
+
   // Sync isLoadingNotion prop with local state
   useEffect(() => {
     if (isLoadingNotion !== undefined) {
@@ -581,7 +581,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                 loadedDocs[workspaceId] = data.settings[key];
               }
             });
-            
+
             // Initialize missing workspaces
             const updated = { ...loadedDocs };
             let changed = false;
@@ -704,12 +704,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     selectedPageIds.forEach(pageId => {
       // Try to find in flat list first
       let page = allNotionPages.find(p => p.id === pageId);
-      
+
       // If not found, try hierarchical structure
       if (!page && hierarchicalNotionPages) {
         page = findPageInHierarchy(hierarchicalNotionPages, pageId);
       }
-      
+
       if (page && !processedIds.has(pageId)) {
         resultPages.push(page);
         processedIds.add(pageId);
@@ -763,12 +763,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     if (!page.children || page.children.length === 0) {
       return [page];
     }
-    
+
     let descendants = [page];
     page.children.forEach((child: any) => {
       descendants = [...descendants, ...getAllDescendants(child)];
     });
-    
+
     return descendants;
   };
 
@@ -781,10 +781,10 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   // Helper function to check if some (but not all) children are selected
   const isPartiallySelected = (page: any): boolean => {
     if (!page.children || page.children.length === 0) return false;
-    
+
     // If the parent itself is selected, it's not partial
     if (selectedContexts.includes(`notion-${page.id}`)) return false;
-    
+
     // Check if any descendant is selected
     const hasSelectedDescendant = (p: any): boolean => {
       if (selectedContexts.includes(`notion-${p.id}`)) return true;
@@ -793,7 +793,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       }
       return false;
     };
-    
+
     return hasSelectedDescendant(page);
   };
 
@@ -801,7 +801,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   const isChildSelectedViaParent = (childId: string): boolean => {
     const child = allNotionPages.find(p => p.id === childId);
     if (!child || !child.parent) return false;
-    
+
     // Check if any parent database is selected
     let currentParent = child.parent;
     while (currentParent && (currentParent.page_id || currentParent.database_id)) {
@@ -816,7 +816,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         break;
       }
     }
-    
+
     return false;
   };
 
@@ -835,7 +835,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       const pageId = id.replace('notion-', '');
       // Check both arrays for the page
       let pageToSelect = allNotionPages.find(p => p.id === pageId);
-      
+
       // If not found in flat list, search hierarchical structure
       if (!pageToSelect && hierarchicalNotionPages) {
         const findInHierarchy = (pages: any[], targetId: string): any => {
@@ -850,14 +850,14 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         };
         pageToSelect = findInHierarchy(hierarchicalNotionPages, pageId);
       }
-      
+
       console.log('toggleContext - pageId:', pageId);
       console.log('toggleContext - pageToSelect:', pageToSelect);
-      
+
       // For databases and data sources, implement three-way selection
       if (pageToSelect && (pageToSelect.object === 'database' || pageToSelect.object === 'data_source')) {
         const isCurrentlySelected = prev.includes(id);
-        
+
         if (isCurrentlySelected) {
           // Currently selected (all children included) -> deselect completely
           console.log('toggleContext - deselecting database/data source:', id);
@@ -945,11 +945,11 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     }
   };
 
-// Helper function to build hierarchy path for a page
+  // Helper function to build hierarchy path for a page
   const buildHierarchyPath = (page: any, allPages: any[]): string => {
     const path: string[] = [page.title];
     let currentParent = page.parent;
-    
+
     while (currentParent && (currentParent.page_id || currentParent.database_id)) {
       const parentId = currentParent.page_id || currentParent.database_id;
       const parentPage = allPages.find(p => p.id === parentId);
@@ -960,7 +960,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         break;
       }
     }
-    
+
     return path.join(' > ');
   };
 
@@ -991,30 +991,30 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       const hasChildren = page.children && page.children.length > 0;
       const isExpanded = expandedPages.has(page.id);
       const currentPath = [...parentPath, page.title];
-      
+
       // Enhanced visual hierarchy with better colors and spacing
-      const bgColor = isDatabase 
-        ? 'bg-blue-900/40 border-blue-600/50' 
+      const bgColor = isDatabase
+        ? 'bg-blue-900/40 border-blue-600/50'
         : isDataSource
           ? 'bg-purple-900/40 border-purple-600/50'
-          : level === 0 
-            ? 'bg-gray-800/80' 
-            : level === 1 
-              ? 'bg-gray-750/60' 
+          : level === 0
+            ? 'bg-gray-800/80'
+            : level === 1
+              ? 'bg-gray-750/60'
               : 'bg-gray-700/40';
-      
-      const borderLeft = level > 0 
-        ? `border-l-2 ${isDatabase || isDataSource ? 'border-purple-400' : 'border-purple-500/30'}` 
-        : isDatabase 
+
+      const borderLeft = level > 0
+        ? `border-l-2 ${isDatabase || isDataSource ? 'border-purple-400' : 'border-purple-500/30'}`
+        : isDatabase
           ? 'border-l-4 border-blue-500'
           : isDataSource
-            ? 'border-l-4 border-purple-500' 
+            ? 'border-l-4 border-purple-500'
             : '';
-      
+
       const marginLeft = level > 0 ? (level === 1 ? 'ml-6' : 'ml-10') : '';
-      
+
       const elements: ReactNode[] = [];
-      
+
       elements.push(
         <div key={page.id} className={`flex items-center justify-between gap-2 text-sm p-2 rounded-lg ${bgColor} ${borderLeft} ${marginLeft} transition-all duration-200 hover:opacity-90`}>
           <label className="flex items-center gap-2 flex-1 cursor-pointer">
@@ -1034,13 +1034,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
               </button>
             )}
             {!hasChildren && <span className="w-5 inline-block"></span>}
-            
+
             {(() => {
               const isChecked = (isDatabase || isDataSource)
                 ? isDatabaseSelected(page.id)
                 : selectedContexts.includes(`notion-${page.id}`) || isChildSelectedViaParent(page.id);
               const isIndeterminate = (isDatabase || isDataSource) && !isChecked && isPartiallySelected(page);
-              
+
               return (
                 <div className="relative">
                   <input
@@ -1066,7 +1066,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                 </div>
               );
             })()}
-            
+
             <div className="flex items-center gap-2 flex-1 min-w-0">
               {isDatabase && (
                 <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-md font-bold whitespace-nowrap">
@@ -1078,7 +1078,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                   DATA SOURCE
                 </span>
               )}
-              
+
               <span className={`
                 ${isDatabase || isDataSource ? 'font-bold text-purple-200' : ''} 
                 ${level > 0 ? 'text-xs' : 'text-sm'} 
@@ -1087,13 +1087,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
               `}>
                 {page.title}
               </span>
-              
+
               {level > 0 && (
                 <span className="text-xs text-gray-500 bg-gray-700/30 px-2 py-0.5 rounded whitespace-nowrap" title={currentPath.join(' > ')}>
                   {parentPath[parentPath.length - 1]} →
                 </span>
               )}
-              
+
               {page.url && (
                 <a
                   href={page.url}
@@ -1105,7 +1105,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                   🔗
                 </a>
               )}
-              
+
               {hasChildren && (
                 <span className="text-xs text-gray-500 bg-gray-700/50 px-2 py-0.5 rounded-full whitespace-nowrap">
                   {page.children.length} {isDatabase ? 'data sources' : isDataSource ? 'items' : 'sub-pages'}
@@ -1113,7 +1113,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
               )}
             </div>
           </label>
-          
+
           <div className="flex items-center gap-1 flex-shrink-0">
             <button
               onClick={(e) => {
@@ -1132,18 +1132,17 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
             >
               🏷️
             </button>
-            
+
             <button
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 toggleDefaultDoc(`notion-${page.id}`);
               }}
-              className={`text-xs px-2 py-1 rounded cursor-pointer transition-colors duration-150 ${
-                isDefaultDoc(`notion-${page.id}`)
+              className={`text-xs px-2 py-1 rounded cursor-pointer transition-colors duration-150 ${isDefaultDoc(`notion-${page.id}`)
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
+                }`}
               title="Mark as default for this chat"
             >
               {isDefaultDoc(`notion-${page.id}`) ? '✓' : '⭐'}
@@ -1151,7 +1150,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
           </div>
         </div>
       );
-      
+
       if (editingTags === page.id) {
         elements.push(
           <div key={`${page.id}-tags`} className={`flex gap-2 p-2 bg-gray-750/60 rounded-lg mt-1 ${marginLeft} border-l-2 border-purple-500/20`}>
@@ -1209,13 +1208,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
     const tags: string[] = [];
     const title = page.title?.toLowerCase() || '';
-    
+
     // Debug logging (only once per page to avoid spam)
     if (!loggedExtractTags.has(page.id) && page.object !== 'page') {
       console.log('[extractTags] Page ID:', page.id, 'Title:', page.title, 'Object:', page.object, 'titleLength:', title.length);
       loggedExtractTags.add(page.id);
     }
-    
+
     // Simple keyword-based tagging
     if (title.includes('task') || title.includes('todo') || title.includes('goals')) tags.push('Tasks');
     if (title.includes('timeline') || title.includes('schedule') || title.includes('calendar')) tags.push('Timeline');
@@ -1223,11 +1222,11 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     if (title.includes('entertainment') || title.includes('game') || title.includes('movie') || title.includes('music')) tags.push('Entertainment');
     if (title.includes('emotion') || title.includes('mood') || title.includes('wellbeing')) tags.push('Wellbeing');
     if (title.includes('research') || title.includes('study') || title.includes('analysis')) tags.push('Research');
-    
+
     // Database and data source indicators - these should be tagged even without keywords
     if (page.object === 'database') tags.push('Database');
     if (page.object === 'data_source') tags.push('Data Source');
-    
+
     // If no tags found, check if we have content with specific patterns
     if (tags.length === 0 && page.content) {
       const contentLower = page.content.toLowerCase();
@@ -1236,7 +1235,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         return ['Database'];
       }
     }
-    
+
     const result = tags.length > 0 ? tags : ['Other'];
     if (result[0] === 'Other' && title.length === 0) {
       console.log('[extractTags] WARNING - Page has no title:', page.id, 'Object:', page.object, 'Content preview:', page.content?.substring(0, 50));
@@ -1267,7 +1266,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
           const hasChildren = page.children && page.children.length > 0;
           const isExpanded = expandedPages.has(page.id);
           const isSelected = selectedContexts.includes(`notion-${page.id}`);
-          
+
           // Determine icon based on object type
           const getIcon = (obj: string) => {
             switch (obj) {
@@ -1279,7 +1278,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
               default: return '📄';
             }
           };
-          
+
           const icon = getIcon(page.object);
           const indentPx = depth * 16; // 16px per level
 
@@ -1301,13 +1300,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                 ) : (
                   <span className="w-4"></span>
                 )}
-                
+
                 <input
                   type="checkbox"
                   checked={isSelected}
                   onChange={(e) => {
                     e.stopPropagation();
-                    setSelectedContexts(prev => 
+                    setSelectedContexts(prev =>
                       prev.includes(`notion-${page.id}`)
                         ? prev.filter(ctx => ctx !== `notion-${page.id}`)
                         : [...prev, `notion-${page.id}`]
@@ -1315,11 +1314,11 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                   }}
                   className="w-4 h-4 rounded cursor-pointer"
                 />
-                
+
                 <span className="text-sm">{icon}</span>
-                
+
                 <span className="text-xs text-gray-300 flex-1 truncate cursor-pointer hover:text-white"
-                  onClick={() => setSelectedContexts(prev => 
+                  onClick={() => setSelectedContexts(prev =>
                     prev.includes(`notion-${page.id}`)
                       ? prev.filter(ctx => ctx !== `notion-${page.id}`)
                       : [...prev, `notion-${page.id}`]
@@ -1327,14 +1326,14 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                 >
                   {page.title || 'Untitled'}
                 </span>
-                
+
                 {hasChildren && (
                   <span className="text-xs text-gray-500">
                     ({page.children.length})
                   </span>
                 )}
               </div>
-              
+
               {hasChildren && isExpanded && (
                 <div className="mt-1">
                   {renderHierarchicalNotionPages(page.children, depth + 1)}
@@ -1382,8 +1381,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   // Render grouped pages
   const renderGroupedPages = (pages: any[]): ReactNode => {
     if (groupByParent) {
-      // Show unified hierarchical view
-      return renderHierarchicalNotionPages(hierarchicalNotionPages || []);
+      // Show unified hierarchical view - use the pages parameter (may be filtered)
+      return renderHierarchicalNotionPages(pages || []);
     }
 
     if (groupByTags) {
@@ -1465,45 +1464,41 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                 <p className="text-xs text-gray-400">{currentWorkspace.description}</p>
               </div>
             </div>
-            
+
             <div className="flex gap-1">
               <button
                 onClick={() => setActiveTab('chat')}
-                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${
-                  activeTab === 'chat'
+                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'chat'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                }`}
+                  }`}
               >
                 💬 Chat
               </button>
               <button
                 onClick={() => setActiveTab('docs')}
-                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${
-                  activeTab === 'docs'
+                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'docs'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                }`}
+                  }`}
               >
                 📄 Docs
               </button>
               <button
                 onClick={() => setActiveTab('calendar')}
-                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${
-                  activeTab === 'calendar'
+                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'calendar'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                }`}
+                  }`}
               >
                 📅 Calendar
               </button>
               <button
                 onClick={() => setActiveTab('nutrients')}
-                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${
-                  activeTab === 'nutrients'
+                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'nutrients'
                     ? 'bg-gray-700 text-white border-b-2 border-blue-500'
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                }`}
+                  }`}
               >
                 🥗 Nutrients
               </button>
@@ -1678,11 +1673,10 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                             <button
                               key={tag}
                               onClick={() => toggleTag(tag)}
-                              className={`text-xs px-3 py-1 rounded transition-colors cursor-pointer ${
-                                selectedTags.has(tag)
+                              className={`text-xs px-3 py-1 rounded transition-colors cursor-pointer ${selectedTags.has(tag)
                                   ? 'bg-purple-600 text-white'
                                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                              }`}
+                                }`}
                             >
                               {tag}
                             </button>
@@ -1706,11 +1700,10 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                         </label>
                         <button
                           onClick={() => toggleDefaultDoc('sheet')}
-                          className={`text-xs px-2 py-1 rounded cursor-pointer ${
-                            isDefaultDoc('sheet')
+                          className={`text-xs px-2 py-1 rounded cursor-pointer ${isDefaultDoc('sheet')
                               ? 'bg-blue-600 text-white'
                               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                          }`}
+                            }`}
                           title="Mark as default for this chat"
                         >
                           {isDefaultDoc('sheet') ? '✓ Default' : 'Default'}
@@ -1741,35 +1734,35 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                             // Show hierarchical structure first (if available)
                             const hierarchicalPages = hierarchicalNotionPages || [];
                             const allFlatPages = allNotionPages.map(page => ({ ...page, children: [] }));
-                            
+
                             // First, deduplicate the hierarchical structure itself
                             const deduplicateHierarchical = (pages: any[]): any[] => {
                               const seenIds = new Set();
                               const deduplicated = [];
-                              
+
                               const processPage = (page: any): any => {
                                 if (!page.id || typeof page.id !== 'string') return null;
                                 if (seenIds.has(page.id)) return null;
-                                
+
                                 seenIds.add(page.id);
                                 const dedupPage = { ...page };
-                                
+
                                 if (page.children && page.children.length > 0) {
                                   dedupPage.children = page.children
                                     .map(processPage)
                                     .filter((child: any) => child !== null);
                                 }
-                                
+
                                 return dedupPage;
                               };
-                              
+
                               return pages
                                 .map(processPage)
                                 .filter(page => page !== null);
                             };
-                            
+
                             const deduplicatedHierarchicalPages = deduplicateHierarchical(hierarchicalPages);
-                            
+
                             // Get IDs of pages actually in hierarchical structure (now properly deduplicated)
                             const hierarchicalPageIds = new Set();
                             const collectPageIds = (pages: any[]) => {
@@ -1783,45 +1776,53 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                               });
                             };
                             collectPageIds(deduplicatedHierarchicalPages);
-                            
+
                             // Filter out pages that are actually in hierarchy
-                            const standalonePages = allFlatPages.filter(page => 
-                              page.id && 
-                              typeof page.id === 'string' && 
+                            const standalonePages = allFlatPages.filter(page =>
+                              page.id &&
+                              typeof page.id === 'string' &&
                               !hierarchicalPageIds.has(page.id)
                             );
-                            
+
                             // Debug: Show which pages are being marked as standalone vs hierarchical
                             console.log('[RENDER DEBUG] Total pages in allNotionPages:', allFlatPages.length);
                             console.log('[RENDER DEBUG] Hierarchical page IDs found:', Array.from(hierarchicalPageIds));
                             console.log('[RENDER DEBUG] Standalone page IDs:', standalonePages.map(p => p.id));
-                            
+
                             console.log('[RENDER DEBUG] Original hierarchical pages:', hierarchicalPages.length);
                             console.log('[RENDER DEBUG] Deduplicated hierarchical pages:', deduplicatedHierarchicalPages.length);
                             console.log('[RENDER DEBUG] Standalone pages:', standalonePages.length);
-                            
+
                             // Check for "Cosa c'è in casa" in all pages
                             const casaPageInHierarchical = deduplicatedHierarchicalPages.find(p => p.title.toLowerCase().includes('casa'));
                             const casaPageInStandalone = standalonePages.find(p => p.title.toLowerCase().includes('casa'));
                             console.log('[RENDER DEBUG] Casa page in hierarchical:', !!casaPageInHierarchical);
                             console.log('[RENDER DEBUG] Casa page in standalone:', !!casaPageInStandalone);
-                            
+
                             // Log all hierarchical page titles to see what's there
-                            console.log('[RENDER DEBUG] Hierarchical page titles:');
-                            const collectTitles = (pages: any[], depth = 0) => {
+                            console.log('[RENDER DEBUG] ========== COMPLETE HIERARCHY TREE ==========');
+                            const collectTitles = (pages: any[], depth = 0, pageNumbers = { count: 0 }) => {
                               pages.forEach(page => {
-                                console.log('  '.repeat(depth) + `"${page.title}" (${page.id})`);
+                                pageNumbers.count++;
+                                const indent = '  '.repeat(depth);
+                                const hasChildren = page.children && page.children.length > 0;
+                                const childCount = hasChildren ? ` [+${page.children.length}]` : '';
+                                console.log(`${indent}${pageNumbers.count}. "${page.title}" (${page.id}) ${childCount} [${page.object}]`);
                                 if (page.children && page.children.length > 0) {
-                                  collectTitles(page.children, depth + 1);
+                                  collectTitles(page.children, depth + 1, pageNumbers);
                                 }
                               });
                             };
                             collectTitles(deduplicatedHierarchicalPages);
-                            
+                            console.log('[RENDER DEBUG] ========== ROOT LEVEL PAGES ==========');
+                            deduplicatedHierarchicalPages.forEach((page, idx) => {
+                              const childCount = page.children?.length || 0;
+                              console.log(`${idx + 1}. ROOT: "${page.title}" (${page.id}) [${page.object}] with ${childCount} children`);
+                            });
+                            console.log('[RENDER DEBUG] ==========================================');
 
-                            const entertainmentPage = [...deduplicatedHierarchicalPages, ...standalonePages].find(p => p.title === 'Entertainment list');
-                            console.log('[RENDER DEBUG] Entertainment list found in combined render:', !!entertainmentPage);
-                            
+
+
 
                             return (
                               <>
@@ -1859,7 +1860,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                       🥗 Nutrients
                       <span className="text-sm text-gray-400">(Include nutrient data from Nutrients tab)</span>
                     </h3>
-                    
+
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-2 text-sm text-orange-300 p-3 bg-gray-800 rounded">
                         <label className="flex items-center gap-2 flex-1 cursor-pointer">
@@ -1873,17 +1874,16 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                         </label>
                         <button
                           onClick={() => toggleDefaultNutrientSetting('includeFoodEntries')}
-                          className={`text-xs px-2 py-1 rounded cursor-pointer ${
-                            isDefaultNutrientSetting('includeFoodEntries')
+                          className={`text-xs px-2 py-1 rounded cursor-pointer ${isDefaultNutrientSetting('includeFoodEntries')
                               ? 'bg-blue-600 text-white'
                               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                          }`}
+                            }`}
                           title="Mark as default for this chat"
                         >
                           {isDefaultNutrientSetting('includeFoodEntries') ? '✓ Default' : 'Default'}
                         </button>
                       </div>
-                      
+
                       <div className="flex items-center justify-between gap-2 text-sm text-cyan-300 p-3 bg-gray-800 rounded">
                         <label className="flex items-center gap-2 flex-1 cursor-pointer">
                           <input
@@ -1896,11 +1896,10 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                         </label>
                         <button
                           onClick={() => toggleDefaultNutrientSetting('includeVitaminsMinerals')}
-                          className={`text-xs px-2 py-1 rounded cursor-pointer ${
-                            isDefaultNutrientSetting('includeVitaminsMinerals')
+                          className={`text-xs px-2 py-1 rounded cursor-pointer ${isDefaultNutrientSetting('includeVitaminsMinerals')
                               ? 'bg-blue-600 text-white'
                               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                          }`}
+                            }`}
                           title="Mark as default for this chat"
                         >
                           {isDefaultNutrientSetting('includeVitaminsMinerals') ? '✓ Default' : 'Default'}
@@ -1915,12 +1914,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                       🔍 Prompt Control
                       <span className="text-sm text-gray-400">(Manage what gets sent to AI)</span>
                     </h3>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Data Sources */}
                       <div className="space-y-3">
                         <h4 className="text-white font-medium">Data Sources</h4>
-                        
+
                         <label className="flex items-center gap-2 text-white">
                           <input
                             type="checkbox"
@@ -1930,11 +1929,11 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                           />
                           Google Sheets ({sheetData ? Array.isArray(sheetData) ? sheetData.length : 1 : 0} sheets)
                         </label>
-                        
+
                         {promptSettings.includeSheets && (
                           <div className="ml-6">
                             <label className="text-gray-300 text-sm">
-                              Max rows per sheet: 
+                              Max rows per sheet:
                               <input
                                 type="number"
                                 value={promptSettings.maxSheetRows}
@@ -1946,7 +1945,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                             </label>
                           </div>
                         )}
-                        
+
                         <label className="flex items-center gap-2 text-white">
                           <input
                             type="checkbox"
@@ -1956,11 +1955,11 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                           />
                           Notion Pages ({allNotionPages.length} pages)
                         </label>
-                        
+
                         {promptSettings.includeNotion && (
                           <div className="ml-6">
                             <label className="text-gray-300 text-sm">
-                              Max pages: 
+                              Max pages:
                               <input
                                 type="number"
                                 value={promptSettings.maxNotionPages}
@@ -1972,13 +1971,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                             </label>
                           </div>
                         )}
-                        
+
                       </div>
-                      
+
                       {/* Chat Control */}
                       <div className="space-y-3">
                         <h4 className="text-white font-medium">Chat Context</h4>
-                        
+
                         <label className="flex items-center gap-2 text-white">
                           <input
                             type="checkbox"
@@ -1988,11 +1987,11 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                           />
                           Include Previous Messages
                         </label>
-                        
+
                         {promptSettings.includeChatHistory && (
                           <div className="ml-6">
                             <label className="text-gray-300 text-sm">
-                              Max previous messages: 
+                              Max previous messages:
                               <input
                                 type="number"
                                 value={promptSettings.maxChatMessages}
@@ -2006,7 +2005,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                         )}
                       </div>
                     </div>
-                    
+
                     {/* Quick Actions */}
                     <div className="mt-4 pt-4 border-t border-gray-700">
                       <div className="flex flex-wrap gap-2">
@@ -2083,7 +2082,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                             {(() => {
                               const contextItems: JSX.Element[] = [];
                               const processedIds = new Set<string>();
-                              
+
                               selectedContexts.forEach(ctx => {
                                 if (ctx === 'sheet') {
                                   contextItems.push(
@@ -2109,10 +2108,10 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                                       };
                                       page = findInHierarchy(hierarchicalNotionPages, pageId);
                                     }
-                                    
+
                                     if (page) {
                                       processedIds.add(pageId);
-                                      
+
                                       if (page.object === 'database') {
                                         // Count all descendants (data sources + their items)
                                         const countDescendants = (p: any): number => {
@@ -2151,7 +2150,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                                   }
                                 }
                               });
-                              
+
                               return contextItems;
                             })()}
                             {selectedContexts.length === 0 && (
@@ -2177,7 +2176,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                               const isExpanded = expandedPreviewPages.has(page.id);
                               const displayContent = isExpanded ? page.content : page.content?.substring(0, 500);
                               const needsTruncation = page.content?.length > 500;
-                              
+
                               return (
                                 <div key={page.id} className="mb-3">
                                   <div className="text-purple-400 font-bold mb-1">{page.title}:</div>
@@ -2236,8 +2235,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
           {activeTab === 'nutrients' && (
             <Suspense fallback={<div className="text-white p-4">Loading Nutrients...</div>}>
-              <NutrientTracker 
-                sheetData={sheetData} 
+              <NutrientTracker
+                sheetData={sheetData}
                 onEntriesChange={setNutrientEntries}
               />
             </Suspense>
