@@ -40,20 +40,55 @@ export default function Home() {
     checkAuth();
   }, [router]);
 
-  // Function to build hierarchy from flat pages
+  // Function to build hierarchy from flat pages.
+  // If a page has a parent that isn't loaded yet, create a placeholder parent node so children still appear nested.
   const buildHierarchy = (pages: any[]) => {
-    const pageMap = new Map();
-    pages.forEach(page => pageMap.set(page.id, { ...page, children: [] }));
-    
-    const rootPages: any[] = [];
+    const pageMap = new Map<string, any>();
+
+    const ensureParentNode = (parentId: string, parentType: string) => {
+      if (!pageMap.has(parentId)) {
+        const placeholderTitle = `Loading ${parentType.replace('_', ' ')}...`;
+        pageMap.set(parentId, {
+          id: parentId,
+          title: placeholderTitle,
+          content: '',
+          object: parentType === 'database_id' ? 'database' : parentType === 'data_source_id' ? 'data_source' : parentType === 'block_id' ? 'block' : parentType === 'agent_id' ? 'agent' : 'page',
+          parent: { type: 'workspace' },
+          children: [],
+          __placeholder: true
+        });
+      }
+    };
+
     pages.forEach(page => {
-      const parentId = page.parent?.page_id || page.parent?.database_id || page.parent?.data_source_id;
-      if (parentId && pageMap.has(parentId)) {
-        pageMap.get(parentId).children.push(pageMap.get(page.id));
+      pageMap.set(page.id, { ...page, children: page.children || [] });
+    });
+
+    const rootPages: any[] = [];
+    const childIds = new Set<string>();
+
+    pages.forEach(page => {
+      const parent = page.parent;
+      const parentId = parent?.page_id || parent?.database_id || parent?.data_source_id || parent?.block_id || parent?.agent_id;
+      const parentType = parent?.type || 'workspace';
+
+      if (parentId && parentType !== 'workspace') {
+        ensureParentNode(parentId, parentType);
+        const parentNode = pageMap.get(parentId);
+        parentNode.children.push(pageMap.get(page.id));
+        childIds.add(page.id);
       } else {
         rootPages.push(pageMap.get(page.id));
       }
     });
+
+    // Any placeholder parents that were created but never became real pages should also be roots if they have children.
+    pageMap.forEach((page, id) => {
+      if (page.__placeholder && page.children.length > 0 && !childIds.has(id)) {
+        rootPages.push(page);
+      }
+    });
+
     return rootPages;
   };
 
