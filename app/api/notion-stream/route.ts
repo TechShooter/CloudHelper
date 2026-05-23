@@ -231,7 +231,10 @@ async function resolveBlockParentToPage(blockId: string, apiKey: string, visited
   }
 }
 
-async function resolveDataSourceParentToPage(dataSourceId: string, apiKey: string): Promise<string | null> {
+async function resolveDataSourceParentToPage(dataSourceId: string, apiKey: string, visited = new Set<string>()): Promise<string | null> {
+  if (visited.has(dataSourceId)) return null;
+  visited.add(dataSourceId);
+
   try {
     const response = await fetchWithRetry(`https://api.notion.com/v1/data_sources/${dataSourceId}`, {
       headers: {
@@ -243,15 +246,41 @@ async function resolveDataSourceParentToPage(dataSourceId: string, apiKey: strin
     if (!response.ok) return null;
 
     const dataSourceData = await response.json();
-    
+
+    // Direct page parent
     if (dataSourceData.parent?.page_id) {
       return dataSourceData.parent.page_id;
     }
-    
+
+    // Parent is a block -> resolve block chain
     if (dataSourceData.parent?.block_id) {
       return await resolveBlockParentToPage(dataSourceData.parent.block_id, apiKey);
     }
-    
+
+    // Parent is another data_source -> recurse
+    if (dataSourceData.parent?.data_source_id) {
+      return await resolveDataSourceParentToPage(dataSourceData.parent.data_source_id, apiKey, visited);
+    }
+
+    // Parent might be a database; fetch it and inspect its parent
+    if (dataSourceData.parent?.database_id) {
+      try {
+        const dbResp = await fetchWithRetry(`https://api.notion.com/v1/databases/${dataSourceData.parent.database_id}`, {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Notion-Version': '2026-03-11'
+          }
+        });
+        if (!dbResp.ok) return null;
+        const dbData = await dbResp.json();
+        if (dbData.parent?.page_id) return dbData.parent.page_id;
+        if (dbData.parent?.block_id) return await resolveBlockParentToPage(dbData.parent.block_id, apiKey);
+        if (dbData.parent?.data_source_id) return await resolveDataSourceParentToPage(dbData.parent.data_source_id, apiKey, visited);
+      } catch (_) {
+        // ignore and fallthrough
+      }
+    }
+
     return null;
   } catch (error) {
     return null;
