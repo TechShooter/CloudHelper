@@ -523,6 +523,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   const [editingTags, setEditingTags] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState('');
   const [expandedPreviewPages, setExpandedPreviewPages] = useState<Set<string>>(new Set());
+  const [notionSearchQuery, setNotionSearchQuery] = useState('');
+  const [pageDefaults, setPageDefaults] = useState<{ [workspaceId: string]: Set<string> }>({});
 
   // Load custom tags from Supabase
   useEffect(() => {
@@ -643,6 +645,57 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       }
     });
   }, [defaultDocs]);
+
+  // Load page defaults for current workspace from Supabase
+  useEffect(() => {
+    const loadPageDefaults = async () => {
+      try {
+        const res = await fetch(`/api/chat-page-defaults?workspaceId=${activeWorkspace}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.defaults && Array.isArray(data.defaults)) {
+            const pageIdSet = new Set(data.defaults.map((d: any) => d.page_id));
+            setPageDefaults(prev => ({ ...prev, [activeWorkspace]: pageIdSet }));
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load page defaults:', error);
+      }
+    };
+
+    loadPageDefaults();
+  }, [activeWorkspace]);
+
+  // Toggle page as default for current workspace
+  const togglePageDefault = async (pageId: string, pageTitle: string, isDefault: boolean) => {
+    try {
+      const res = await fetch('/api/chat-page-defaults', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: activeWorkspace,
+          pageId,
+          pageTitle,
+          isDefault: !isDefault
+        })
+      });
+
+      if (res.ok) {
+        setPageDefaults(prev => {
+          const currentDefaults = prev[activeWorkspace] || new Set<string>();
+          const newDefaults = new Set(currentDefaults);
+          if (!isDefault) {
+            newDefaults.add(pageId);
+          } else {
+            newDefaults.delete(pageId);
+          }
+          return { ...prev, [activeWorkspace]: newDefaults };
+        });
+      }
+    } catch (error) {
+      console.error('Failed to toggle page default:', error);
+    }
+  };
 
   // Helper function to get Notion pages for a workspace
   const getNotionPagesForWorkspace = (workspace: Workspace, allPages: any[]) => {
@@ -1261,12 +1314,38 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
   // Render hierarchical pages with toggles
   const renderHierarchicalNotionPages = (pages: any[], depth = 0): ReactNode => {
+    // Filter pages by search query
+    const filterPages = (pagesToFilter: any[]): any[] => {
+      if (!notionSearchQuery.trim()) return pagesToFilter;
+      
+      const query = notionSearchQuery.toLowerCase();
+      return pagesToFilter.map(page => {
+        const titleMatch = (page.title || '').toLowerCase().includes(query);
+        const filteredChildren = page.children && page.children.length > 0
+          ? filterPages(page.children)
+          : [];
+        
+        // Only include page if it matches or has matching descendants
+        if (titleMatch || filteredChildren.length > 0) {
+          return {
+            ...page,
+            children: filteredChildren
+          };
+        }
+        return null;
+      }).filter(page => page !== null);
+    };
+
+    const filteredPages = depth === 0 ? filterPages(pages) : pages;
+
     return (
       <>
-        {pages.map(page => {
+        {filteredPages.map(page => {
           const hasChildren = page.children && page.children.length > 0;
           const isExpanded = expandedPages.has(page.id);
           const isSelected = selectedContexts.includes(`notion-${page.id}`);
+          const currentWorkspaceDefaults = pageDefaults[activeWorkspace] || new Set<string>();
+          const isDefault = currentWorkspaceDefaults.has(page.id);
 
           // Determine icon based on object type
           const getIcon = (obj: string) => {
@@ -1333,6 +1412,22 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                     ({page.children.length})
                   </span>
                 )}
+
+                {/* Default button to mark as default for this chat */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    togglePageDefault(page.id, page.title || 'Untitled', isDefault);
+                  }}
+                  className={`px-3 py-1 rounded text-sm font-medium transition-colors whitespace-nowrap ${
+                    isDefault
+                      ? 'bg-yellow-600 text-white hover:bg-yellow-700'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                  title={isDefault ? 'Remove from defaults' : 'Add to defaults'}
+                >
+                  {isDefault ? 'Default' : 'Set Default'}
+                </button>
               </div>
 
               {hasChildren && isExpanded && (
@@ -1655,6 +1750,30 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                         </div>
                       </div>
                     </div>
+
+                    {/* Tag Filter */}
+                    {(hierarchicalNotionPages || allNotionPages) && (
+                      <div className="p-3 bg-gray-800 rounded">
+                        <div className="flex items-center gap-2 mb-2">
+                          <label className="text-sm text-gray-300">Search pages:</label>
+                          <input
+                            type="text"
+                            placeholder="Search by page name..."
+                            value={notionSearchQuery}
+                            onChange={(e) => setNotionSearchQuery(e.target.value)}
+                            className="flex-1 text-sm bg-gray-700 text-white px-3 py-1 rounded border border-gray-600 placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                          />
+                          {notionSearchQuery && (
+                            <button
+                              onClick={() => setNotionSearchQuery('')}
+                              className="text-xs bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-500 cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Tag Filter */}
                     {(hierarchicalNotionPages || allNotionPages) && (
