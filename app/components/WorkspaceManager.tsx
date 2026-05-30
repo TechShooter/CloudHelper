@@ -55,6 +55,17 @@ const DEFAULT_WORKSPACES: Workspace[] = [
     systemPrompt: 'You are a personal coach. Focus on goal setting, progress tracking, and motivation. You have access to Timeline, Tasks to do db, and Goals pages.'
   },
   {
+    id: 'training',
+    name: 'Training',
+    icon: '🏋️‍♀️',
+    description: 'Fitness and training planning',
+    autoLoadSheets: false,
+    autoLoadNotion: true,
+    autoLoadMeals: false,
+    autoLoadProfile: false,
+    systemPrompt: 'You are a fitness trainer. Focus on physical fitness, scientific exercises.'
+  },
+  {
     id: 'calendar',
     name: 'Calendar',
     icon: '📅',
@@ -1194,8 +1205,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                 toggleDefaultDoc(`notion-${page.id}`);
               }}
               className={`text-xs px-2 py-1 rounded cursor-pointer transition-colors duration-150 ${isDefaultDoc(`notion-${page.id}`)
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                 }`}
               title="Mark as default for this chat"
             >
@@ -1317,14 +1328,14 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     // Filter pages by search query
     const filterPages = (pagesToFilter: any[]): any[] => {
       if (!notionSearchQuery.trim()) return pagesToFilter;
-      
+
       const query = notionSearchQuery.toLowerCase();
       return pagesToFilter.map(page => {
         const titleMatch = (page.title || '').toLowerCase().includes(query);
         const filteredChildren = page.children && page.children.length > 0
           ? filterPages(page.children)
           : [];
-        
+
         // Only include page if it matches or has matching descendants
         if (titleMatch || filteredChildren.length > 0) {
           return {
@@ -1419,11 +1430,10 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                     e.stopPropagation();
                     togglePageDefault(page.id, page.title || 'Untitled', isDefault);
                   }}
-                  className={`px-3 py-1 rounded text-sm font-medium transition-colors whitespace-nowrap ${
-                    isDefault
-                      ? 'bg-yellow-600 text-white hover:bg-yellow-700'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  }`}
+                  className={`px-3 py-1 rounded text-sm font-medium transition-colors whitespace-nowrap ${isDefault
+                    ? 'bg-yellow-600 text-white hover:bg-yellow-700'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
                   title={isDefault ? 'Remove from defaults' : 'Add to defaults'}
                 >
                   {isDefault ? 'Default' : 'Set Default'}
@@ -1565,8 +1575,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
               <button
                 onClick={() => setActiveTab('chat')}
                 className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'chat'
-                    ? 'bg-gray-700 text-white border-b-2 border-blue-500'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                  ? 'bg-gray-700 text-white border-b-2 border-blue-500'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
                   }`}
               >
                 💬 Chat
@@ -1574,8 +1584,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
               <button
                 onClick={() => setActiveTab('docs')}
                 className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'docs'
-                    ? 'bg-gray-700 text-white border-b-2 border-blue-500'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                  ? 'bg-gray-700 text-white border-b-2 border-blue-500'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
                   }`}
               >
                 📄 Docs
@@ -1583,8 +1593,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
               <button
                 onClick={() => setActiveTab('calendar')}
                 className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'calendar'
-                    ? 'bg-gray-700 text-white border-b-2 border-blue-500'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                  ? 'bg-gray-700 text-white border-b-2 border-blue-500'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
                   }`}
               >
                 📅 Calendar
@@ -1592,8 +1602,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
               <button
                 onClick={() => setActiveTab('nutrients')}
                 className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'nutrients'
-                    ? 'bg-gray-700 text-white border-b-2 border-blue-500'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                  ? 'bg-gray-700 text-white border-b-2 border-blue-500'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
                   }`}
               >
                 🥗 Nutrients
@@ -1802,8 +1812,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                               key={tag}
                               onClick={() => toggleTag(tag)}
                               className={`text-xs px-3 py-1 rounded transition-colors cursor-pointer ${selectedTags.has(tag)
-                                  ? 'bg-purple-600 text-white'
-                                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                ? 'bg-purple-600 text-white'
+                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                                 }`}
                             >
                               {tag}
@@ -1829,8 +1839,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                         <button
                           onClick={() => toggleDefaultDoc('sheet')}
                           className={`text-xs px-2 py-1 rounded cursor-pointer ${isDefaultDoc('sheet')
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                             }`}
                           title="Mark as default for this chat"
                         >
@@ -2003,8 +2013,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                         <button
                           onClick={() => toggleDefaultNutrientSetting('includeFoodEntries')}
                           className={`text-xs px-2 py-1 rounded cursor-pointer ${isDefaultNutrientSetting('includeFoodEntries')
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                             }`}
                           title="Mark as default for this chat"
                         >
@@ -2025,8 +2035,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                         <button
                           onClick={() => toggleDefaultNutrientSetting('includeVitaminsMinerals')}
                           className={`text-xs px-2 py-1 rounded cursor-pointer ${isDefaultNutrientSetting('includeVitaminsMinerals')
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                             }`}
                           title="Mark as default for this chat"
                         >
