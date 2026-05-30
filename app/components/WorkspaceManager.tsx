@@ -655,7 +655,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
           const data = await res.json();
           if (data.defaults && Array.isArray(data.defaults)) {
             const pageIdSet = new Set(data.defaults.map((d: any) => d.page_id));
-            setPageDefaults(prev => ({ ...prev, [activeWorkspace]: pageIdSet }));
+            setPageDefaults(prev => ({ ...prev, [activeWorkspace]: pageIdSet } as { [key: string]: Set<string> }));
           }
         }
       } catch (error) {
@@ -689,7 +689,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
           } else {
             newDefaults.delete(pageId);
           }
-          return { ...prev, [activeWorkspace]: newDefaults };
+          return { ...prev, [activeWorkspace]: newDefaults } as { [key: string]: Set<string> };
         });
       }
     } catch (error) {
