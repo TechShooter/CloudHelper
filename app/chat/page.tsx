@@ -250,7 +250,7 @@ export default function Home() {
     }
   };
 
-  // Load data
+  // Load data on mount (but NOT Notion - only on button click)
   useEffect(() => {
     if (checkingAuth) return;
     
@@ -270,8 +270,7 @@ export default function Home() {
           if (data?.sheets) setSheetData(data.sheets);
         }).catch(err => console.error('Failed to load sheets:', err));
         
-        // Load Notion using streaming
-        await loadNotionStreaming();
+        // Note: Notion is NOT auto-loaded. User must click "Reload" button.
       } catch (error) {
         console.error('Failed to load data:', error);
       }

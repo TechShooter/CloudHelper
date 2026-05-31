@@ -536,6 +536,10 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   const [expandedPreviewPages, setExpandedPreviewPages] = useState<Set<string>>(new Set());
   const [notionSearchQuery, setNotionSearchQuery] = useState('');
   const [pageDefaults, setPageDefaults] = useState<{ [workspaceId: string]: Set<string> }>({});
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showApiSearchResults, setShowApiSearchResults] = useState(false);
+  const [selectedApiResults, setSelectedApiResults] = useState<any[]>([]);
 
   // Load custom tags from Supabase
   useEffect(() => {
@@ -692,7 +696,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       });
 
       if (res.ok) {
-        setPageDefaults(prev => {
+        setPageDefaults((prev: any) => {
           const currentDefaults = prev[activeWorkspace] || new Set<string>();
           const newDefaults = new Set(currentDefaults);
           if (!isDefault) {
@@ -708,7 +712,60 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     }
   };
 
-  // Helper function to get Notion pages for a workspace
+  // Search Notion pages from API
+  const searchNotionPages = async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const res = await fetch('/api/notion-search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query,
+          page_size: 50,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        // Filter out Untitled pages and pages without proper titles
+        const filteredResults = (data.results || []).filter((result: any) => {
+          const title = result.title?.[0]?.text?.content || result.title;
+          return title && title.trim().length > 0;
+        });
+        setSearchResults(filteredResults);
+        setShowApiSearchResults(true);
+      } else {
+        setSearchResults([]);
+      }
+    } catch (error) {
+      console.error('Failed to search Notion pages:', error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Add searched pages to selected contexts
+  const addSearchedPageToContext = (page: any) => {
+    const pageId = page.id;
+    const isCurrentlySelected = selectedContexts.includes(`notion-${pageId}`);
+    
+    // Update selectedContexts
+    if (isCurrentlySelected) {
+      setSelectedContexts(prev => prev.filter(ctx => ctx !== `notion-${pageId}`));
+      setSelectedApiResults(prev => prev.filter(p => p.id !== pageId));
+    } else {
+      setSelectedContexts(prev => [...prev, `notion-${pageId}`]);
+      setSelectedApiResults(prev => [...prev, page]);
+    }
+  };
   const getNotionPagesForWorkspace = (workspace: Workspace, allPages: any[]) => {
     if (!workspace.autoLoadNotion) return [];
     if (workspace.id === 'nutrition' || workspace.id === 'general') {
@@ -795,6 +852,24 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
           };
           addChildren(page);
         }
+      }
+    });
+
+    // Also include selected API search results
+    selectedApiResults.forEach(apiResult => {
+      const pageId = apiResult.id;
+      if (!processedIds.has(pageId)) {
+        // Create a normalized page object from API result
+        const normalizedPage = {
+          id: pageId,
+          title: apiResult.title?.[0]?.text?.content || apiResult.title || '(Untitled)',
+          content: apiResult.properties?.content?.rich_text?.[0]?.plain_text || '(No content available from API)',
+          object: apiResult.object || 'page',
+          parent: { type: 'workspace' },
+          children: [],
+        };
+        resultPages.push(normalizedPage);
+        processedIds.add(pageId);
       }
     });
 
@@ -1355,7 +1430,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
           const hasChildren = page.children && page.children.length > 0;
           const isExpanded = expandedPages.has(page.id);
           const isSelected = selectedContexts.includes(`notion-${page.id}`);
-          const currentWorkspaceDefaults = pageDefaults[activeWorkspace] || new Set<string>();
+          const currentWorkspaceDefaults = pageDefaults?.[activeWorkspace] || new Set<string>();
           const isDefault = currentWorkspaceDefaults.has(page.id);
 
           // Determine icon based on object type
@@ -1761,11 +1836,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                       </div>
                     </div>
 
-                    {/* Tag Filter */}
-                    {(hierarchicalNotionPages || allNotionPages) && (
-                      <div className="p-3 bg-gray-800 rounded">
-                        <div className="flex items-center gap-2 mb-2">
-                          <label className="text-sm text-gray-300">Search pages:</label>
+                    {/* Local Search - Only if pages are loaded */}
+                    {(hierarchicalNotionPages && hierarchicalNotionPages.length > 0) && (
+                      <div className="p-3 bg-gray-800 rounded mb-3">
+                        <div className="text-xs text-gray-400 mb-2 font-semibold">📂 Loaded Pages</div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm text-gray-300">Search:</label>
                           <input
                             type="text"
                             placeholder="Search by page name..."
@@ -1784,6 +1860,82 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                         </div>
                       </div>
                     )}
+
+                    {/* Notion API Search - Always available */}
+                    <div className="p-3 bg-gray-800 rounded mb-3">
+                      <div className="text-xs text-gray-400 mb-2 font-semibold">🔍 Search Notion</div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <input
+                          type="text"
+                          placeholder="Search for pages to add..."
+                          id="apiSearchInput"
+                          className="flex-1 text-sm bg-gray-700 text-white px-3 py-1 rounded border border-gray-600 placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                              searchNotionPages(e.currentTarget.value);
+                            }
+                          }}
+                        />
+                        <button
+                          onClick={() => {
+                            const searchInput = document.getElementById('apiSearchInput') as HTMLInputElement;
+                            if (searchInput?.value.trim()) {
+                              searchNotionPages(searchInput.value);
+                            }
+                          }}
+                          disabled={isSearching}
+                          className="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 disabled:bg-gray-600 cursor-pointer"
+                        >
+                          {isSearching ? 'Searching...' : 'Search'}
+                        </button>
+                      </div>
+
+                      {/* API Search Results */}
+                      {showApiSearchResults && (
+                        <div className="mt-3">
+                          {searchResults.length > 0 ? (
+                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                              <p className="text-xs text-gray-400 mb-2">Found {searchResults.length} results (click to select):</p>
+                              {searchResults.map((result: any) => {
+                                const isSelected = selectedContexts.includes(`notion-${result.id}`);
+                                const resultType = result.object || 'page';
+                                const displayTitle = result.title?.[0]?.text?.content || result.title || '';
+                                
+                                return (
+                                  <div
+                                    key={result.id}
+                                    onClick={() => addSearchedPageToContext(result)}
+                                    className={`p-2 rounded cursor-pointer transition-colors text-xs ${
+                                      isSelected
+                                        ? 'bg-blue-600 text-white border border-blue-500'
+                                        : 'bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-650'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex-1 truncate">
+                                        <div className="font-medium truncate">{displayTitle}</div>
+                                        <div className="text-xs text-gray-400">
+                                          {resultType === 'page' && '📄 Page'}
+                                          {resultType === 'database' && '🗂️ Database'}
+                                          {resultType === 'data_source' && '📊 Data Source'}
+                                        </div>
+                                      </div>
+                                      <span className="flex-shrink-0 mt-1">
+                                        {isSelected ? '✓' : ''}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : isSearching ? (
+                            <p className="text-xs text-gray-400">Searching...</p>
+                          ) : (
+                            <p className="text-xs text-gray-400">Enter a search query to find Notion pages</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
                     {/* Tag Filter */}
                     {(hierarchicalNotionPages || allNotionPages) && (
@@ -2364,6 +2516,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
               </div>
             </div>
           )}
+
+
 
           {activeTab === 'calendar' && (
             <Suspense fallback={<div className="text-white p-4">Loading Calendar...</div>}>
