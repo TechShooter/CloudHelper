@@ -1805,7 +1805,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         </div>
 
         {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto min-w-0 sm:min-w-[800px]">
+        <div className="flex-1 overflow-y-auto min-w-0 min-h-0 sm:min-w-[800px]">
           {activeTab === 'chat' && currentWorkspace.id === 'model-testing' && (
             <Suspense fallback={<div className="text-white p-4">Loading Model Testing...</div>}>
               <ModelTesting

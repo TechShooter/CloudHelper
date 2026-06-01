@@ -253,14 +253,14 @@ export default function Home() {
   // Load data on mount (but NOT Notion - only on button click)
   useEffect(() => {
     if (checkingAuth) return;
-    
+
     const loadData = async () => {
       try {
         // Load sheets separately
         fetch('/api/sheets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             action: 'getAllSheets',
             sheetId: '1FvjfZ5a-OMM2ScO2lJewBFIrbnWvgQKJug_Ve32gAQA'
           })
@@ -269,13 +269,13 @@ export default function Home() {
         }).then(data => {
           if (data?.sheets) setSheetData(data.sheets);
         }).catch(err => console.error('Failed to load sheets:', err));
-        
+
         // Note: Notion is NOT auto-loaded. User must click "Reload" button.
       } catch (error) {
         console.error('Failed to load data:', error);
       }
     };
-    
+
     loadData();
   }, [checkingAuth]);
 
@@ -308,8 +308,8 @@ export default function Home() {
           </Suspense>
         </div>
       </header>
-      
-      <div className="flex-1 flex flex-col overflow-x-auto">
+
+      <div className="flex-1 flex overflow-x-auto">
         <Suspense fallback={<div className="text-white p-4">Caricamento...</div>}>
           <WorkspaceManager
             ref={workspaceManagerRef}
