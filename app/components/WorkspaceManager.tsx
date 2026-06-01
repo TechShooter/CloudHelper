@@ -713,6 +713,34 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   };
 
   // Search Notion pages from API
+  // Extract a usable title from various Notion response shapes
+  const extractNotionTitle = (result: any): string | null => {
+    try {
+      if (!result) return null;
+      if (result.properties) {
+        for (const k of Object.keys(result.properties)) {
+          const prop = result.properties[k];
+          if (prop?.type === 'title' && Array.isArray(prop.title) && prop.title.length > 0) {
+            return prop.title.map((t: any) => t.plain_text || '').join('') || null;
+          }
+        }
+        if (result.properties.title && Array.isArray(result.properties.title.title)) {
+          return result.properties.title.title.map((t: any) => t.plain_text || '').join('') || null;
+        }
+      }
+      if (result.title) {
+        if (typeof result.title === 'string') return result.title;
+        if (Array.isArray(result.title) && result.title.length > 0) {
+          const maybe = result.title[0];
+          return maybe?.plain_text || maybe?.text?.content || null;
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  };
+
   const searchNotionPages = async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
@@ -734,11 +762,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
       if (res.ok) {
         const data = await res.json();
-        // Filter out Untitled pages and pages without proper titles
-        const filteredResults = (data.results || []).filter((result: any) => {
-          const title = result.title?.[0]?.text?.content || result.title;
-          return title && title.trim().length > 0;
-        });
+        // Filter out untitled results using a more robust extractor
+        const filteredResults = (data.results || []).map((r: any) => ({ raw: r, title: extractNotionTitle(r) })).filter((x: any) => x.title && x.title.trim().length > 0).map((x: any) => ({ ...x.raw, _extracted_title: x.title }));
         setSearchResults(filteredResults);
         setShowApiSearchResults(true);
       } else {
@@ -752,18 +777,53 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     }
   };
 
-  // Add searched pages to selected contexts
-  const addSearchedPageToContext = (page: any) => {
+  // Add searched pages to selected contexts (fetch full content via server)
+  const addSearchedPageToContext = async (page: any) => {
     const pageId = page.id;
     const isCurrentlySelected = selectedContexts.includes(`notion-${pageId}`);
-    
-    // Update selectedContexts
+
     if (isCurrentlySelected) {
       setSelectedContexts(prev => prev.filter(ctx => ctx !== `notion-${pageId}`));
       setSelectedApiResults(prev => prev.filter(p => p.id !== pageId));
-    } else {
+      return;
+    }
+
+    // Fetch full page content from server endpoint
+    try {
+      const res = await fetch('/api/notion-page', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const title = data.title || page._extracted_title || extractNotionTitle(page) || '(Untitled)';
+        const content = data.content || '(No content available)';
+
+        const normalized = {
+          id: pageId,
+          title,
+          content,
+          object: page.object || 'page',
+          parent: { type: 'workspace' },
+          children: [],
+        };
+
+        setSelectedContexts(prev => [...prev, `notion-${pageId}`]);
+        setSelectedApiResults(prev => [...prev, normalized]);
+      } else {
+        console.error('Failed to fetch full page content for', pageId);
+        const title = page._extracted_title || extractNotionTitle(page) || '(Untitled)';
+        const normalized = { id: pageId, title, content: '(No content)', object: page.object || 'page', parent: { type: 'workspace' }, children: [] };
+        setSelectedContexts(prev => [...prev, `notion-${pageId}`]);
+        setSelectedApiResults(prev => [...prev, normalized]);
+      }
+    } catch (e) {
+      console.error('Error fetching page content:', e);
+      const title = page._extracted_title || extractNotionTitle(page) || '(Untitled)';
+      const normalized = { id: pageId, title, content: '(No content)', object: page.object || 'page', parent: { type: 'workspace' }, children: [] };
       setSelectedContexts(prev => [...prev, `notion-${pageId}`]);
-      setSelectedApiResults(prev => [...prev, page]);
+      setSelectedApiResults(prev => [...prev, normalized]);
     }
   };
   const getNotionPagesForWorkspace = (workspace: Workspace, allPages: any[]) => {
@@ -859,11 +919,25 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     selectedApiResults.forEach(apiResult => {
       const pageId = apiResult.id;
       if (!processedIds.has(pageId)) {
-        // Create a normalized page object from API result
+        // Create a normalized page object from API result or previously fetched normalized data
+        const title = typeof apiResult.title === 'string'
+          ? apiResult.title
+          : apiResult._extracted_title || (apiResult.title?.[0]?.text?.content) || ((apiResult.properties && (() => {
+            try {
+              for (const k of Object.keys(apiResult.properties)) {
+                const p = apiResult.properties[k];
+                if (p?.type === 'title' && Array.isArray(p.title)) return p.title.map((t: any) => t.plain_text || '').join('');
+              }
+            } catch (e) {}
+            return null;
+          })())) || '(Untitled)';
+
+        const content = apiResult.content || apiResult._content || (apiResult.properties?.content?.rich_text?.[0]?.plain_text) || '(No content available from API)';
+
         const normalizedPage = {
           id: pageId,
-          title: apiResult.title?.[0]?.text?.content || apiResult.title || '(Untitled)',
-          content: apiResult.properties?.content?.rich_text?.[0]?.plain_text || '(No content available from API)',
+          title,
+          content,
           object: apiResult.object || 'page',
           parent: { type: 'workspace' },
           children: [],
@@ -1899,7 +1973,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                               {searchResults.map((result: any) => {
                                 const isSelected = selectedContexts.includes(`notion-${result.id}`);
                                 const resultType = result.object || 'page';
-                                const displayTitle = result.title?.[0]?.text?.content || result.title || '';
+                                const displayTitle = result._extracted_title || (typeof result.title === 'string' ? result.title : result.title?.[0]?.text?.content) || '';
                                 
                                 return (
                                   <div
