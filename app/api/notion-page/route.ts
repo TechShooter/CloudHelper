@@ -20,29 +20,60 @@ async function fetchBlockChildren(blockId: string, notionApiKey: string) {
 
 function blocksToPlainText(blocks: any[]): string {
   const pieces: string[] = [];
+
+  const extractText = (items: any[]): string => {
+    if (!Array.isArray(items)) return '';
+    return items.map((t: any) => t.plain_text || t.text?.content || '').join('');
+  };
+
+  let numberedCounter = 1;
+
   for (const b of blocks) {
     const type = b.type;
-    const content = (() => {
-      try {
-        if (type === 'paragraph' && b.paragraph?.text) return b.paragraph.text.map((t: any) => t.plain_text || t.text?.content || '').join('');
-        if ((type === 'heading_1' || type === 'heading_2' || type === 'heading_3') && b[type]?.text) return b[type].text.map((t: any) => t.plain_text || t.text?.content || '').join('');
-        if (type === 'bulleted_list_item' && b.bulleted_list_item?.text) return b.bulleted_list_item.text.map((t: any) => t.plain_text || t.text?.content || '').join('');
-        if (type === 'numbered_list_item' && b.numbered_list_item?.text) return b.numbered_list_item.text.map((t: any) => t.plain_text || t.text?.content || '').join('');
-        if (type === 'to_do' && b.to_do?.text) return b.to_do.text.map((t: any) => t.plain_text || t.text?.content || '').join('');
-        // Fallback to plain_text in rich_text or title arrays
-        if (b.rich_text && Array.isArray(b.rich_text)) return b.rich_text.map((t: any) => t.plain_text || t.text?.content || '').join('');
-        if (b.paragraph && b.paragraph.rich_text) return b.paragraph.rich_text.map((t: any) => t.plain_text || t.text?.content || '').join('');
-      } catch (e) {
-        return '';
-      }
-      return '';
-    })();
+    let line = '';
 
-    if (content && content.trim()) {
-      pieces.push(content.trim());
+    try {
+      if (type === 'paragraph') {
+        line = extractText(b.paragraph?.rich_text || b.paragraph?.text || []);
+      } else if (type === 'heading_1') {
+        line = '# ' + extractText(b.heading_1?.rich_text || b.heading_1?.text || []);
+      } else if (type === 'heading_2') {
+        line = '## ' + extractText(b.heading_2?.rich_text || b.heading_2?.text || []);
+      } else if (type === 'heading_3') {
+        line = '### ' + extractText(b.heading_3?.rich_text || b.heading_3?.text || []);
+      } else if (type === 'bulleted_list_item') {
+        line = '- ' + extractText(b.bulleted_list_item?.rich_text || b.bulleted_list_item?.text || []);
+        numberedCounter = 1;
+      } else if (type === 'numbered_list_item') {
+        line = `${numberedCounter}. ` + extractText(b.numbered_list_item?.rich_text || b.numbered_list_item?.text || []);
+        numberedCounter += 1;
+      } else if (type === 'to_do') {
+        const text = extractText(b.to_do?.rich_text || b.to_do?.text || []);
+        const checked = b.to_do?.checked ? '[x]' : '[ ]';
+        line = `${checked} ${text}`;
+        numberedCounter = 1;
+      } else if (type === 'quote' || type === 'callout' || type === 'toggle') {
+        line = '> ' + extractText(b[type]?.rich_text || []);
+      } else if (type === 'code') {
+        const text = extractText(b.code?.rich_text || []);
+        line = `\`\`\`
+${text}
+\`\`\``;
+      } else if (Array.isArray(b.rich_text)) {
+        line = extractText(b.rich_text);
+      } else if (b.paragraph && Array.isArray(b.paragraph.rich_text)) {
+        line = extractText(b.paragraph.rich_text);
+      }
+    } catch (e) {
+      line = '';
+    }
+
+    if (line && line.trim()) {
+      pieces.push(line.trim());
     }
   }
-  return pieces.join('\n\n');
+
+  return pieces.join('\n');
 }
 
 function propertyValueToPlainText(prop: any): string {
