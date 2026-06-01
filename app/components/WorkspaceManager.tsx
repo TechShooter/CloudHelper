@@ -996,6 +996,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   }, [activeWorkspace, pageDefaults, defaultDocs]);
 
   // Load saved default pages directly from Notion when their IDs are restored
+  // Clear selectedApiResults first when workspace changes, then load new defaults
   useEffect(() => {
     const loadDefaultPages = async () => {
       if (!activeWorkspace) return;
@@ -1003,15 +1004,16 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       if (defaultIds.length === 0) return;
 
       for (const pageId of defaultIds) {
-        const alreadyLoaded = selectedApiResults.some(p => p.id === pageId);
-        if (!alreadyLoaded) {
-          await addSearchedPageToContext({ id: pageId, object: 'page' }, true);
-        }
+        await addSearchedPageToContext({ id: pageId, object: 'page' }, true);
       }
     };
 
+    // Clear selectedApiResults when workspace changes, ensuring Content Preview updates
+    setSelectedApiResults([]);
+    
+    // Load defaults after clearing
     loadDefaultPages();
-  }, [activeWorkspace, pageDefaults, selectedApiResults]);
+  }, [activeWorkspace, pageDefaults]);
 
   // Helper function to get all descendant pages from a database
   const getAllDescendants = (page: any): any[] => {
@@ -2493,85 +2495,138 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                       <div className="space-y-4">
                         {/* Selected Contexts Summary */}
                         <div>
-                          <h4 className="text-sm font-medium text-gray-300 mb-2">Selected Contexts ({selectedContexts.length})</h4>
-                          <div className="flex flex-wrap gap-2">
+                          <h4 className="text-sm font-medium text-gray-300 mb-2">Selected Contexts</h4>
+                          <div className="space-y-2">
+                            {/* Google Sheets toggle */}
+                            {(sheetData || selectedContexts.includes('sheet')) && (
+                              <div
+                                onClick={() => {
+                                  if (selectedContexts.includes('sheet')) {
+                                    setSelectedContexts(selectedContexts.filter(ctx => ctx !== 'sheet'));
+                                  } else {
+                                    setSelectedContexts([...selectedContexts, 'sheet']);
+                                  }
+                                }}
+                                className={`text-xs p-2 rounded cursor-pointer transition ${
+                                  selectedContexts.includes('sheet')
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                                }`}
+                              >
+                                {selectedContexts.includes('sheet') ? '☑' : '☐'} 📊 Google Sheets
+                              </div>
+                            )}
+
+                            {/* Default Notion pages - always show them with toggle */}
                             {(() => {
-                              const contextItems: JSX.Element[] = [];
-                              const processedIds = new Set<string>();
+                              const defaultPageIds = Array.from(pageDefaults[activeWorkspace] || []);
+                              const rendered = new Set<string>();
+                              const items: JSX.Element[] = [];
 
-                              selectedContexts.forEach(ctx => {
-                                if (ctx === 'sheet') {
-                                  contextItems.push(
-                                    <span key={ctx} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">
-                                      📊 Google Sheets
-                                    </span>
-                                  );
-                                } else if (ctx.startsWith('notion-')) {
-                                  const pageId = ctx.replace('notion-', '');
-                                  if (!processedIds.has(pageId)) {
-                                    // Find page in flat or hierarchical structure
-                                    let page = allNotionPages.find(p => p.id === pageId);
-                                    if (!page && hierarchicalNotionPages) {
-                                      const findInHierarchy = (pages: any[], targetId: string): any => {
-                                        for (const p of pages) {
-                                          if (p.id === targetId) return p;
-                                          if (p.children && p.children.length > 0) {
-                                            const found = findInHierarchy(p.children, targetId);
-                                            if (found) return found;
-                                          }
+                              defaultPageIds.forEach(pageId => {
+                                if (rendered.has(pageId)) return;
+                                rendered.add(pageId);
+
+                                const ctx = `notion-${pageId}`;
+                                const isSelected = selectedContexts.includes(ctx);
+
+                                // Try to find page in API results first
+                                let apiResult = selectedApiResults.find(p => p.id === pageId);
+                                if (apiResult) {
+                                  const icon = apiResult.object === 'database' ? '🗄️' : apiResult.object === 'data_source' ? '📊' : '📄';
+                                  items.push(
+                                    <div
+                                      key={ctx}
+                                      onClick={() => {
+                                        if (isSelected) {
+                                          setSelectedContexts(selectedContexts.filter(c => c !== ctx));
+                                        } else {
+                                          setSelectedContexts([...selectedContexts, ctx]);
                                         }
-                                        return null;
-                                      };
-                                      page = findInHierarchy(hierarchicalNotionPages, pageId);
-                                    }
+                                      }}
+                                      className={`text-xs p-2 rounded cursor-pointer transition ${
+                                        isSelected
+                                          ? 'bg-blue-600 text-white'
+                                          : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                                      }`}
+                                    >
+                                      {isSelected ? '☑' : '☐'} {icon} {apiResult.title || 'Untitled'}
+                                    </div>
+                                  );
+                                  return;
+                                }
 
-                                    if (page) {
-                                      processedIds.add(pageId);
-
-                                      if (page.object === 'database') {
-                                        // Count all descendants (data sources + their items)
-                                        const countDescendants = (p: any): number => {
-                                          let count = 0;
-                                          if (p.children && p.children.length > 0) {
-                                            count += p.children.length;
-                                            p.children.forEach((child: any) => {
-                                              count += countDescendants(child);
-                                            });
-                                          }
-                                          return count;
-                                        };
-                                        const totalItems = countDescendants(page);
-                                        contextItems.push(
-                                          <span key={ctx} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">
-                                            🗄️ {page.title} (+{totalItems} items)
-                                          </span>
-                                        );
-                                      } else if (page.object === 'data_source') {
-                                        // Show data source with count of items
-                                        const itemCount = page.children ? page.children.length : 0;
-                                        contextItems.push(
-                                          <span key={ctx} className="text-xs bg-purple-600 text-white px-2 py-1 rounded">
-                                            📊 {page.title} (+{itemCount} items)
-                                          </span>
-                                        );
-                                      } else {
-                                        // Regular page
-                                        contextItems.push(
-                                          <span key={ctx} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">
-                                            📄 {page.title}
-                                          </span>
-                                        );
+                                // Try to find in hierarchy
+                                let page = allNotionPages.find(p => p.id === pageId);
+                                if (!page && hierarchicalNotionPages) {
+                                  const findInHierarchy = (pages: any[], targetId: string): any => {
+                                    for (const p of pages) {
+                                      if (p.id === targetId) return p;
+                                      if (p.children && p.children.length > 0) {
+                                        const found = findInHierarchy(p.children, targetId);
+                                        if (found) return found;
                                       }
                                     }
+                                    return null;
+                                  };
+                                  page = findInHierarchy(hierarchicalNotionPages, pageId);
+                                }
+
+                                if (page) {
+                                  let label = page.title || 'Untitled';
+                                  let icon = '📄';
+
+                                  if (page.object === 'database') {
+                                    const countDescendants = (p: any): number => {
+                                      let count = 0;
+                                      if (p.children && p.children.length > 0) {
+                                        count += p.children.length;
+                                        p.children.forEach((child: any) => {
+                                          count += countDescendants(child);
+                                        });
+                                      }
+                                      return count;
+                                    };
+                                    const totalItems = countDescendants(page);
+                                    label = `${page.title} (+${totalItems} items)`;
+                                    icon = '🗄️';
+                                  } else if (page.object === 'data_source') {
+                                    const itemCount = page.children ? page.children.length : 0;
+                                    label = `${page.title} (+${itemCount} items)`;
+                                    icon = '📊';
                                   }
+
+                                  items.push(
+                                    <div
+                                      key={ctx}
+                                      onClick={() => {
+                                        if (isSelected) {
+                                          setSelectedContexts(selectedContexts.filter(c => c !== ctx));
+                                        } else {
+                                          setSelectedContexts([...selectedContexts, ctx]);
+                                        }
+                                      }}
+                                      className={`text-xs p-2 rounded cursor-pointer transition ${
+                                        isSelected
+                                          ? 'bg-blue-600 text-white'
+                                          : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                                      }`}
+                                    >
+                                      {isSelected ? '☑' : '☐'} {icon} {label}
+                                    </div>
+                                  );
                                 }
                               });
 
-                              return contextItems;
+                              return items;
                             })()}
-                            {selectedContexts.length === 0 && (
-                              <span className="text-sm text-gray-500">No contexts selected</span>
-                            )}
+
+                            {(() => {
+                              const defaultPageIds = Array.from(pageDefaults[activeWorkspace] || []);
+                              return defaultPageIds.length === 0 ? (
+                                <span className="text-sm text-gray-500">No default contexts. Set defaults to see them here!</span>
+                              ) : null;
+                            })()}
                           </div>
                         </div>
 
