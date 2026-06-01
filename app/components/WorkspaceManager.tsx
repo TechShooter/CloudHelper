@@ -778,13 +778,18 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   };
 
   // Add searched pages to selected contexts (fetch full content via server)
-  const addSearchedPageToContext = async (page: any) => {
+  const addSearchedPageToContext = async (page: any, forceAdd = false) => {
     const pageId = page.id;
     const isCurrentlySelected = selectedContexts.includes(`notion-${pageId}`);
+    const alreadyLoaded = selectedApiResults.some(p => p.id === pageId);
 
-    if (isCurrentlySelected) {
+    if (isCurrentlySelected && !forceAdd) {
       setSelectedContexts(prev => prev.filter(ctx => ctx !== `notion-${pageId}`));
       setSelectedApiResults(prev => prev.filter(p => p.id !== pageId));
+      return;
+    }
+
+    if (isCurrentlySelected && alreadyLoaded) {
       return;
     }
 
@@ -855,9 +860,11 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     return allPages;
   };
 
-  // Auto-select contexts based on workspace defaults
+  // Auto-select contexts based on workspace defaults and saved page defaults
   const getAutoContexts = () => {
-    return defaultDocs[activeWorkspace] || [];
+    const autoDocs = defaultDocs[activeWorkspace] || [];
+    const savedPageDefaults = Array.from(pageDefaults[activeWorkspace] || []).map(id => `notion-${id}`);
+    return Array.from(new Set([...autoDocs, ...savedPageDefaults]));
   };
 
   // Filter Notion pages based on selected contexts (user has total control)
@@ -952,8 +959,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
   // Clean up stale page IDs from selectedContexts when pages are loaded
   useEffect(() => {
-    if (allNotionPages.length > 0) {
-      const validNotionIds = new Set(allNotionPages.map((p: any) => p.id));
+    if (allNotionPages.length > 0 || selectedApiResults.length > 0 || (pageDefaults[activeWorkspace] && pageDefaults[activeWorkspace].size > 0)) {
+      const validNotionIds = new Set([
+        ...allNotionPages.map((p: any) => p.id),
+        ...selectedApiResults.map((p: any) => p.id),
+        ...Array.from(pageDefaults[activeWorkspace] || []),
+      ]);
       setSelectedContexts(prev =>
         prev.filter(ctx => {
           if (ctx === 'sheet') return true;
@@ -965,12 +976,42 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         })
       );
     }
-  }, [allNotionPages]);
+  }, [allNotionPages, selectedApiResults, pageDefaults, activeWorkspace]);
 
   // Auto-select default docs when workspace changes or on initial load
   useEffect(() => {
     setSelectedContexts(getAutoContexts());
-  }, [activeWorkspace, defaultDocs]);
+  }, [activeWorkspace, defaultDocs, pageDefaults]);
+
+  // Ensure saved workspace page defaults are selected when they load
+  useEffect(() => {
+    if (!activeWorkspace) return;
+    const defaultContexts = Array.from(pageDefaults[activeWorkspace] || []).map(id => `notion-${id}`);
+    if (defaultContexts.length === 0) return;
+
+    setSelectedContexts(prev => {
+      const nonNotion = prev.filter(ctx => !ctx.startsWith('notion-'));
+      return Array.from(new Set([...nonNotion, ...getAutoContexts(), ...defaultContexts]));
+    });
+  }, [activeWorkspace, pageDefaults, defaultDocs]);
+
+  // Load saved default pages directly from Notion when their IDs are restored
+  useEffect(() => {
+    const loadDefaultPages = async () => {
+      if (!activeWorkspace) return;
+      const defaultIds = Array.from(pageDefaults[activeWorkspace] || []);
+      if (defaultIds.length === 0) return;
+
+      for (const pageId of defaultIds) {
+        const alreadyLoaded = selectedApiResults.some(p => p.id === pageId);
+        if (!alreadyLoaded) {
+          await addSearchedPageToContext({ id: pageId, object: 'page' }, true);
+        }
+      }
+    };
+
+    loadDefaultPages();
+  }, [activeWorkspace, pageDefaults, selectedApiResults]);
 
   // Helper function to get all descendant pages from a database
   const getAllDescendants = (page: any): any[] => {
@@ -1974,29 +2015,40 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                                 const isSelected = selectedContexts.includes(`notion-${result.id}`);
                                 const resultType = result.object || 'page';
                                 const displayTitle = result._extracted_title || (typeof result.title === 'string' ? result.title : result.title?.[0]?.text?.content) || '';
-                                
+                                const currentWorkspaceDefaults = pageDefaults?.[activeWorkspace] || new Set<string>();
+                                const isDefault = currentWorkspaceDefaults.has(result.id);
+
                                 return (
                                   <div
                                     key={result.id}
-                                    onClick={() => addSearchedPageToContext(result)}
-                                    className={`p-2 rounded cursor-pointer transition-colors text-xs ${
+                                    className={`p-2 rounded text-xs transition-colors ${
                                       isSelected
                                         ? 'bg-blue-600 text-white border border-blue-500'
                                         : 'bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-650'
                                     }`}
                                   >
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div className="flex-1 truncate">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => addSearchedPageToContext(result)}>
                                         <div className="font-medium truncate">{displayTitle}</div>
-                                        <div className="text-xs text-gray-400">
+                                        <div className="text-xs text-gray-400 truncate">
                                           {resultType === 'page' && '📄 Page'}
                                           {resultType === 'database' && '🗂️ Database'}
                                           {resultType === 'data_source' && '📊 Data Source'}
                                         </div>
                                       </div>
-                                      <span className="flex-shrink-0 mt-1">
-                                        {isSelected ? '✓' : ''}
-                                      </span>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          togglePageDefault(result.id, displayTitle || 'Untitled', isDefault);
+                                        }}
+                                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors whitespace-nowrap ${isDefault
+                                          ? 'bg-yellow-600 text-white hover:bg-yellow-700'
+                                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                        }`}
+                                        title={isDefault ? 'Remove default' : 'Set default'}
+                                      >
+                                        Default
+                                      </button>
                                     </div>
                                   </div>
                                 );
