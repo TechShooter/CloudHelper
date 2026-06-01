@@ -15,6 +15,15 @@ export default function Home() {
   const [sheetData, setSheetData] = useState<any>(null);
   const [notionPages, setNotionPages] = useState<any[]>([]);
   const [hierarchicalNotionPages, setHierarchicalNotionPages] = useState<any[]>([]);
+  const [notionError, setNotionError] = useState<string | null>(null);
+  const [isLoadingNotion, setIsLoadingNotion] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState<{
+    step: string;
+    stage: number;
+    details: string;
+  } | null>(null);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
+  const notionAbortControllerRef = useRef<AbortController | null>(null);
   const workspaceManagerRef = useRef<any>(null);
 
   // Check auth on mount - dynamic import of supabase
@@ -32,96 +41,252 @@ export default function Home() {
     checkAuth();
   }, [router]);
 
-  // Load data
-  useEffect(() => {
-    if (checkingAuth) return;
-    
-    const loadData = async () => {
-      try {
-        const [sheetsRes, notionRes] = await Promise.all([
-          fetch('/api/sheets', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              action: 'getAllSheets',
-              sheetId: '1FvjfZ5a-OMM2ScO2lJewBFIrbnWvgQKJug_Ve32gAQA'
-            })
-          }).catch(() => null),
-          fetch('/api/notion/stream').catch(() => null)
-        ]);
-        
-        if (sheetsRes && sheetsRes.ok) {
-          const sheetsData = await sheetsRes.json();
-          if (sheetsData.sheets) setSheetData(sheetsData.sheets);
-        }
-        
-        // Stream notion pages
-        if (notionRes && notionRes.ok) {
-          const reader = notionRes.body?.getReader();
-          if (reader) {
-            const decoder = new TextDecoder();
-            const pages: any[] = [];
-            let buffer = '';
-            
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split('\n');
-              buffer = lines.pop() || '';
-              
-              for (const line of lines) {
-                if (!line.trim()) continue;
-                try {
-                  const page = JSON.parse(line);
-                  if (!page.error) {
-                    pages.push(page);
-                    setNotionPages([...pages]);
-                  }
-                } catch {}
-              }
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load data:', error);
+  // Function to build hierarchy from flat pages.
+  // If a page has a parent that isn't loaded yet, create a placeholder parent node so children still appear nested.
+  const buildHierarchy = (pages: any[]) => {
+    const pageMap = new Map<string, any>();
+
+    const formatPlaceholderTitle = (parentId: string, parentType: string) => {
+      const shortId = parentId?.slice(0, 6);
+      if (parentType === 'page_id') {
+        return `Loading parent page (${shortId})...`;
+      }
+      if (parentType === 'database_id') {
+        return `Loading parent database (${shortId})...`;
+      }
+      if (parentType === 'data_source_id') {
+        return `Loading parent data source (${shortId})...`;
+      }
+      if (parentType === 'block_id') {
+        return `Loading parent block (${shortId})...`;
+      }
+      if (parentType === 'agent_id') {
+        return `Loading parent agent (${shortId})...`;
+      }
+      return `Loading ${parentType.replace('_', ' ')} (${shortId})...`;
+    };
+
+    const ensureParentNode = (parentId: string, parentType: string) => {
+      if (!pageMap.has(parentId)) {
+        const placeholderTitle = formatPlaceholderTitle(parentId, parentType);
+        pageMap.set(parentId, {
+          id: parentId,
+          title: placeholderTitle,
+          content: '',
+          object: parentType === 'database_id' ? 'database' : parentType === 'data_source_id' ? 'data_source' : parentType === 'block_id' ? 'block' : parentType === 'agent_id' ? 'agent' : 'page',
+          parent: { type: 'workspace' },
+          children: [],
+          __placeholder: true
+        });
       }
     };
-    
-    loadData();
-  }, [checkingAuth]);
 
-  const reloadNotion = async () => {
+    pages.forEach(page => {
+      pageMap.set(page.id, { ...page, children: page.children || [] });
+    });
+
+    const rootPages: any[] = [];
+    const childIds = new Set<string>();
+
+    pages.forEach(page => {
+      const parent = page.parent;
+      const parentId = parent?.page_id || parent?.database_id || parent?.data_source_id || parent?.block_id || parent?.agent_id;
+      const parentType = parent?.type || 'workspace';
+
+      if (parentId && parentType !== 'workspace') {
+        ensureParentNode(parentId, parentType);
+        const parentNode = pageMap.get(parentId);
+        parentNode.children.push(pageMap.get(page.id));
+        childIds.add(page.id);
+      } else {
+        rootPages.push(pageMap.get(page.id));
+      }
+    });
+
+    // Any placeholder parents that were created but never became real pages should also be roots if they have children.
+    pageMap.forEach((page, id) => {
+      if (page.__placeholder && page.children.length > 0 && !childIds.has(id)) {
+        rootPages.push(page);
+      }
+    });
+
+    return rootPages;
+  };
+
+  const stopNotionLoading = () => {
+    if (notionAbortControllerRef.current) {
+      notionAbortControllerRef.current.abort();
+      notionAbortControllerRef.current = null;
+      setLoadingStatus({ step: 'Notion load stopped', stage: 0, details: 'Notion loading was cancelled.' });
+      setIsLoadingNotion(false);
+    }
+  };
+
+  const loadNotionStreaming = async () => {
     try {
-      const res = await fetch('/api/notion/stream');
-      const reader = res.body?.getReader();
-      if (!reader) return;
-      
+      setIsLoadingNotion(true);
+      setHierarchicalNotionPages([]); // Clear old data
+      setNotionPages([]);
+      setNotionError(null);
+      setDebugInfo(null);
+
+      console.log('[FRONTEND] 🚀 [1/5] Starting Notion stream...');
+      setLoadingStatus({ step: 'Starting Notion stream', stage: 1, details: 'Connecting to Notion...' });
+
+      const controller = new AbortController();
+      notionAbortControllerRef.current = controller;
+      const response = await fetch(`/api/notion-stream?t=${Date.now()}`, { signal: controller.signal });
+      console.log('[FRONTEND] ✅ [2/5] Stream response received:', response.status);
+
+      if (!response.ok) {
+        const text = await response.text();
+        const errorMsg = response.status === 429
+          ? '⚠️ Notion API Rate Limit: Too many requests. Please wait a moment and try again.'
+          : `Failed to fetch Notion stream: ${response.status}`;
+        console.error('Failed to fetch Notion stream:', response.status, text);
+        setNotionError(errorMsg);
+        setIsLoadingNotion(false);
+        return;
+      }
+
+      if (!response.body) {
+        const text = await response.text();
+        const data = JSON.parse(text);
+
+        if (data.error) {
+          setNotionError(`Notion API Error: ${data.error}`);
+        } else {
+          setNotionPages(data.pages || []);
+          setHierarchicalNotionPages(buildHierarchy(data.pages || []));
+          if (data.debug) {
+            setDebugInfo(data.debug);
+          }
+        }
+
+        setIsLoadingNotion(false);
+        return;
+      }
+
+      const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      const pages: any[] = [];
       let buffer = '';
-      
+      let processedPages = 0;
+      let streamError = false;
+
+      const handleStreamLine = (line: string) => {
+        if (!line.trim()) return;
+        try {
+          const message = JSON.parse(line);
+
+          if (message.type === 'status') {
+            setLoadingStatus({
+              step: message.step || 'Loading Notion',
+              stage: message.stage || 2,
+              details: message.details || ''
+            });
+          }
+
+          if (message.type === 'page_batch') {
+            const newPages = message.pages || [];
+            processedPages += newPages.length;
+            setNotionPages(prev => {
+              const updated = [...prev, ...newPages];
+              setHierarchicalNotionPages(buildHierarchy(updated));
+              return updated;
+            });
+            setLoadingStatus({
+              step: 'Receiving pages',
+              stage: 3,
+              details: `${processedPages}/${message.totalPages || '?'} pages loaded`
+            });
+          }
+
+          if (message.type === 'done') {
+            setLoadingStatus({
+              step: 'Notion stream complete',
+              stage: 5,
+              details: message.details || 'Loaded all pages'
+            });
+          }
+
+          if (message.type === 'error') {
+            console.error('[FRONTEND] Stream error:', message.message);
+            setNotionError(`Notion stream error: ${message.message}`);
+            streamError = true;
+          }
+        } catch (error) {
+          console.warn('[FRONTEND] Failed to parse stream message:', error, line);
+        }
+      };
+
       while (true) {
-        const { done, value } = await reader.read();
+        const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
-        
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const page = JSON.parse(line);
-            if (!page.error) {
-              pages.push(page);
-              setNotionPages([...pages]);
-            }
-          } catch {}
-        }
+        lines.forEach(handleStreamLine);
+        if (streamError) break;
       }
-    } catch (error) {
-      console.error('Failed to reload:', error);
+
+      if (buffer && !streamError) {
+        handleStreamLine(buffer);
+      }
+
+      if (!streamError) {
+        setIsLoadingNotion(false);
+      }
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        console.log('[FRONTEND] Notion stream aborted by user');
+        setLoadingStatus({ step: 'Notion load stopped', stage: 0, details: 'Notion loading was cancelled.' });
+      } else {
+        console.error('Failed to load Notion stream:', error);
+        setNotionError(`Error loading Notion stream: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+      setIsLoadingNotion(false);
+    } finally {
+      notionAbortControllerRef.current = null;
     }
+  };
+
+  // Load data on mount (but NOT Notion - only on button click)
+  useEffect(() => {
+    if (checkingAuth) return;
+
+    const loadData = async () => {
+      try {
+        // Load sheets separately
+        fetch('/api/sheets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'getAllSheets',
+            sheetId: '1FvjfZ5a-OMM2ScO2lJewBFIrbnWvgQKJug_Ve32gAQA'
+          })
+        }).then(res => {
+          if (res.ok) return res.json();
+        }).then(data => {
+          if (data?.sheets) setSheetData(data.sheets);
+        }).catch(err => console.error('Failed to load sheets:', err));
+
+        // Note: Notion is NOT auto-loaded. User must click "Reload" button.
+      } catch (error) {
+        console.error('Failed to load data:', error);
+      }
+    };
+
+    loadData();
+  }, [checkingAuth]);
+
+  const reloadNotion = async () => {
+    setNotionPages([]);
+    setHierarchicalNotionPages([]);
+    await loadNotionStreaming();
+  };
+
+  const stopNotion = () => {
+    stopNotionLoading();
   };
 
   if (checkingAuth) {
@@ -143,7 +308,7 @@ export default function Home() {
           </Suspense>
         </div>
       </header>
-      
+
       <div className="flex-1 flex overflow-x-auto">
         <Suspense fallback={<div className="text-white p-4">Caricamento...</div>}>
           <WorkspaceManager
@@ -154,7 +319,10 @@ export default function Home() {
             notionPages={notionPages}
             allNotionPages={notionPages}
             hierarchicalNotionPages={hierarchicalNotionPages}
+            notionError={notionError}
+            isLoadingNotion={isLoadingNotion}
             onReloadNotion={reloadNotion}
+            onStopNotion={stopNotion}
           />
         </Suspense>
       </div>

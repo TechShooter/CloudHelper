@@ -336,23 +336,33 @@ export async function POST(req: NextRequest) {
     if (type === 'notes') {
       const { goalsText, notesText } = data;
 
-      // Upsert goals text
+      // Delete existing notes for this user
       await supabase
         .from('user_notes')
-        .upsert({
-          user_id: user.id,
-          note_type: 'goals',
-          content: goalsText
-        }, { onConflict: 'user_id,note_type' });
+        .delete()
+        .eq('user_id', user.id);
 
-      // Upsert general notes
-      await supabase
-        .from('user_notes')
-        .upsert({
-          user_id: user.id,
-          note_type: 'general',
-          content: notesText
-        }, { onConflict: 'user_id,note_type' });
+      // Insert goals text
+      if (goalsText) {
+        await supabase
+          .from('user_notes')
+          .insert({
+            user_id: user.id,
+            note_type: 'goals',
+            content: goalsText
+          });
+      }
+
+      // Insert general notes
+      if (notesText) {
+        await supabase
+          .from('user_notes')
+          .insert({
+            user_id: user.id,
+            note_type: 'general',
+            content: notesText
+          });
+      }
 
       return NextResponse.json({ success: true });
     }
