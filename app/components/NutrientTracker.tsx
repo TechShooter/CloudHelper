@@ -298,12 +298,36 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
   });
   const [tempGoalValue, setTempGoalValue] = useState<number>(0);
   const [tempNoteValue, setTempNoteValue] = useState<string>('');
+  const [dayOffset, setDayOffset] = useState<number>(0);
 
   useEffect(() => {
     const now = new Date();
     const localTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     setTime(localTime);
     setWeightDate(localTime.slice(0, 10));
+  }, []);
+
+  useEffect(() => {
+    const handleDayNavigation = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName;
+        if (target.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') {
+          return;
+        }
+      }
+
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        setDayOffset(prev => prev + 1);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        setDayOffset(prev => Math.max(prev - 1, 0));
+      }
+    };
+
+    window.addEventListener('keydown', handleDayNavigation);
+    return () => window.removeEventListener('keydown', handleDayNavigation);
   }, []);
 
   // Load nutrient entries from Supabase on mount
@@ -786,25 +810,43 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
     setEditingGoals(false);
   };
 
-  // Filter entries for last 24h for totals display (excludes hidden entries)
-  const last24hEntries = useMemo(() => {
-    const now = new Date();
+  const selectedDayStart = useMemo(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - dayOffset);
+    return start;
+  }, [dayOffset]);
+
+  const selectedDayEnd = useMemo(() => {
+    const end = new Date(selectedDayStart);
+    end.setDate(end.getDate() + 1);
+    return end;
+  }, [selectedDayStart]);
+
+  const selectedDayLabel = useMemo(() => {
+    const formattedDate = selectedDayStart.toLocaleDateString();
+    if (dayOffset === 0) return `Today (${formattedDate})`;
+    if (dayOffset === 1) return `Yesterday (${formattedDate})`;
+    return formattedDate;
+  }, [dayOffset, selectedDayStart]);
+
+  // Filter entries for selected day for totals display (excludes hidden entries)
+  const selectedDayEntries = useMemo(() => {
     return entries.filter(entry => {
       const entryTime = new Date(entry.time);
-      return (now.getTime() - entryTime.getTime()) < 24 * 60 * 60 * 1000 && !hiddenEntries.has(entry.id);
+      return entryTime >= selectedDayStart && entryTime < selectedDayEnd && !hiddenEntries.has(entry.id);
     });
-  }, [entries, hiddenEntries]);
+  }, [entries, hiddenEntries, selectedDayStart, selectedDayEnd]);
 
-  // All entries from last 24h for display (includes hidden entries)
-  const last24hEntriesForDisplay = useMemo(() => {
-    const now = new Date();
+  // All entries from selected day for display (includes hidden entries)
+  const selectedDayEntriesForDisplay = useMemo(() => {
     return entries.filter(entry => {
       const entryTime = new Date(entry.time);
-      return (now.getTime() - entryTime.getTime()) < 24 * 60 * 60 * 1000;
+      return entryTime >= selectedDayStart && entryTime < selectedDayEnd;
     });
-  }, [entries]);
+  }, [entries, selectedDayStart, selectedDayEnd]);
 
-  const totals = last24hEntries.reduce((acc: any, entry: FoodEntry) => ({
+  const totals = selectedDayEntries.reduce((acc: any, entry: FoodEntry) => ({
     energy: acc.energy + (entry.energy || 0),
     protein: acc.protein + (entry.protein || 0),
     carbs: acc.carbs + (entry.carbs || 0),
@@ -871,7 +913,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
   };
 
   const calculateNutrientContributions = (nutrientKey: keyof FoodEntry, name: string, unit: string) => {
-    const contributions = last24hEntries.map(entry => {
+    const contributions = selectedDayEntries.map(entry => {
       const amount = entry[nutrientKey] as number;
       return {
         food: entry.food,
@@ -1423,16 +1465,38 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
           )}
         </div>
         
-        {/* Food Entries (Last 24h) - MOVED TO TOP */}
+        {/* Food Entries - MOVED TO TOP */}
         <div className="bg-gray-700 rounded-lg p-4 mb-4">
-          <h3 className="text-sm font-semibold text-white mb-3">🍽️ Food Entries (Last 24h)</h3>
-          {last24hEntriesForDisplay.length === 0 ? (
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h3 className="text-sm font-semibold text-white">🍽️ Food Entries</h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setDayOffset(prev => prev + 1)}
+                className="w-8 h-8 bg-gray-800 text-white rounded hover:bg-gray-600 cursor-pointer"
+                title="Previous day (Arrow Left)"
+              >
+                ←
+              </button>
+              <div className="text-xs text-gray-300 min-w-[140px] text-center">
+                {selectedDayLabel}
+              </div>
+              <button
+                onClick={() => setDayOffset(prev => Math.max(prev - 1, 0))}
+                disabled={dayOffset === 0}
+                className="w-8 h-8 bg-gray-800 text-white rounded hover:bg-gray-600 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed cursor-pointer"
+                title="Next day (Arrow Right)"
+              >
+                →
+              </button>
+            </div>
+          </div>
+          {selectedDayEntriesForDisplay.length === 0 ? (
             <div className="text-center text-gray-500 mt-8">
-              <p>No entries yet. Add your first food!</p>
+              <p>No food entries for this day.</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {last24hEntriesForDisplay.map(entry => (
+              {selectedDayEntriesForDisplay.map(entry => (
                 <div key={entry.id} className={`bg-gray-800 rounded p-3 ${hiddenEntries.has(entry.id) ? 'opacity-50 border-l-4 border-yellow-500' : ''}`}>
                   {editingEntry === entry.id ? (
                     <div className="flex gap-2 flex-wrap">
@@ -1543,22 +1607,22 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
           {/* Daily Cost Summary */}
           {totals.cost > 0 ? (
             <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-green-500">
-              <div className="text-xs text-gray-400 mb-1">Daily Cost (Last 24h)</div>
+              <div className="text-xs text-gray-400 mb-1">Daily Cost ({selectedDayLabel})</div>
               <div className="text-2xl font-bold text-green-400">
                 💶 €{totals.cost.toFixed(2)}
               </div>
               <div className="text-xs text-gray-400 mt-1">
-                From {last24hEntries.length} food entries
+                From {selectedDayEntries.length} food entries
               </div>
             </div>
           ) : (
             <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-gray-500">
-              <div className="text-xs text-gray-400 mb-1">Daily Cost (Last 24h)</div>
+              <div className="text-xs text-gray-400 mb-1">Daily Cost ({selectedDayLabel})</div>
               <div className="text-2xl font-bold text-gray-500">
                 💶 Prezzo non disponibile
               </div>
               <div className="text-xs text-gray-400 mt-1">
-                From {last24hEntries.length} food entries
+                From {selectedDayEntries.length} food entries
               </div>
             </div>
           )}
@@ -2684,7 +2748,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 {selectedNutrient!.value.toFixed(1)} {selectedNutrient!.unit}
               </div>
               <div className="text-sm text-gray-400">
-                Total from {last24hEntries.length} food entries
+                Total from {selectedDayEntries.length} food entries
               </div>
             </div>
 
