@@ -25,6 +25,7 @@ export default function Home() {
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const notionAbortControllerRef = useRef<AbortController | null>(null);
   const workspaceManagerRef = useRef<any>(null);
+  const MODEL_STORAGE_KEY = 'cloudhelper.selectedModel';
 
   // Check auth on mount - dynamic import of supabase
   useEffect(() => {
@@ -36,10 +37,51 @@ export default function Home() {
         router.push('/login');
         return;
       }
+
+      try {
+        const savedModel = localStorage.getItem(MODEL_STORAGE_KEY);
+        if (savedModel && savedModel !== aiModel) {
+          setAiModel(savedModel);
+        }
+      } catch (error) {
+        console.error('Failed to load saved model:', error);
+      }
+
       setCheckingAuth(false);
     };
     checkAuth();
   }, [router]);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === MODEL_STORAGE_KEY && event.newValue) {
+        setAiModel(event.newValue);
+      }
+    };
+
+    const handleModelSync = (event: Event) => {
+      const customEvent = event as CustomEvent<string>;
+      if (typeof customEvent.detail === 'string' && customEvent.detail) {
+        setAiModel(customEvent.detail);
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('cloudhelper:model-change', handleModelSync as EventListener);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('cloudhelper:model-change', handleModelSync as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(MODEL_STORAGE_KEY, aiModel);
+    } catch (error) {
+      console.error('Failed to persist selected model:', error);
+    }
+  }, [aiModel]);
 
   // Function to build hierarchy from flat pages.
   // If a page has a parent that isn't loaded yet, create a placeholder parent node so children still appear nested.
@@ -302,6 +344,12 @@ export default function Home() {
       <header className="bg-gray-800 border-b border-gray-700 px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between">
         <span className="text-lg sm:text-xl font-semibold text-white">☁️ CloudHelper</span>
         <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            onClick={() => router.push('/model-selector-v2')}
+            className="rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+          >
+            Model Selector v2
+          </button>
           <Suspense fallback={<div className="text-white">...</div>}>
             <ModelSelector selectedModel={aiModel} onModelSelect={setAiModel} />
             <LogoutButton />
