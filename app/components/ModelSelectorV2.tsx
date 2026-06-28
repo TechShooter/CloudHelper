@@ -40,6 +40,9 @@ export default function ModelSelectorV2() {
     direction: null,
   });
   const [headerContextMenu, setHeaderContextMenu] = useState<{ x: number; y: number; column: string } | null>(null);
+  const [editingColumn, setEditingColumn] = useState<string | null>(null);
+  const [editingColumnValue, setEditingColumnValue] = useState<string>('');
+  const editingInputRef = useRef<HTMLInputElement | null>(null);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const bottomScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -455,6 +458,58 @@ export default function ModelSelectorV2() {
     }
   };
 
+  const renameColumn = async (oldName: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) {
+      setEditingColumn(null);
+      return;
+    }
+
+    setError(null);
+    try {
+      const response = await fetch('/api/model-selector-v2', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'renameColumn',
+          oldColumnName: oldName,
+          newColumnName: trimmed,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to rename column');
+      }
+
+      setRows((current) => current.map((row) => {
+        const rd = { ...(row.row_data || {}) };
+        if (oldName in rd) {
+          rd[trimmed] = rd[oldName];
+          delete rd[oldName];
+        }
+        return { ...row, row_data: rd };
+      }));
+
+      setColumnOrder((current) => current.map((c) => (c === oldName ? trimmed : c)));
+
+      setColumnSubtitles((current) => {
+        const next = { ...current };
+        if (oldName in next) {
+          next[trimmed] = next[oldName];
+          delete next[oldName];
+        }
+        return next;
+      });
+
+      setEditingColumn(null);
+      setStatus(`Renamed column to ${trimmed}`);
+    } catch (err: any) {
+      setError(err.message);
+      setEditingColumn(null);
+    }
+  };
+
   const addColumn = async () => {
     const name = (newColumnName || window.prompt('New column name') || '').trim();
     if (!name) return;
@@ -519,6 +574,13 @@ export default function ModelSelectorV2() {
       window.removeEventListener('resize', closeContextMenu);
     };
   }, []);
+
+  useEffect(() => {
+    if (editingColumn) {
+      editingInputRef.current?.focus();
+      editingInputRef.current?.select();
+    }
+  }, [editingColumn]);
 
   const deleteRow = async (rowId: string) => {
     const row = rows.find((item) => item.id === rowId);
@@ -778,7 +840,34 @@ export default function ModelSelectorV2() {
                     }}
                   >
                     <div className="flex items-center gap-2">
-                      <span>{formatTitleFromKey(column) || column}</span>
+                      {editingColumn === column ? (
+                        <input
+                          ref={editingInputRef}
+                          value={editingColumnValue}
+                          onChange={(e) => setEditingColumnValue(e.target.value)}
+                          onBlur={() => renameColumn(column, editingColumnValue)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              (e.target as HTMLInputElement).blur();
+                            } else if (e.key === 'Escape') {
+                              setEditingColumn(null);
+                            }
+                          }}
+                          className="w-full min-w-[60px] rounded border border-blue-500 bg-gray-950 px-1 py-0.5 text-xs font-bold normal-case text-white outline-none"
+                          aria-label="Column name"
+                        />
+                      ) : (
+                        <span
+                          className="cursor-pointer hover:text-blue-400"
+                          onClick={() => {
+                            setEditingColumn(column);
+                            setEditingColumnValue(formatTitleFromKey(column) || column);
+                          }}
+                          title="Click to rename column"
+                        >
+                          {formatTitleFromKey(column) || column}
+                        </span>
+                      )}
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => toggleSort(column)}
@@ -898,8 +987,10 @@ export default function ModelSelectorV2() {
           <button
             className="w-full rounded px-3 py-2 text-left text-sm text-gray-100 hover:bg-gray-800"
             onClick={async () => {
-              const name = window.prompt(`New column to add right of ${headerContextMenu.column}`) || '';
-              await createColumn(name, headerContextMenu.column);
+              const tempKey = `new-col-${Date.now()}`;
+              await createColumn(tempKey, headerContextMenu.column);
+              setEditingColumn(tempKey);
+              setEditingColumnValue('');
             }}
           >
             Add column on right

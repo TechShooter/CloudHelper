@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 // Dynamic imports to reduce initial bundle size
 const WorkspaceManager = lazy(() => import('../components/WorkspaceManager'));
 const ModelSelector = lazy(() => import('../components/ModelSelector'));
+const ModelSelectorV3 = lazy(() => import('../components/ModelSelectorV3'));
 const LogoutButton = lazy(() => import('../components/LogoutButton'));
 
 export default function Home() {
@@ -352,6 +353,7 @@ export default function Home() {
           </button>
           <Suspense fallback={<div className="text-white">...</div>}>
             <ModelSelector selectedModel={aiModel} onModelSelect={setAiModel} />
+            <ModelSelectorV3 selectedModel={aiModel} onModelSelect={setAiModel} />
             <LogoutButton />
           </Suspense>
         </div>
