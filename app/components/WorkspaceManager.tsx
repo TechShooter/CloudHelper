@@ -1751,8 +1751,11 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
             <div className="sm:hidden relative">
               <button
                 onClick={() => setShowMenu(!showMenu)}
-                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-800"
+                className="flex items-center gap-1.5 rounded-lg border-l-2 border-blue-500/30 bg-gray-800/20 px-2.5 py-1.5 text-xs font-medium text-gray-200 hover:bg-gray-800/40"
               >
+                <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                </svg>
                 <span>{activeTab === 'chat' ? '💬' : activeTab === 'docs' ? '📄' : activeTab === 'calendar' ? '📅' : '🥗'}</span>
                 <span className="capitalize">{activeTab}</span>
                 <svg className={`h-3 w-3 transition-transform ${showMenu ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">

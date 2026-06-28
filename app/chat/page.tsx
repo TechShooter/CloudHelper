@@ -11,7 +11,6 @@ const ApiKeySettings = lazy(() => import('../components/ApiKeySettings'));
 
 export default function Home() {
   const [aiModel, setAiModel] = useState<string>('gemini-flash-latest');
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [sheetData, setSheetData] = useState<any>(null);
   const [notionPages, setNotionPages] = useState<any[]>([]);
   const [hierarchicalNotionPages, setHierarchicalNotionPages] = useState<any[]>([]);
@@ -310,7 +309,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-900">
-      <header className="flex items-center justify-between border-b border-gray-800 bg-gray-950/80 px-2 py-1 backdrop-blur-sm sm:px-4 sm:py-2">
+      <header className="flex items-center justify-between border-b border-gray-800 bg-gray-950/80 px-2 py-1 sm:px-4 sm:py-2">
         <span className="text-xs font-semibold text-white sm:text-base">☁️ CloudHelper</span>
         <div className="flex items-center gap-1 sm:gap-2">
           <Suspense fallback={<div className="text-white text-xs">...</div>}>
