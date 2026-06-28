@@ -1707,7 +1707,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   };
 
   return (
-    <div className="flex-1 flex min-w-0 sm:min-w-[800px]">
+    <div className="flex-1 flex min-w-0 min-h-0 sm:min-w-[800px]">
       {/* Sidebar */}
       <div className={`${showMenu ? 'w-64' : 'w-0 sm:w-16'} bg-gray-800 border-r border-gray-700 transition-all duration-200 flex-shrink-0 overflow-hidden`}>
         <button
@@ -1743,7 +1743,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-x-auto">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-x-auto">
         {/* Tab Navigation */}
         <div className="flex-shrink-0 border-b border-gray-800 bg-gray-950">
           <div className="flex items-center px-3 py-1.5">

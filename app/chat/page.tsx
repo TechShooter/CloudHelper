@@ -308,7 +308,7 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-900">
+    <div className="flex flex-col h-dvh bg-gray-900 overflow-hidden">
       <header className="flex items-center justify-between border-b border-gray-800 bg-gray-950/80 px-2 py-1 sm:px-4 sm:py-2">
         <span className="text-xs font-semibold text-white sm:text-base">☁️ CloudHelper</span>
         <div className="flex items-center gap-1 sm:gap-2">
@@ -321,7 +321,7 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="flex-1 flex overflow-x-auto">
+      <div className="flex-1 flex overflow-x-auto min-h-0">
         <Suspense fallback={<div className="text-white p-4">Caricamento...</div>}>
           <WorkspaceManager
             ref={workspaceManagerRef}
