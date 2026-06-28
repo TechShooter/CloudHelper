@@ -10,6 +10,7 @@ const LogoutButton = lazy(() => import('../components/LogoutButton'));
 const ApiKeySettings = lazy(() => import('../components/ApiKeySettings'));
 
 export default function Home() {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [aiModel, setAiModel] = useState<string>('gemini-flash-latest');
   const [sheetData, setSheetData] = useState<any>(null);
   const [notionPages, setNotionPages] = useState<any[]>([]);
@@ -35,6 +36,17 @@ export default function Home() {
     } catch (error) {
       console.error('Failed to load saved model:', error);
     }
+  }, []);
+
+  useEffect(() => {
+    const setAppHeight = () => {
+      if (containerRef.current) {
+        containerRef.current.style.height = `${window.innerHeight}px`;
+      }
+    };
+    setAppHeight();
+    window.addEventListener('resize', setAppHeight);
+    return () => window.removeEventListener('resize', setAppHeight);
   }, []);
 
   useEffect(() => {
@@ -308,7 +320,7 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col h-screen h-dvh bg-gray-900">
+    <div ref={containerRef} className="flex flex-col h-screen bg-gray-900">
       <header className="flex items-center justify-between border-b border-gray-800 bg-gray-950/80 px-2 py-1 sm:px-4 sm:py-2">
         <span className="text-xs font-semibold text-white sm:text-base">☁️ CloudHelper</span>
         <div className="flex items-center gap-1 sm:gap-2">
