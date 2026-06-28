@@ -1,17 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef, Suspense, lazy } from 'react';
-import { useRouter } from 'next/navigation';
 
 // Dynamic imports to reduce initial bundle size
 const WorkspaceManager = lazy(() => import('../components/WorkspaceManager'));
 const ModelSelector = lazy(() => import('../components/ModelSelector'));
 const ModelSelectorV3 = lazy(() => import('../components/ModelSelectorV3'));
 const LogoutButton = lazy(() => import('../components/LogoutButton'));
+const ApiKeySettings = lazy(() => import('../components/ApiKeySettings'));
 
 export default function Home() {
-  const router = useRouter();
-  const [checkingAuth, setCheckingAuth] = useState(true);
   const [aiModel, setAiModel] = useState<string>('gemini-flash-latest');
   const [sheetData, setSheetData] = useState<any>(null);
   const [notionPages, setNotionPages] = useState<any[]>([]);
@@ -28,30 +26,16 @@ export default function Home() {
   const workspaceManagerRef = useRef<any>(null);
   const MODEL_STORAGE_KEY = 'cloudhelper.selectedModel';
 
-  // Check auth on mount - dynamic import of supabase
   useEffect(() => {
-    const checkAuth = async () => {
-      const { createClient } = await import('@/utils/supabase/client');
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/login');
-        return;
+    try {
+      const savedModel = localStorage.getItem(MODEL_STORAGE_KEY);
+      if (savedModel && savedModel !== aiModel) {
+        setAiModel(savedModel);
       }
-
-      try {
-        const savedModel = localStorage.getItem(MODEL_STORAGE_KEY);
-        if (savedModel && savedModel !== aiModel) {
-          setAiModel(savedModel);
-        }
-      } catch (error) {
-        console.error('Failed to load saved model:', error);
-      }
-
-      setCheckingAuth(false);
-    };
-    checkAuth();
-  }, [router]);
+    } catch (error) {
+      console.error('Failed to load saved model:', error);
+    }
+  }, []);
 
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
@@ -84,8 +68,6 @@ export default function Home() {
     }
   }, [aiModel]);
 
-  // Function to build hierarchy from flat pages.
-  // If a page has a parent that isn't loaded yet, create a placeholder parent node so children still appear nested.
   const buildHierarchy = (pages: any[]) => {
     const pageMap = new Map<string, any>();
 
@@ -146,7 +128,6 @@ export default function Home() {
       }
     });
 
-    // Any placeholder parents that were created but never became real pages should also be roots if they have children.
     pageMap.forEach((page, id) => {
       if (page.__placeholder && page.children.length > 0 && !childIds.has(id)) {
         rootPages.push(page);
@@ -168,7 +149,7 @@ export default function Home() {
   const loadNotionStreaming = async () => {
     try {
       setIsLoadingNotion(true);
-      setHierarchicalNotionPages([]); // Clear old data
+      setHierarchicalNotionPages([]);
       setNotionPages([]);
       setNotionError(null);
       setDebugInfo(null);
@@ -293,13 +274,9 @@ export default function Home() {
     }
   };
 
-  // Load data on mount (but NOT Notion - only on button click)
   useEffect(() => {
-    if (checkingAuth) return;
-
     const loadData = async () => {
       try {
-        // Load sheets separately
         fetch('/api/sheets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -312,15 +289,13 @@ export default function Home() {
         }).then(data => {
           if (data?.sheets) setSheetData(data.sheets);
         }).catch(err => console.error('Failed to load sheets:', err));
-
-        // Note: Notion is NOT auto-loaded. User must click "Reload" button.
       } catch (error) {
         console.error('Failed to load data:', error);
       }
     };
 
     loadData();
-  }, [checkingAuth]);
+  }, []);
 
   const reloadNotion = async () => {
     setNotionPages([]);
@@ -332,26 +307,13 @@ export default function Home() {
     stopNotionLoading();
   };
 
-  if (checkingAuth) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-white">Caricamento...</div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-screen bg-gray-900">
       <header className="bg-gray-800 border-b border-gray-700 px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between">
         <span className="text-lg sm:text-xl font-semibold text-white">☁️ CloudHelper</span>
         <div className="flex items-center gap-2 sm:gap-3">
-          <button
-            onClick={() => router.push('/model-selector-v2')}
-            className="rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
-          >
-            Model Selector v2
-          </button>
           <Suspense fallback={<div className="text-white">...</div>}>
+            <ApiKeySettings />
             <ModelSelector selectedModel={aiModel} onModelSelect={setAiModel} />
             <ModelSelectorV3 selectedModel={aiModel} onModelSelect={setAiModel} />
             <LogoutButton />

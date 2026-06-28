@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
@@ -31,9 +31,9 @@ function matchesName(freeName: string, benchName: string): boolean {
   return a.includes(b) || b.includes(a);
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const apiKey = process.env.GOOGLE_SHEETS_API_KEY;
+    const apiKey = req.headers.get('x-api-key-google-sheets') || process.env.GOOGLE_SHEETS_API_KEY || '';
     if (!apiKey) {
       return NextResponse.json({ error: 'GOOGLE_SHEETS_API_KEY not configured' }, { status: 500 });
     }

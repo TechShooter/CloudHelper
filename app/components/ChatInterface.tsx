@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import ChatHeader, { ChatHeaderRef } from './ChatHeader';
 import { createClient } from '@/utils/supabase/client';
+import { getApiKey } from '../lib/api-keys';
 
 // Lightweight markdown parser (replaces heavy react-markdown)
 function SimpleMarkdown({ content }: { content: string }) {
@@ -340,24 +341,15 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     try {
       setLoadingStatus('thinking');
 
-      // Get session token for Edge Function authentication
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      const geminiKey = getApiKey('gemini');
+      const groqKey = getApiKey('groq');
 
-      if (!token) {
-        throw new Error('No session token found');
-      }
-
-      // Call Supabase Edge Function for server-side streaming with persistence
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-      const edgeFunctionUrl = `${supabaseUrl}/functions/v1/chat-stream`
-      
-      const res = await fetch(edgeFunctionUrl, {
+      const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          ...(geminiKey && { 'x-api-key-gemini': geminiKey }),
+          ...(groqKey && { 'x-api-key-groq': groqKey }),
         },
         body: JSON.stringify(contextData),
         signal: controller.signal

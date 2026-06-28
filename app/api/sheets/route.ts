@@ -4,6 +4,7 @@ export const runtime = 'edge';
 
 export async function GET(req: NextRequest) {
   try {
+    const apiKey = req.headers.get('x-api-key-google-sheets') || process.env.GOOGLE_SHEETS_API_KEY || '';
     const { searchParams } = new URL(req.url);
     const query = searchParams.get('query');
     const full = searchParams.get('full') === 'true';
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
     const sheetId = '1FvjfZ5a-OMM2ScO2lJewBFIrbnWvgQKJug_Ve32gAQA';
     const range = 'A:ZZ'; // Remove sheet name, use default
     
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${process.env.GOOGLE_SHEETS_API_KEY}`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${apiKey}`;
     
     const response = await fetch(url);
     const data = await response.json();
@@ -51,13 +52,14 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const apiKey = req.headers.get('x-api-key-google-sheets') || process.env.GOOGLE_SHEETS_API_KEY || '';
     const { action, query, sheetId } = await req.json();
     
     if (action === 'getAllSheets') {
       const targetSheetId = sheetId || '1FvjfZ5a-OMM2ScO2lJewBFIrbnWvgQKJug_Ve32gAQA';
       
       // Get spreadsheet metadata to find all sheet names
-      const metadataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${targetSheetId}?key=${process.env.GOOGLE_SHEETS_API_KEY}`;
+      const metadataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${targetSheetId}?key=${apiKey}`;
       const metadataResponse = await fetch(metadataUrl);
       const metadata = await metadataResponse.json();
       
@@ -70,7 +72,7 @@ export async function POST(req: NextRequest) {
       
       for (const sheetName of sheetNames) {
         try {
-          const url = `https://sheets.googleapis.com/v4/spreadsheets/${targetSheetId}/values/${encodeURIComponent(sheetName)}!A:ZZ?key=${process.env.GOOGLE_SHEETS_API_KEY}`;
+          const url = `https://sheets.googleapis.com/v4/spreadsheets/${targetSheetId}/values/${encodeURIComponent(sheetName)}!A:ZZ?key=${apiKey}`;
           const response = await fetch(url);
           const data = await response.json();
           

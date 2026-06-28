@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
+let notionKey = process.env.NOTION_API_KEY || '';
+
 function extractProperty(prop: any): string {
   if (!prop) return '';
   
@@ -97,7 +99,7 @@ async function processDatabaseItem(item: any): Promise<any> {
         // Fetch full data source details
         const dsResponse = await fetch(`https://api.notion.com/v1/data_sources/${dsRef.id}`, {
           headers: {
-            'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+            'Authorization': `Bearer ${notionKey}`,
             'Notion-Version': '2026-03-11'
           }
         });
@@ -111,7 +113,7 @@ async function processDatabaseItem(item: any): Promise<any> {
         const queryResponse = await fetch(`https://api.notion.com/v1/data_sources/${dsRef.id}/query`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+            'Authorization': `Bearer ${notionKey}`,
             'Notion-Version': '2026-03-11',
             'Content-Type': 'application/json'
           },
@@ -170,7 +172,7 @@ async function processDatabaseItem(item: any): Promise<any> {
       const queryResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+          'Authorization': `Bearer ${notionKey}`,
           'Notion-Version': '2026-03-11',
           'Content-Type': 'application/json'
         },
@@ -400,6 +402,7 @@ async function fetchWithRetry(
 }
 
 export async function GET(req: NextRequest) {
+  notionKey = req.headers.get('x-api-key-notion') || notionKey || '';
   // Increase timeout for edge runtime - use 25 seconds instead of 15
   // This accounts for Notion API latency and multiple parallel requests
   const controller = new AbortController();
@@ -407,7 +410,7 @@ export async function GET(req: NextRequest) {
   const startTime = Date.now();
   
   try {
-    if (!process.env.NOTION_API_KEY || process.env.NOTION_API_KEY === 'your_notion_integration_token_here') {
+    if (!notionKey || notionKey === 'your_notion_integration_token_here') {
       clearTimeout(timeoutId);
       return NextResponse.json({ error: 'Notion API key not configured' }, { status: 400 });
     }
@@ -415,7 +418,7 @@ export async function GET(req: NextRequest) {
     const response = await fetch('https://api.notion.com/v1/search', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+        'Authorization': `Bearer ${notionKey}`,
         'Notion-Version': '2026-03-11',
         'Content-Type': 'application/json'
       },
@@ -455,7 +458,7 @@ export async function GET(req: NextRequest) {
       const paginatedResponse = await fetch('https://api.notion.com/v1/search', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+          'Authorization': `Bearer ${notionKey}`,
           'Notion-Version': '2026-03-11',
           'Content-Type': 'application/json'
         },
@@ -511,7 +514,7 @@ export async function GET(req: NextRequest) {
       const dbSearchResponse = await fetch('https://api.notion.com/v1/search', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+          'Authorization': `Bearer ${notionKey}`,
           'Notion-Version': '2026-03-11',
           'Content-Type': 'application/json'
         },
@@ -549,7 +552,7 @@ export async function GET(req: NextRequest) {
       try {
         const dbResponse = await fetchWithRetry(`https://api.notion.com/v1/databases/${dbId}`, {
           headers: {
-            'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+            'Authorization': `Bearer ${notionKey}`,
             'Notion-Version': '2026-03-11'
           }
         });
@@ -629,7 +632,7 @@ export async function GET(req: NextRequest) {
             if (title === 'Untitled' && item.parent?.type === 'page_id') {
               const parentResponse = await fetchWithRetry(`https://api.notion.com/v1/pages/${item.parent.page_id}`, {
                 headers: {
-                  'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+                  'Authorization': `Bearer ${notionKey}`,
                   'Notion-Version': '2026-03-11'
                 }
               });
@@ -642,7 +645,7 @@ export async function GET(req: NextRequest) {
               try {
                 const blocksResponse = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children?page_size=10`, {
                   headers: {
-                    'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+                    'Authorization': `Bearer ${notionKey}`,
                     'Notion-Version': '2026-03-11'
                   }
                 });
@@ -676,7 +679,7 @@ export async function GET(req: NextRequest) {
             console.log(`[NOTION-API] 📦 Fetching blocks for page: ${pageId.slice(0, 6)}... (${title})`);
             const blocksResponse = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children?page_size=100`, {
               headers: {
-                'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+                'Authorization': `Bearer ${notionKey}`,
                 'Notion-Version': '2026-03-11'
               }
             });
@@ -716,7 +719,7 @@ export async function GET(req: NextRequest) {
 
               // Extract nested children if this block has children
               if (block.has_children) {
-                const childContent = await extractBlockContent(block.id, process.env.NOTION_API_KEY as string, '  ');
+                const childContent = await extractBlockContent(block.id, notionKey as string, '  ');
                 content += childContent;
               }
             }
@@ -796,7 +799,7 @@ export async function GET(req: NextRequest) {
           // Try to fetch as database first
           const dbResponse = await fetchWithRetry(`https://api.notion.com/v1/databases/${parentId}`, {
             headers: {
-              'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+              'Authorization': `Bearer ${notionKey}`,
               'Notion-Version': '2026-03-11'
             }
           });
@@ -823,7 +826,7 @@ export async function GET(req: NextRequest) {
               const queryResponse = await fetchWithRetry(queryUrl, {
                 method: 'POST',
                 headers: {
-                  'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+                  'Authorization': `Bearer ${notionKey}`,
                   'Notion-Version': '2026-03-11',
                   'Content-Type': 'application/json'
                 },
@@ -879,7 +882,7 @@ export async function GET(req: NextRequest) {
           // Try to fetch as page
           const pageResponse = await fetchWithRetry(`https://api.notion.com/v1/pages/${parentId}`, {
             headers: {
-              'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+              'Authorization': `Bearer ${notionKey}`,
               'Notion-Version': '2026-03-11'
             }
           });

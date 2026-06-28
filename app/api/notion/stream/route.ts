@@ -388,7 +388,7 @@ export async function GET(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const apiKey = process.env.NOTION_API_KEY;
+        const apiKey = req.headers.get('x-api-key-notion') || process.env.NOTION_API_KEY || '';
         if (!apiKey) {
           controller.enqueue(encoder.encode(JSON.stringify({ error: 'API key not configured' }) + '\n'));
           controller.close();

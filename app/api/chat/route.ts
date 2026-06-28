@@ -5,6 +5,8 @@ export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
   try {
+    const geminiKey = req.headers.get('x-api-key-gemini') || process.env.GEMINI_API_KEY || '';
+    const groqKey = req.headers.get('x-api-key-groq') || process.env.GROQ_API_KEY || '';
     const { context, sheetData, notionData, workspacePrompt, conversationHistory, aiModel, stream, calendarEvents, nutrientEntries } = await req.json();
 
     let systemPrompt = '';
@@ -113,7 +115,7 @@ export async function POST(req: NextRequest) {
 
       if (stream) {
         response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:streamGenerateContent?alt=sse&key=${geminiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -135,7 +137,7 @@ export async function POST(req: NextRequest) {
       }
 
       response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${geminiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -151,7 +153,7 @@ export async function POST(req: NextRequest) {
       response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+          'Authorization': `Bearer ${groqKey}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
