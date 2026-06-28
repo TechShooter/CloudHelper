@@ -28,7 +28,6 @@ export default function Home() {
   const notionAbortControllerRef = useRef<AbortController | null>(null);
   const workspaceManagerRef = useRef<any>(null);
   const MODEL_STORAGE_KEY = 'cloudhelper.selectedModel';
-  const [debugDims, setDebugDims] = useState('initializing');
 
   useEffect(() => {
     try {
@@ -45,54 +44,18 @@ export default function Home() {
     history.scrollRestoration = 'manual';
     window.scrollTo(0, 0);
 
-    const updateDims = () => {
-      const el = containerRef.current;
-      if (!el) return;
-      const vh = window.visualViewport?.height ?? window.innerHeight;
-      const w = window.visualViewport?.width ?? window.innerWidth;
-      setDebugDims(
-        `H:${Math.round(el.clientHeight)}/${Math.round(el.scrollHeight)} ` +
-        `vh:${Math.round(vh)} iH:${window.innerHeight} ` +
-        `bST:${document.body?.scrollTop ?? '?'} hST:${document.documentElement?.scrollTop ?? '?'} ` +
-        `cST:${el.scrollTop} ` +
-        `bH:${document.body?.clientHeight ?? '?'} bSH:${document.body?.scrollHeight ?? '?'} ` +
-        `vW:${Math.round(w)}`
-      );
-    };
-
     const setAppHeight = () => {
       if (containerRef.current) {
         const h = window.visualViewport?.height ?? window.innerHeight;
         containerRef.current.style.height = `${h}px`;
-        updateDims();
       }
     };
     setAppHeight();
     window.visualViewport?.addEventListener('resize', setAppHeight);
     window.addEventListener('resize', setAppHeight);
-
-    const onScroll = () => {
-      updateDims();
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-
-    const observer = new MutationObserver(() => {
-      setTimeout(updateDims, 200);
-    });
-    const flexArea = document.querySelector('.flex-1.flex.overflow-x-auto');
-    if (flexArea) {
-      observer.observe(flexArea, { childList: true, subtree: true, attributes: true });
-    }
-
-    // Also poll every second to catch changes
-    const interval = setInterval(updateDims, 1000);
-
     return () => {
       window.visualViewport?.removeEventListener('resize', setAppHeight);
       window.removeEventListener('resize', setAppHeight);
-      window.removeEventListener('scroll', onScroll);
-      observer.disconnect();
-      clearInterval(interval);
     };
   }, []);
 
@@ -362,11 +325,9 @@ export default function Home() {
   };
 
   return (
-    <div ref={containerRef} className="flex flex-col h-screen bg-gray-900 overflow-hidden relative">
-      <div className="absolute top-0 left-0 right-0 z-50 bg-yellow-900/90 text-yellow-100 text-[10px] leading-tight px-1 py-0.5 font-mono pointer-events-none select-none truncate">
-        {debugDims}
-      </div>
+    <div ref={containerRef} className="fixed top-0 left-0 right-0 flex flex-col bg-gray-900 overflow-hidden">
       <header className="flex items-center justify-between border-b border-gray-800 bg-gray-950/80 px-2 py-1 sm:px-4 sm:py-2">
+        <span className="text-xs font-semibold text-white sm:text-base">☁️ CloudHelper</span>
         <div className="flex items-center gap-1 sm:gap-2">
           <Suspense fallback={<div className="text-white text-xs">...</div>}>
             <ModelSelector selectedModel={aiModel} onModelSelect={setAiModel} />

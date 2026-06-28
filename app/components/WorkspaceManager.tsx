@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, forwardRef, useImperativeHandle, Suspense, lazy } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle, Suspense, lazy, useRef } from 'react';
 import type { ReactNode, JSX } from 'react';
+import { createClient } from '@/utils/supabase/client';
 
 // Dynamic imports to reduce bundle size - these components are huge!
 const ChatInterface = lazy(() => import('./ChatInterface'));
@@ -154,10 +155,23 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   const [showTabMenu, setShowTabMenu] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [nutrientEntries, setNutrientEntries] = useState<any[]>([]);
+  const isGuestRef = useRef<boolean>(true);
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      isGuestRef.current = !session;
+      setAuthReady(true);
+    };
+    checkAuth();
+  }, []);
 
   // Load saved workspace and tab from Supabase on mount
   useEffect(() => {
-    const loadSettings = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch('/api/workspace-settings');
         if (res.ok) {
@@ -170,14 +184,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to load settings:', error);
       }
-    };
-
-    loadSettings();
+    })();
   }, []);
 
   // Save active workspace to Supabase on change
   useEffect(() => {
-    const saveWorkspace = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         await fetch('/api/workspace-settings', {
           method: 'POST',
@@ -191,14 +204,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to save workspace:', error);
       }
-    };
-
-    saveWorkspace();
-  }, [activeWorkspace]);
+    })();
+  }, [activeWorkspace, authReady]);
 
   // Save active tab to Supabase on change
   useEffect(() => {
-    const saveTab = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         await fetch('/api/workspace-settings', {
           method: 'POST',
@@ -212,10 +224,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to save tab:', error);
       }
-    };
-
-    saveTab();
-  }, [activeTab]);
+    })();
+  }, [activeTab, authReady]);
 
   // Prompt control state
   const [promptSettings, setPromptSettings] = useState({
@@ -236,7 +246,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
   // Load nutrient entries from Supabase on mount
   useEffect(() => {
-    const loadNutrientEntries = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch('/api/nutrients?type=entries');
         if (res.ok) {
@@ -248,14 +259,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to load nutrient entries:', error);
       }
-    };
-
-    loadNutrientEntries();
-  }, []);
+    })();
+  }, [authReady]);
 
   // Load default nutrient settings from Supabase on mount
   useEffect(() => {
-    const loadSettings = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch('/api/workspace-settings');
         if (res.ok) {
@@ -274,13 +284,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to load default nutrient settings:', error);
       }
-    };
-
-    loadSettings();
-  }, []);
+    })();
+  }, [authReady]);
 
   // Save default nutrient settings to Supabase
   useEffect(() => {
+    if (!authReady || isGuestRef.current) return;
     Object.entries(defaultNutrientSettings).forEach(async ([workspaceId, settings]) => {
       try {
         await fetch('/api/workspace-settings', {
@@ -296,7 +305,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         console.error('Failed to save nutrient settings:', error);
       }
     });
-  }, [defaultNutrientSettings]);
+  }, [defaultNutrientSettings, authReady]);
 
   // Auto-select default nutrient settings when workspace changes
   useEffect(() => {
@@ -544,7 +553,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
   // Load custom tags from Supabase
   useEffect(() => {
-    const loadCustomTags = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch('/api/workspace-settings?settingKey=notionCustomTags');
         if (res.ok) {
@@ -559,14 +569,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to load custom tags:', error);
       }
-    };
-
-    loadCustomTags();
-  }, []);
+    })();
+  }, [authReady]);
 
   // Save custom tags to Supabase
   useEffect(() => {
-    const saveCustomTags = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         await fetch('/api/workspace-settings', {
           method: 'POST',
@@ -580,14 +589,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to save custom tags:', error);
       }
-    };
-
-    saveCustomTags();
-  }, [customTags]);
+    })();
+  }, [customTags, authReady]);
 
   // Load default docs from Supabase on mount
   useEffect(() => {
-    const loadDefaultDocs = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch('/api/workspace-settings');
         if (res.ok) {
@@ -638,13 +646,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         });
         setDefaultDocs(initial);
       }
-    };
-
-    loadDefaultDocs();
-  }, [allNotionPages, sheetData, workspaces]);
+    })();
+  }, [allNotionPages, sheetData, workspaces, authReady]);
 
   // Save default docs to Supabase
   useEffect(() => {
+    if (!authReady || isGuestRef.current) return;
     Object.entries(defaultDocs).forEach(async ([workspaceId, docs]) => {
       try {
         await fetch('/api/workspace-settings', {
@@ -660,11 +667,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         console.error('Failed to save default docs:', error);
       }
     });
-  }, [defaultDocs]);
+  }, [defaultDocs, authReady]);
 
   // Load page defaults for current workspace from Supabase
   useEffect(() => {
-    const loadPageDefaults = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch(`/api/chat-page-defaults?workspaceId=${activeWorkspace}`);
         if (res.ok) {
@@ -677,13 +685,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to load page defaults:', error);
       }
-    };
-
-    loadPageDefaults();
-  }, [activeWorkspace]);
+    })();
+  }, [activeWorkspace, authReady]);
 
   // Toggle page as default for current workspace
   const togglePageDefault = async (pageId: string, pageTitle: string, isDefault: boolean) => {
+    if (isGuestRef.current) return;
     try {
       const res = await fetch('/api/chat-page-defaults', {
         method: 'POST',
