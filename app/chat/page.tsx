@@ -41,6 +41,9 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    history.scrollRestoration = 'manual';
+    window.scrollTo(0, 0);
+
     const setAppHeight = () => {
       if (containerRef.current) {
         const h = window.visualViewport?.height ?? window.innerHeight;
