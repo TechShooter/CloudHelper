@@ -325,7 +325,7 @@ export default function Home() {
   };
 
   return (
-    <div ref={containerRef} className="flex flex-col h-screen bg-gray-900">
+    <div ref={containerRef} className="flex flex-col h-screen bg-gray-900 overflow-hidden">
       <header className="flex items-center justify-between border-b border-gray-800 bg-gray-950/80 px-2 py-1 sm:px-4 sm:py-2">
         <span className="text-xs font-semibold text-white sm:text-base">☁️ CloudHelper</span>
         <div className="flex items-center gap-1 sm:gap-2">
