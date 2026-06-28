@@ -94,9 +94,9 @@ export default function ModelSelectorV3({ selectedModel, onModelSelect }: ModelS
     <div className="relative">
       <button
         onClick={() => setIsOpen(true)}
-        className="rounded bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+        className="rounded-lg bg-gray-800 px-2.5 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white sm:px-3 sm:py-2 sm:text-sm"
       >
-        Model Selector v3
+        Compare
       </button>
 
       {isOpen && (

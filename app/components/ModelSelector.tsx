@@ -41,13 +41,11 @@ export default function ModelSelector({ selectedModel, onModelSelect }: ModelSel
       {/* Trigger Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="bg-gray-700 text-white px-3 py-2 rounded text-sm border border-gray-600 hover:bg-gray-600 min-w-0 flex-1 sm:flex-none text-left"
+        className="rounded-lg bg-gray-800 px-2.5 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white sm:px-3 sm:py-2 sm:text-sm"
       >
-        <div className="flex items-center justify-between">
-          <span className="truncate">
-            {selectedModelData?.name || 'Select Model'}
-          </span>
-        </div>
+        <span className="truncate">
+          {selectedModelData?.name || 'Model'}
+        </span>
       </button>
 
       {/* Modal */}

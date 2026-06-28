@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense, lazy } from 'react';
+import { useState, useEffect, useRef, Suspense, lazy, useCallback } from 'react';
 
 // Dynamic imports to reduce initial bundle size
 const WorkspaceManager = lazy(() => import('../components/WorkspaceManager'));
@@ -11,6 +11,7 @@ const ApiKeySettings = lazy(() => import('../components/ApiKeySettings'));
 
 export default function Home() {
   const [aiModel, setAiModel] = useState<string>('gemini-flash-latest');
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [sheetData, setSheetData] = useState<any>(null);
   const [notionPages, setNotionPages] = useState<any[]>([]);
   const [hierarchicalNotionPages, setHierarchicalNotionPages] = useState<any[]>([]);
@@ -309,13 +310,13 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-900">
-      <header className="bg-gray-800 border-b border-gray-700 px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between">
-        <span className="text-lg sm:text-xl font-semibold text-white">☁️ CloudHelper</span>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <Suspense fallback={<div className="text-white">...</div>}>
-            <ApiKeySettings />
+      <header className="flex items-center justify-between border-b border-gray-800 bg-gray-950/80 px-2 py-1 backdrop-blur-sm sm:px-4 sm:py-2">
+        <span className="text-xs font-semibold text-white sm:text-base">☁️ CloudHelper</span>
+        <div className="flex items-center gap-1 sm:gap-2">
+          <Suspense fallback={<div className="text-white text-xs">...</div>}>
             <ModelSelector selectedModel={aiModel} onModelSelect={setAiModel} />
             <ModelSelectorV3 selectedModel={aiModel} onModelSelect={setAiModel} />
+            <ApiKeySettings />
             <LogoutButton />
           </Suspense>
         </div>

@@ -1745,61 +1745,51 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       {/* Chat Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-x-auto">
         {/* Tab Navigation */}
-        <div className="bg-gray-800 border-b border-gray-700 flex-shrink-0">
-          <div className="flex items-center px-4 py-2">
-            {/* Mobile burger button */}
-            <button
-              onClick={() => setShowMenu(!showMenu)}
-              className="sm:hidden p-2 text-gray-400 hover:text-white hover:bg-gray-700 mr-2 cursor-pointer"
-              title={showMenu ? "Close menu" : "Open menu"}
-            >
-              {showMenu ? '←' : '☰'}
-            </button>
-            <div className="flex items-center gap-2 mr-6">
-              <span className="text-2xl">{currentWorkspace.icon}</span>
-              <div>
-                <h2 className="text-sm font-semibold text-white">{currentWorkspace.name}</h2>
-                <p className="text-xs text-gray-400">{currentWorkspace.description}</p>
-              </div>
+        <div className="flex-shrink-0 border-b border-gray-800 bg-gray-950">
+          <div className="flex items-center px-3 py-1.5">
+            {/* Mobile menu */}
+            <div className="sm:hidden relative">
+              <button
+                onClick={() => setShowMenu(!showMenu)}
+                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-800"
+              >
+                <span>{activeTab === 'chat' ? '💬' : activeTab === 'docs' ? '📄' : activeTab === 'calendar' ? '📅' : '🥗'}</span>
+                <span className="capitalize">{activeTab}</span>
+                <svg className={`h-3 w-3 transition-transform ${showMenu ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                </svg>
+              </button>
+              {showMenu && (
+                <div className="absolute left-0 top-full z-30 mt-1 min-w-[160px] rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-2xl">
+                  {(['chat', 'docs', 'calendar', 'nutrients'] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => { setActiveTab(tab); setShowMenu(false); }}
+                      className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${activeTab === tab ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                    >
+                      <span>{tab === 'chat' ? '💬' : tab === 'docs' ? '📄' : tab === 'calendar' ? '📅' : '🥗'}</span>
+                      <span className="capitalize">{tab}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
-            <div className="flex gap-1">
-              <button
-                onClick={() => setActiveTab('chat')}
-                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'chat'
-                  ? 'bg-gray-700 text-white border-b-2 border-blue-500'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
+            {/* Desktop tabs */}
+            <div className="hidden sm:flex items-center gap-0.5">
+              {(['chat', 'docs', 'calendar', 'nutrients'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                    activeTab === tab
+                      ? 'bg-gray-800 text-white'
+                      : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
                   }`}
-              >
-                💬 Chat
-              </button>
-              <button
-                onClick={() => setActiveTab('docs')}
-                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'docs'
-                  ? 'bg-gray-700 text-white border-b-2 border-blue-500'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                  }`}
-              >
-                📄 Docs
-              </button>
-              <button
-                onClick={() => setActiveTab('calendar')}
-                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'calendar'
-                  ? 'bg-gray-700 text-white border-b-2 border-blue-500'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                  }`}
-              >
-                📅 Calendar
-              </button>
-              <button
-                onClick={() => setActiveTab('nutrients')}
-                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'nutrients'
-                  ? 'bg-gray-700 text-white border-b-2 border-blue-500'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                  }`}
-              >
-                🥗 Nutrients
-              </button>
+                >
+                  {tab === 'chat' ? '💬' : tab === 'docs' ? '📄' : tab === 'calendar' ? '📅' : '🥗'} {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </button>
+              ))}
             </div>
           </div>
         </div>

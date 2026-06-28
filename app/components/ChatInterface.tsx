@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import ChatHeader, { ChatHeaderRef } from './ChatHeader';
 import { createClient } from '@/utils/supabase/client';
-import { getApiKey } from '../lib/api-keys';
+import { getApiKey, hasApiKey } from '../lib/api-keys';
 
 // Lightweight markdown parser (replaces heavy react-markdown)
 function SimpleMarkdown({ content }: { content: string }) {
@@ -497,6 +497,13 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     }
   }, [sendMessage]);
 
+  useEffect(() => {
+    const el = document.getElementById('chat-input') as HTMLTextAreaElement | null;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 128) + 'px';
+  }, [input]);
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
       {/* Chat Header */}
@@ -569,25 +576,43 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="border-t border-gray-700 bg-gray-800 px-3 sm:px-4 py-3 sm:py-4">
-        <div className="flex gap-2 flex-col sm:flex-row">
+      <div className="border-t border-gray-800 bg-gray-900/80 px-4 py-3 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-3xl items-end gap-2">
           <textarea
             id="chat-input"
             name="chat-input"
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="Ask a question... (Shift+Enter for newline)"
-            className="flex-1 px-3 sm:px-4 py-2 border border-gray-600 bg-gray-900 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none h-20 sm:h-24 text-sm sm:text-base"
-            disabled={loading}
+            placeholder="Ask a question..."
+            rows={1}
+            className="min-h-[44px] max-h-32 flex-1 resize-none rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none placeholder:text-gray-500 focus:border-gray-500"
+            disabled={loading || (!hasApiKey('gemini') && !hasApiKey('groq'))}
           />
-          <button
-            onClick={sendMessage}
-            disabled={loading}
-            className="bg-blue-600 text-white px-4 sm:px-6 py-2 rounded-lg disabled:bg-gray-600 hover:bg-blue-700 w-full sm:w-auto mt-2 sm:mt-0"
-          >
-            Send
-          </button>
+          {hasApiKey('gemini') || hasApiKey('groq') ? (
+            <button
+              onClick={sendMessage}
+              disabled={loading || !input.trim()}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-gray-900 transition-colors hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                <path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                const event = new CustomEvent('cloudhelper:open-api-settings');
+                window.dispatchEvent(event);
+              }}
+              className="flex h-11 items-center gap-2 rounded-xl bg-amber-600 px-4 text-sm font-medium text-white transition-colors hover:bg-amber-500"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+                <path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
+              </svg>
+              Manage APIs
+            </button>
+          )}
         </div>
       </div>
     </div>

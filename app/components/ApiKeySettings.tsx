@@ -8,6 +8,12 @@ export default function ApiKeySettings() {
   const [keys, setKeys] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    const handler = () => setIsOpen(true);
+    window.addEventListener('cloudhelper:open-api-settings', handler);
+    return () => window.removeEventListener('cloudhelper:open-api-settings', handler);
+  }, []);
+
+  useEffect(() => {
     if (!isOpen) return;
     const initial: Record<string, string> = {};
     for (const name of ALL_API_KEYS) {
@@ -29,10 +35,12 @@ export default function ApiKeySettings() {
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="rounded bg-gray-700 px-2.5 py-2 text-sm text-gray-300 hover:bg-gray-600"
+        className="flex h-7 w-7 items-center justify-center rounded-lg text-sm text-gray-400 transition-colors hover:bg-gray-800 hover:text-white sm:h-8 sm:w-8"
         title="API Key Settings"
       >
-        ⚙
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+          <path fillRule="evenodd" d="M11.828 2.25c-.916 0-1.699.663-1.85 1.567l-.091.558a.83.83 0 01-1.415.432l-.404-.404a1.854 1.854 0 00-2.623 0l-.736.736a1.854 1.854 0 000 2.623l.404.404c.368.368.613.896.432 1.415l-.558.09a1.857 1.857 0 00-1.567 1.851v1.036c0 .916.663 1.699 1.567 1.85l.558.091a.83.83 0 01.432 1.415l-.404.404a1.854 1.854 0 000 2.623l.736.736a1.854 1.854 0 002.623 0l.404-.404a.83.83 0 011.415.432l.091.558a1.857 1.857 0 001.85 1.567h1.036c.916 0 1.699-.663 1.85-1.567l.091-.558a.83.83 0 011.415-.432l.404.404a1.854 1.854 0 002.623 0l.736-.736a1.854 1.854 0 000-2.623l-.404-.404a.83.83 0 01-.432-1.415l.558-.09a1.857 1.857 0 001.567-1.851v-1.036c0-.916-.663-1.699-1.567-1.85l-.558-.091a.83.83 0 01-.432-1.415l.404-.404a1.854 1.854 0 000-2.623l-.736-.736a1.854 1.854 0 00-2.623 0l-.404.404a.83.83 0 01-1.415-.432l-.091-.558a1.857 1.857 0 00-1.85-1.567h-1.036zM12 7.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9z" clipRule="evenodd" />
+        </svg>
       </button>
 
       {isOpen && (
