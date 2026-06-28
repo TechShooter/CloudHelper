@@ -1747,8 +1747,19 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-x-auto">
         {/* Tab Navigation */}
         <div className="flex-shrink-0 border-b border-gray-800 bg-gray-950">
-          <div className="flex items-center px-3 py-1.5">
-            {/* Mobile menu */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5">
+            {/* Mobile hamburger (sidebar toggle) */}
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="sm:hidden flex h-7 w-7 items-center justify-center rounded-lg text-sm text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+              title={showMenu ? "Close sidebar" : "Open sidebar"}
+            >
+              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+              </svg>
+            </button>
+
+            {/* Mobile tab menu */}
             <div className="sm:hidden relative">
               <button
                 onClick={() => setShowTabMenu(!showTabMenu)}
@@ -1796,7 +1807,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         </div>
 
         {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto min-w-0 min-h-0 sm:min-w-[800px]">
+        <div className="flex-1 overflow-hidden min-w-0 min-h-0 sm:min-w-[800px]">
           {activeTab === 'chat' && currentWorkspace.id === 'model-testing' && (
             <Suspense fallback={<div className="text-white p-4">Loading Model Testing...</div>}>
               <ModelTesting
