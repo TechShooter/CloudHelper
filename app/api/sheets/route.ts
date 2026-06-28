@@ -6,11 +6,14 @@ export async function GET(req: NextRequest) {
   try {
     const apiKey = req.headers.get('x-api-key-google-sheets') || process.env.GOOGLE_SHEETS_API_KEY || '';
     const { searchParams } = new URL(req.url);
+    const sheetId = searchParams.get('sheetId');
     const query = searchParams.get('query');
     const full = searchParams.get('full') === 'true';
     
-    const sheetId = '1FvjfZ5a-OMM2ScO2lJewBFIrbnWvgQKJug_Ve32gAQA';
-    const range = 'A:ZZ'; // Remove sheet name, use default
+    if (!sheetId) {
+      return NextResponse.json({ error: 'sheetId query parameter is required' }, { status: 400 });
+    }
+    const range = 'A:ZZ';
     
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${apiKey}`;
     
@@ -56,7 +59,10 @@ export async function POST(req: NextRequest) {
     const { action, query, sheetId } = await req.json();
     
     if (action === 'getAllSheets') {
-      const targetSheetId = sheetId || '1FvjfZ5a-OMM2ScO2lJewBFIrbnWvgQKJug_Ve32gAQA';
+      if (!sheetId) {
+        return NextResponse.json({ error: 'sheetId is required' }, { status: 400 });
+      }
+      const targetSheetId = sheetId;
       
       // Get spreadsheet metadata to find all sheet names
       const metadataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${targetSheetId}?key=${apiKey}`;

@@ -5,6 +5,11 @@ import ChatHeader, { ChatHeaderRef } from './ChatHeader';
 import { createClient } from '@/utils/supabase/client';
 import { getApiKey, hasApiKey } from '../lib/api-keys';
 
+let guestChatCounter = 0;
+function generateGuestChatId(): string {
+  return `guest-${Date.now()}-${++guestChatCounter}`;
+}
+
 // Lightweight markdown parser (replaces heavy react-markdown)
 function SimpleMarkdown({ content }: { content: string }) {
   // Simple formatting: code blocks, bold, italic, links
@@ -129,6 +134,16 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isNewlyCreatedChatRef = useRef(false);
+  const isGuestRef = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      isGuestRef.current = !user;
+    };
+    checkAuth();
+  }, []);
 
   // Memoize current messages to avoid recalculation on every render
   const currentMessages = messages;
@@ -157,7 +172,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
   // Load messages from Supabase when activeChatId changes
   useEffect(() => {
     const loadMessages = async () => {
-      if (!activeChatId) {
+      if (!activeChatId || isGuestRef.current) {
         return;
       }
       // Skip loading if this is a newly created chat (messages are already in state)
@@ -190,7 +205,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
 
   // Save messages to Supabase with debounce (backup for non-streaming responses)
   useEffect(() => {
-    if (!activeChatId) return;
+    if (!activeChatId || isGuestRef.current) return;
     const timeoutId = setTimeout(async () => {
       try {
         const res = await fetch('/api/chat-persistence', {
@@ -259,35 +274,43 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     let chatIdToUse = currentActiveChatId;
     let isNewChat = false;
     if (!chatIdToUse) {
-      try {
-        // Generate title from first message (first 50 characters)
-        const title = input.trim().substring(0, 50) + (input.length > 50 ? '...' : '');
-        const res = await fetch('/api/chats', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ workspaceId, title })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.chat) {
-            chatIdToUse = data.chat.id;
-            isNewChat = true;
-            isNewlyCreatedChatRef.current = true;
-            setActiveChatId(chatIdToUse);
-            // Refresh chat header to show the new chat immediately
-            chatHeaderRef.current?.refreshChats();
+      const isGuest = isGuestRef.current;
+      if (isGuest) {
+        // Guest mode: use a local chat ID, skip Supabase
+        chatIdToUse = generateGuestChatId();
+        isNewChat = true;
+        setActiveChatId(chatIdToUse);
+      } else {
+        try {
+          // Generate title from first message (first 50 characters)
+          const title = input.trim().substring(0, 50) + (input.length > 50 ? '...' : '');
+          const res = await fetch('/api/chats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workspaceId, title })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.chat) {
+              chatIdToUse = data.chat.id;
+              isNewChat = true;
+              isNewlyCreatedChatRef.current = true;
+              setActiveChatId(chatIdToUse);
+              // Refresh chat header to show the new chat immediately
+              chatHeaderRef.current?.refreshChats();
+            }
           }
+        } catch (error) {
+          console.error('Failed to create chat:', error);
+          return;
         }
-      } catch (error) {
-        console.error('Failed to create chat:', error);
-        return;
       }
     }
 
     if (!chatIdToUse) return;
 
     // Update chat title if it's the first message in the chat
-    if (!isNewChat && currentMessages.length === 0) {
+    if (!isNewChat && currentMessages.length === 0 && !isGuestRef.current) {
       try {
         const title = input.trim().substring(0, 50) + (input.length > 50 ? '...' : '');
         await fetch('/api/chats', {

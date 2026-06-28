@@ -22,17 +22,12 @@ export default function SheetManager({ onSheetLoad }: Props) {
   useEffect(() => {
     const saved = localStorage.getItem('googleSheets');
     if (saved) {
-      const parsed = JSON.parse(saved);
-      setSheets(parsed);
-    } else {
-      // Default sheet
-      const defaultSheet = {
-        id: '1',
-        name: 'Food Database',
-        sheetId: '1FvjfZ5a-OMM2ScO2lJewBFIrbnWvgQKJug_Ve32gAQA'
-      };
-      setSheets([defaultSheet]);
-      localStorage.setItem('googleSheets', JSON.stringify([defaultSheet]));
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) setSheets(parsed);
+      } catch {
+        // ignore
+      }
     }
   }, []);
 

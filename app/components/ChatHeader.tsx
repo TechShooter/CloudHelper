@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
+import { createClient } from '@/utils/supabase/client';
 
 interface Chat {
   id: string;
@@ -24,8 +25,23 @@ const ChatHeader = forwardRef<ChatHeaderRef, Props>(({ workspaceId, activeChatId
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const isGuestRef = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      isGuestRef.current = !user;
+    };
+    checkAuth();
+  }, []);
 
   const loadChats = async () => {
+    if (isGuestRef.current) {
+      setLoading(false);
+      setChats([]);
+      return;
+    }
     try {
       setLoading(true);
       const res = await fetch(`/api/chats?workspaceId=${workspaceId}`);
@@ -54,16 +70,14 @@ const ChatHeader = forwardRef<ChatHeaderRef, Props>(({ workspaceId, activeChatId
 
   // Create new chat
   const handleCreateChat = async (title?: string) => {
+    if (isGuestRef.current) return;
     try {
-      console.log('Creating chat with workspaceId:', workspaceId, 'title:', title || 'New Chat');
       const res = await fetch('/api/chats', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workspaceId, title: title || 'New Chat' })
       });
-      console.log('Response status:', res.status);
       const data = await res.json();
-      console.log('Response data:', data);
       if (res.ok) {
         if (data.chat) {
           setChats(prev => [data.chat, ...prev]);
@@ -79,6 +93,7 @@ const ChatHeader = forwardRef<ChatHeaderRef, Props>(({ workspaceId, activeChatId
 
   // Delete chat
   const handleDeleteChat = async (chatId: string) => {
+    if (isGuestRef.current) return;
     try {
       const res = await fetch(`/api/chats?chatId=${chatId}`, {
         method: 'DELETE'

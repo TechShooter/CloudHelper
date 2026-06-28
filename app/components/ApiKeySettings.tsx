@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ALL_API_KEYS, type ApiKeyName, getApiKey, setApiKey, getKeyLabel, obfuscateKey } from '../lib/api-keys';
+import { ALL_API_KEYS, type ApiKeyName, getApiKey, setApiKey, getKeyLabel, obfuscateKey, isResourceIdKey } from '../lib/api-keys';
 
 export default function ApiKeySettings() {
   const [isOpen, setIsOpen] = useState(false);
@@ -61,7 +61,8 @@ export default function ApiKeySettings() {
             </p>
 
             <div className="space-y-4">
-              {ALL_API_KEYS.map((name) => (
+              <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">API Keys</h4>
+              {ALL_API_KEYS.filter((n) => !isResourceIdKey(n)).map((name) => (
                 <div key={name}>
                   <label className="mb-1 block text-sm font-medium text-gray-300">
                     {getKeyLabel(name)}
@@ -73,6 +74,39 @@ export default function ApiKeySettings() {
                       placeholder={obfuscateKey(getApiKey(name)) || `Enter ${getKeyLabel(name)}`}
                       className="flex-1 rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-white outline-none placeholder:text-gray-600"
                       type="password"
+                    />
+                    <button
+                      onClick={() => saveKey(name)}
+                      className="rounded bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+                    >
+                      Save
+                    </button>
+                    {getApiKey(name) && (
+                      <button
+                        onClick={() => clearKey(name)}
+                        className="rounded bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-500"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 space-y-4 border-t border-gray-700 pt-6">
+              <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Google Resource IDs</h4>
+              {ALL_API_KEYS.filter((n) => isResourceIdKey(n)).map((name) => (
+                <div key={name}>
+                  <label className="mb-1 block text-sm font-medium text-gray-300">
+                    {getKeyLabel(name)}
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      value={keys[name] || ''}
+                      onChange={(e) => setKeys((prev) => ({ ...prev, [name]: e.target.value }))}
+                      placeholder={obfuscateKey(getApiKey(name)) || `Enter ${getKeyLabel(name)}`}
+                      className="flex-1 rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-white outline-none placeholder:text-gray-600"
                     />
                     <button
                       onClick={() => saveKey(name)}
