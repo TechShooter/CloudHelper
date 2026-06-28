@@ -151,6 +151,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
   const [activeTab, setActiveTab] = useState<'chat' | 'docs' | 'calendar' | 'nutrients'>('chat');
   const [workspaces] = useState<Workspace[]>(DEFAULT_WORKSPACES);
   const [showMenu, setShowMenu] = useState(false);
+  const [showTabMenu, setShowTabMenu] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [nutrientEntries, setNutrientEntries] = useState<any[]>([]);
 
@@ -1750,24 +1751,21 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
             {/* Mobile menu */}
             <div className="sm:hidden relative">
               <button
-                onClick={() => setShowMenu(!showMenu)}
+                onClick={() => setShowTabMenu(!showTabMenu)}
                 className="flex items-center gap-1.5 rounded-lg border-l-2 border-blue-500/30 bg-gray-800/20 px-2.5 py-1.5 text-xs font-medium text-gray-200 hover:bg-gray-800/40"
               >
-                <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                </svg>
                 <span>{activeTab === 'chat' ? '💬' : activeTab === 'docs' ? '📄' : activeTab === 'calendar' ? '📅' : '🥗'}</span>
                 <span className="capitalize">{activeTab}</span>
-                <svg className={`h-3 w-3 transition-transform ${showMenu ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                <svg className={`h-3 w-3 transition-transform ${showTabMenu ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
                 </svg>
               </button>
-              {showMenu && (
+              {showTabMenu && (
                 <div className="absolute left-0 top-full z-30 mt-1 min-w-[160px] rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-2xl">
                   {(['chat', 'docs', 'calendar', 'nutrients'] as const).map((tab) => (
                     <button
                       key={tab}
-                      onClick={() => { setActiveTab(tab); setShowMenu(false); }}
+                      onClick={() => { setActiveTab(tab); setShowTabMenu(false); }}
                       className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${activeTab === tab ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                     >
                       <span>{tab === 'chat' ? '💬' : tab === 'docs' ? '📄' : tab === 'calendar' ? '📅' : '🥗'}</span>
