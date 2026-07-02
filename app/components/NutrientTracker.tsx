@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createClient } from '@/utils/supabase/client';
 
 interface FoodEntry {
   id: string;
@@ -274,6 +275,18 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
   const [editingGoals, setEditingGoals] = useState(false);
   const [tempGoals, setTempGoals] = useState<NutrientGoals>(goals);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | null>(null);
+  const isGuestRef = useRef<boolean>(true);
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      isGuestRef.current = !session;
+      setAuthReady(true);
+    })();
+  }, []);
+
   const [goalsText, setGoalsText] = useState<string>(getInitialGoalsText());
   const [hiddenEntries, setHiddenEntries] = useState<Set<string>>(new Set());
   const [notesText, setNotesText] = useState<string>(getInitialNotesText());
@@ -332,7 +345,8 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
 
   // Load nutrient entries from Supabase on mount
   useEffect(() => {
-    const loadEntries = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch('/api/nutrients?type=entries');
         if (res.ok) {
@@ -344,13 +358,12 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       } catch (error) {
         console.error('Failed to load entries:', error);
       }
-    };
-
-    loadEntries();
-  }, []);
+    })();
+  }, [authReady]);
 
   // Save nutrient entries to Supabase with debounce
   useEffect(() => {
+    if (!authReady || isGuestRef.current) return;
     const timeoutId = setTimeout(async () => {
       setSaveStatus('saving');
       try {
@@ -373,11 +386,12 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
     }, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [entries, onEntriesChange]);
+  }, [entries, onEntriesChange, authReady]);
 
   // Load nutrient goals from Supabase on mount
   useEffect(() => {
-    const loadGoals = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch('/api/nutrients?type=goals');
         if (res.ok) {
@@ -389,14 +403,13 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       } catch (error) {
         console.error('Failed to load goals:', error);
       }
-    };
-
-    loadGoals();
-  }, []);
+    })();
+  }, [authReady]);
 
   // Save nutrient goals to Supabase
   useEffect(() => {
-    const saveGoals = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         await fetch('/api/nutrients', {
           method: 'POST',
@@ -406,10 +419,8 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       } catch (error) {
         console.error('Failed to save goals:', error);
       }
-    };
-
-    saveGoals();
-  }, [goals]);
+    })();
+  }, [goals, authReady]);
 
   // Sync tempGoals with goals whenever goals changes, but only when Goals modal is not open
   useEffect(() => {
@@ -420,7 +431,8 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
 
   // Load weight history from Supabase on mount
   useEffect(() => {
-    const loadWeightHistory = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch('/api/nutrients?type=weight');
         if (res.ok) {
@@ -432,14 +444,13 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       } catch (error) {
         console.error('Failed to load weight history:', error);
       }
-    };
-
-    loadWeightHistory();
-  }, []);
+    })();
+  }, [authReady]);
 
   // Save weight history to Supabase
   useEffect(() => {
-    const saveWeightHistory = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         await fetch('/api/nutrients', {
           method: 'POST',
@@ -449,14 +460,13 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       } catch (error) {
         console.error('Failed to save weight history:', error);
       }
-    };
-
-    saveWeightHistory();
-  }, [weightHistory]);
+    })();
+  }, [weightHistory, authReady]);
 
   // Load notes from Supabase on mount
   useEffect(() => {
-    const loadNotes = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch('/api/nutrients?type=notes');
         if (res.ok) {
@@ -467,14 +477,13 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       } catch (error) {
         console.error('Failed to load notes:', error);
       }
-    };
-
-    loadNotes();
-  }, []);
+    })();
+  }, [authReady]);
 
   // Save notes to Supabase
   useEffect(() => {
-    const saveNotes = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         await fetch('/api/nutrients', {
           method: 'POST',
@@ -484,14 +493,13 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       } catch (error) {
         console.error('Failed to save notes:', error);
       }
-    };
-
-    saveNotes();
-  }, [goalsText, notesText]);
+    })();
+  }, [goalsText, notesText, authReady]);
 
   // Load nutrient notes from Supabase on mount
   useEffect(() => {
-    const loadNutrientNotes = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch('/api/nutrients?type=nutrient-notes');
         if (res.ok) {
@@ -503,14 +511,13 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       } catch (error) {
         console.error('Failed to load nutrient notes:', error);
       }
-    };
-
-    loadNutrientNotes();
-  }, []);
+    })();
+  }, [authReady]);
 
   // Save nutrient notes to Supabase
   useEffect(() => {
-    const saveNutrientNotes = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         await fetch('/api/nutrients', {
           method: 'POST',
@@ -520,10 +527,8 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       } catch (error) {
         console.error('Failed to save nutrient notes:', error);
       }
-    };
-
-    saveNutrientNotes();
-  }, [nutrientNotes]);
+    })();
+  }, [nutrientNotes, authReady]);
 
   // Funzione per pulire i valori di costo dal formato italiano
   const parseItalianCost = (costStr: string): number => {

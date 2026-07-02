@@ -9,20 +9,58 @@ function normalizeValue(value: any) {
   return value == null ? '' : String(value).trim();
 }
 
-function parseSheet(values: string[][], headerRowIndex = 0) {
-  if (!values || values.length <= headerRowIndex) return { headers: [], rows: [] as Record<string, string>[] };
+interface CellMeta {
+  backgroundColor?: { red: number; green: number; blue: number } | null;
+  hyperlink?: string | null;
+}
 
-  const headers = values[headerRowIndex].map((h) => normalizeValue(h));
-  const rows = values.slice(headerRowIndex + 1).map((cells) => {
+function parseSheetCell(cell: any): { value: string; meta: CellMeta } {
+  const value = normalizeValue(cell?.formattedValue ?? cell?.userEnteredValue?.stringValue ?? '');
+  const meta: CellMeta = {};
+  if (cell?.hyperlink) meta.hyperlink = cell.hyperlink;
+  if (cell?.effectiveFormat?.backgroundColor) {
+    const bg = cell.effectiveFormat.backgroundColor;
+    if (bg.red !== undefined && bg.green !== undefined && bg.blue !== undefined) {
+      meta.backgroundColor = { red: bg.red, green: bg.green, blue: bg.blue };
+    }
+  }
+  return { value, meta };
+}
+
+function parseSheetGrid(sheet: any, headerRowIndex = 0) {
+  const rowData = sheet?.data?.[0]?.rowData ?? [];
+  if (!rowData.length) return { headers: [], rows: [] as Record<string, string>[], cellMetas: [] as Record<string, CellMeta>[] };
+
+  const headerCells = rowData[headerRowIndex]?.values ?? [];
+  const headers = headerCells.map((c: any) => (c?.formattedValue ?? '').trim());
+
+  const rows: Record<string, string>[] = [];
+  const cellMetas: Record<string, CellMeta>[] = [];
+
+  for (let r = headerRowIndex + 1; r < rowData.length; r++) {
+    const cells = rowData[r]?.values ?? [];
     const row: Record<string, string> = {};
-    headers.forEach((header, index) => {
+    const rowMeta: Record<string, CellMeta> = {};
+    let hasValue = false;
+    headers.forEach((header: string, ci: number) => {
       if (!header) return;
-      row[header] = normalizeValue(cells[index]);
+      const cell = cells[ci];
+      if (cell) {
+        const parsed = parseSheetCell(cell);
+        row[header] = parsed.value;
+        rowMeta[header] = parsed.meta;
+        if (parsed.value) hasValue = true;
+      } else {
+        row[header] = '';
+        rowMeta[header] = {};
+      }
     });
-    return row;
-  });
+    if (!hasValue) continue;
+    rows.push(row);
+    cellMetas.push(rowMeta);
+  }
 
-  return { headers, rows };
+  return { headers, rows, cellMetas };
 }
 
 function matchesName(freeName: string, benchName: string): boolean {
@@ -38,26 +76,28 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'GOOGLE_SHEETS_API_KEY not configured' }, { status: 500 });
     }
 
-    const raw: Record<string, { headers: string[]; rows: Record<string, string>[] }> = {};
+    const raw: Record<string, { headers: string[]; rows: Record<string, string>[]; cellMetas: Record<string, CellMeta>[] }> = {};
 
     for (const sheetName of SHEET_NAMES) {
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(sheetName)}!A:ZZ?key=${apiKey}`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?ranges=${encodeURIComponent(sheetName)}&includeGridData=true&fields=sheets.data.rowData.values(effectiveFormat.backgroundColor,hyperlink,formattedValue,userEnteredValue)&key=${apiKey}`;
       const response = await fetch(url);
       const data = await response.json();
 
       if (!response.ok) {
-        raw[sheetName] = { headers: [], rows: [] };
+        raw[sheetName] = { headers: [], rows: [], cellMetas: [] };
         console.error(`Failed to fetch sheet "${sheetName}":`, data.error?.message);
         continue;
       }
 
-      const values: string[][] = data.values || [];
+      const sheet = data?.sheets?.[0];
       const headerRow = sheetName === 'Benchmarks' ? 1 : 0;
-      raw[sheetName] = parseSheet(values, headerRow);
+      raw[sheetName] = parseSheetGrid(sheet, headerRow);
     }
 
     const freeTiers = raw['ModelSelector [Free tiers]']?.rows || [];
     const benchmarks = raw['Benchmarks']?.rows || [];
+    const freeCellMetas = raw['ModelSelector [Free tiers]']?.cellMetas || [];
+    const benchCellMetas = raw['Benchmarks']?.cellMetas || [];
 
     const freeHeaders = raw['ModelSelector [Free tiers]']?.headers || [];
     const benchHeaders = raw['Benchmarks']?.headers || [];
@@ -65,34 +105,44 @@ export async function GET(req: NextRequest) {
     const benchExclusive = benchHeaders.filter((h) => !freeHeaders.includes(h));
 
     const mergedRows: Array<Record<string, string>> = [];
+    const mergedCellMetas: Array<Record<string, CellMeta>> = [];
     const usedBenchIndices = new Set<number>();
 
-    for (const freeRow of freeTiers) {
+    for (let fi = 0; fi < freeTiers.length; fi++) {
+      const freeRow = freeTiers[fi];
+      const freeMeta = freeCellMetas[fi] || {};
       const freeName = (freeRow.Name || freeRow.Model || '').toLowerCase().trim();
       let match: Record<string, string> | null = null;
+      let matchMeta: Record<string, CellMeta> | null = null;
       let matchIndex = -1;
 
-      for (let i = 0; i < benchmarks.length; i++) {
-        if (usedBenchIndices.has(i)) continue;
-        const benchName = (benchmarks[i].Name || benchmarks[i].Model || '').toLowerCase().trim();
+      for (let bi = 0; bi < benchmarks.length; bi++) {
+        if (usedBenchIndices.has(bi)) continue;
+        const benchName = (benchmarks[bi].Name || benchmarks[bi].Model || '').toLowerCase().trim();
         if (freeName && benchName && matchesName(freeName, benchName)) {
-          match = benchmarks[i];
-          matchIndex = i;
+          match = benchmarks[bi];
+          matchMeta = benchCellMetas[bi] || {};
+          matchIndex = bi;
           break;
         }
       }
 
       const merged: Record<string, string> = { ...freeRow };
+      const mergedMeta: Record<string, CellMeta> = { ...freeMeta };
       if (match) {
         usedBenchIndices.add(matchIndex);
         for (const key of benchExclusive) {
           if (match[key]) {
             merged[key] = match[key];
           }
+          if (matchMeta && matchMeta[key]) {
+            mergedMeta[key] = matchMeta[key];
+          }
         }
       }
 
       mergedRows.push(merged);
+      mergedCellMetas.push(mergedMeta);
     }
 
     const allHeaders = [...freeHeaders, ...benchExclusive];
@@ -101,6 +151,7 @@ export async function GET(req: NextRequest) {
       success: true,
       headers: allHeaders,
       rows: mergedRows,
+      cellMetas: mergedCellMetas,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

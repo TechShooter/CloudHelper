@@ -4,6 +4,18 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import ChatHeader, { ChatHeaderRef } from './ChatHeader';
 import { createClient } from '@/utils/supabase/client';
 import { getApiKey, hasApiKey } from '../lib/api-keys';
+import { ingestFile, searchQuery, removeDocument, getStats } from '../lib/browser-rag';
+
+interface UploadedFile {
+  id: string;
+  name: string;
+  type: 'pdf' | 'docx' | 'txt' | 'md' | 'csv';
+  status: 'parsing' | 'uploading' | 'indexing' | 'ready' | 'error';
+  error?: string;
+  charCount?: number;
+  sourceId?: string;
+  documentId?: string;
+}
 
 let guestChatCounter = 0;
 function generateGuestChatId(): string {
@@ -131,10 +143,22 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [visibleMessageCount, setVisibleMessageCount] = useState(50);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isNewlyCreatedChatRef = useRef(false);
   const isGuestRef = useRef<boolean | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadedFilesRef = useRef(uploadedFiles);
+  useEffect(() => {
+    uploadedFilesRef.current = uploadedFiles;
+  }, [uploadedFiles]);
+  const hasIndexedDbChunksRef = useRef(false);
+  useEffect(() => {
+    if (isGuestRef.current) {
+      getStats().then((s) => { hasIndexedDbChunksRef.current = s.chunks > 0; }).catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -158,6 +182,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     setActiveChatId(null);
     setMessages([]);
     setInput('');
+    setUploadedFiles([]);
   }, [workspaceId]);
 
   // Abort streaming response when activeChatId changes
@@ -344,6 +369,29 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     // notionPages is already filtered by WorkspaceManager's getNotionPages()
     let notionContext = notionPages || [];
 
+    // ===================================================================
+    // Browser RAG: search indexed documents for relevant context (guests)
+    // ===================================================================
+    let ragContext: Array<{ sourceName: string; content: string; similarity: number }> | undefined;
+    if (isGuestRef.current && (uploadedFilesRef.current.some((f) => f.status === 'ready') || hasIndexedDbChunksRef.current)) {
+      const geminiKey = getApiKey('gemini');
+      if (geminiKey && input.trim()) {
+        try {
+          const results = await searchQuery(input, geminiKey, 3);
+          if (results.length > 0) {
+            ragContext = results.map((r) => ({
+              sourceName: r.chunk.enrichedContent.startsWith('Source: ')
+                ? r.chunk.enrichedContent.split('\n')[0].replace('Source: ', '')
+                : 'Uploaded document',
+              content: r.chunk.content,
+              similarity: r.similarity, // send raw for server formatting
+            }));
+          }
+        } catch {
+          // Browser RAG unavailable — silently continue
+        }
+      }
+    }
 
     let fullText = '';
     const requestStartTime = new Date();
@@ -358,7 +406,8 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
       aiModel: aiModel,
       chatId: chatIdToUse, // Pass chatId for server-side persistence
       stream: true,
-      calendarEvents: calendarEvents
+      calendarEvents: calendarEvents,
+      ...(ragContext ? { ragContext } : {}),
     };
 
     try {
@@ -520,6 +569,193 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     }
   }, [sendMessage]);
 
+  // ===================================================================
+  // File Upload Handler
+  // ===================================================================
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+      
+      let fileType: UploadedFile['type'];
+      if (ext === 'pdf') fileType = 'pdf';
+      else if (ext === 'docx') fileType = 'docx';
+      else if (ext === 'txt') fileType = 'txt';
+      else if (ext === 'md') fileType = 'md';
+      else if (ext === 'csv') fileType = 'csv';
+      else continue; // Unsupported type
+
+      const fileId = `file-${Date.now()}-${i}`;
+      
+      // Add file with "parsing" status
+      setUploadedFiles(prev => [...prev, {
+        id: fileId,
+        name: file.name,
+        type: fileType,
+        status: 'parsing'
+      }]);
+
+      try {
+        // File size limit (20MB) to prevent browser freeze on large files
+        if (file.size > 20_000_000) {
+          throw new Error('File too large (max 20MB)');
+        }
+
+        // Parse file in browser
+        let content = '';
+        
+        if (fileType === 'txt' || fileType === 'md' || fileType === 'csv') {
+          content = await file.text();
+        } else if (fileType === 'docx') {
+          const mammoth = await import('mammoth');
+          const arrayBuffer = await file.arrayBuffer();
+          const result = await mammoth.extractRawText({ arrayBuffer });
+          content = result.value;
+        } else if (fileType === 'pdf') {
+          setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'parsing' } : f));
+          const pdfjsLib = await import('pdfjs-dist');
+          // Local copy from node_modules/pdfjs-dist/build/pdf.worker.min.mjs — update if upgrading pdfjs-dist
+          pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+          
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          
+          const textParts: string[] = [];
+          for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items
+              .map((item: any) => item.str)
+              .join(' ');
+            textParts.push(pageText);
+          }
+          content = textParts.join('\n\n');
+        }
+
+        if (!content || content.trim().length === 0) {
+          throw new Error('No text content could be extracted');
+        }
+
+        // ===================================================================
+        // Guest path: browser-only RAG (IndexedDB + Gemini embeddings)
+        // Logged-in path: server-side RAG (Supabase + Edge Function)
+        // ===================================================================
+        const isGuest = isGuestRef.current;
+
+        if (isGuest) {
+          // ---- Browser-only RAG ----
+          const geminiKey = getApiKey('gemini');
+          if (!geminiKey) {
+            throw new Error('Gemini API key is required to index files. Please add it in Settings.');
+          }
+
+          setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'indexing' as const, charCount: content.length } : f));
+
+          const result = await ingestFile(
+            file.name,
+            fileType,
+            content,
+            geminiKey,
+            (statusMsg) => {
+              console.log('[Browser RAG]', statusMsg);
+            }
+          );
+
+          setUploadedFiles(prev => prev.map(f => f.id === fileId ? {
+            ...f,
+            status: 'ready' as const,
+            documentId: result.documentId,
+            charCount: content.length,
+          } : f));
+
+        } else {
+          // ---- Server-side RAG (existing Supabase flow) ----
+          setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'uploading' as const, charCount: content.length } : f));
+
+          const res = await fetch('/api/rag/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileName: file.name,
+              fileType,
+              content,
+              workspaceId
+            })
+          });
+
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || 'Upload failed');
+          }
+
+          const uploadResult = await res.json();
+          const sourceId = uploadResult.document?.sourceId;
+
+          setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'indexing' as const, sourceId } : f));
+          
+          // Poll for real indexing status
+          const pollForStatus = async () => {
+            for (let attempt = 0; attempt < 30; attempt++) {
+              await new Promise(r => setTimeout(r, 2000));
+              try {
+                const statusRes = await fetch(`/api/rag/upload?sourceId=${sourceId}`);
+                if (statusRes.ok) {
+                  const statusData = await statusRes.json();
+                  const doc = statusData.documents?.find((d: any) => d.source_id === sourceId);
+                  if (doc?.status === 'indexed') {
+                    setUploadedFiles(prev => prev.map(f => f.id === fileId && f.status === 'indexing' ? { ...f, status: 'ready' as const } : f));
+                    return;
+                  } else if (doc?.status === 'error') {
+                    setUploadedFiles(prev => prev.map(f => f.id === fileId && f.status === 'indexing' ? { ...f, status: 'error' as const, error: doc.error_message || 'Indexing failed' } : f));
+                    return;
+                  }
+                }
+              } catch {
+                // Retry on network error
+              }
+            }
+            // Timeout: mark as ready anyway (optimistic)
+            setUploadedFiles(prev => prev.map(f => f.id === fileId && f.status === 'indexing' ? { ...f, status: 'ready' as const } : f));
+          };
+          pollForStatus();
+        }
+
+      } catch (err: any) {
+        setUploadedFiles(prev => prev.map(f => f.id === fileId ? { 
+          ...f, status: 'error' as const, error: err.message || 'Failed to process file' 
+        } : f));
+      }
+    }
+
+    // Reset file input so the same file can be selected again
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [workspaceId]);
+
+  const removeFile = useCallback(async (fileId: string) => {
+    const file = uploadedFiles.find(f => f.id === fileId);
+    if (!file) return;
+
+    if (file.documentId) {
+      // Browser RAG cleanup (guest)
+      try {
+        await removeDocument(file.documentId);
+      } catch {
+        // Best effort cleanup
+      }
+    } else if (file.sourceId) {
+      // Server-side cleanup (logged-in user)
+      try {
+        await fetch(`/api/rag/upload?sourceId=${file.sourceId}`, { method: 'DELETE' });
+      } catch {
+        // Best effort cleanup
+      }
+    }
+    setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
+  }, [uploadedFiles]);
+
   useEffect(() => {
     const el = document.getElementById('chat-input') as HTMLTextAreaElement | null;
     if (!el) return;
@@ -600,7 +836,73 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
       </div>
 
       <div className="border-t border-gray-800 bg-gray-900/80 px-4 py-3 backdrop-blur-sm">
+        {/* Uploaded file chips */}
+        {uploadedFiles.length > 0 && (
+          <div className="mx-auto mb-2 flex max-w-3xl flex-wrap gap-2">
+            {uploadedFiles.map(file => (
+              <div
+                key={file.id}
+                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors ${
+                  file.status === 'error'
+                    ? 'bg-red-900/40 text-red-300 border border-red-700/40'
+                    : file.status === 'ready'
+                    ? 'bg-emerald-900/30 text-emerald-300 border border-emerald-700/30'
+                    : 'bg-gray-700/60 text-gray-300 border border-gray-600/30'
+                }`}
+              >
+                {/* File type icon */}
+                <span className="text-[10px] opacity-70">
+                  {file.type === 'pdf' ? '📄' : file.type === 'docx' ? '📝' : '📃'}
+                </span>
+                <span className="max-w-[120px] truncate">{file.name}</span>
+                {/* Status indicator */}
+                {file.status === 'parsing' && (
+                  <span className="h-3 w-3 animate-spin rounded-full border border-indigo-400/40 border-t-indigo-400" />
+                )}
+                {file.status === 'uploading' && (
+                  <span className="h-3 w-3 animate-spin rounded-full border border-amber-400/40 border-t-amber-400" />
+                )}
+                {file.status === 'indexing' && (
+                  <span className="text-[10px] text-amber-400">⏳</span>
+                )}
+                {file.status === 'ready' && (
+                  <span className="text-[10px] text-emerald-400">✓</span>
+                )}
+                {file.status === 'error' && (
+                  <span className="text-[10px] text-red-400" title={file.error}>!</span>
+                )}
+                {/* Remove button */}
+                <button
+                  onClick={() => removeFile(file.id)}
+                  className="ml-0.5 text-gray-500 hover:text-gray-300"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="mx-auto flex max-w-3xl items-end gap-2">
+          {/* File upload button */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            onChange={handleFileSelect}
+            accept=".pdf,.docx,.txt,.md,.csv"
+            multiple
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loading}
+            className="flex h-11 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-700 bg-gray-800 text-gray-400 transition-colors hover:border-gray-500 hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Upload files (PDF, Word, text)"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
           <textarea
             id="chat-input"
             name="chat-input"

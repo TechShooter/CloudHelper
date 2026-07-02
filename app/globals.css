@@ -135,8 +135,8 @@ body {
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -145,11 +145,22 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
+  border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.15);
+}
+
+/* Thicker scrollbar for data tables */
+.scrollbar-thick::-webkit-scrollbar {
+  width: 10px;
+  height: 14px;
+}
+
+.scrollbar-thick::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
 }
 
 /* Focus ring */

@@ -1,13 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isGeminiModel } from '../../lib/models';
+import { createClient } from '@/utils/supabase/server';
 
 export const runtime = 'edge';
+
+/**
+ * Search for relevant chunks from uploaded documents only.
+ * Returns null silently if RAG is unavailable or no docs are indexed.
+ */
+async function searchUploadedFiles(
+  query: string,
+  geminiKey: string,
+  supabase: any,
+  userId: string
+): Promise<string | null> {
+  try {
+    const embUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${geminiKey}`;
+    const embRes = await fetch(embUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'models/gemini-embedding-001',
+        content: { parts: [{ text: query }] },
+        outputDimensionality: 768,
+      })
+    });
+    if (!embRes.ok) {
+      const body = await embRes.text().catch(() => 'Unknown error');
+      console.error(`[RAG] Embedding API error (HTTP ${embRes.status})
+URL: ${embUrl}
+Response: ${body}`);
+      return null;
+    }
+    const embData = await embRes.json();
+    const queryEmbedding = embData.embedding?.values;
+    if (!queryEmbedding) return null;
+
+    const { data: chunks, error } = await supabase.rpc('search_document_chunks', {
+      query_embedding: queryEmbedding,
+      match_user_id: userId,
+      match_count: 3,
+      similarity_threshold: 0.5,
+      keyword_filter: null,
+      source_type_filter: 'uploaded_file'
+    });
+
+    if (error || !chunks || chunks.length === 0) return null;
+
+    const contextBlocks = chunks.map((chunk: any, i: number) =>
+      `[Document: ${chunk.source_name} (relevance: ${Math.round(chunk.similarity * 100)}%)]\n${chunk.content}`
+    );
+
+    return `UPLOADED DOCUMENTS (relevant excerpts):\n\n${contextBlocks.join('\n\n')}\n\n---\n\nIMPORTANT: Use the above document excerpts to answer the user's question.`;
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
     const geminiKey = req.headers.get('x-api-key-gemini') || process.env.GEMINI_API_KEY || '';
     const groqKey = req.headers.get('x-api-key-groq') || process.env.GROQ_API_KEY || '';
-    const { context, sheetData, notionData, workspacePrompt, conversationHistory, aiModel, stream, calendarEvents, nutrientEntries } = await req.json();
+    const { context, sheetData, notionData, workspacePrompt, conversationHistory, aiModel, stream, calendarEvents, nutrientEntries, ragContext } = await req.json();
 
     let systemPrompt = '';
 
@@ -21,6 +75,51 @@ export async function POST(req: NextRequest) {
     const dateStr = now.toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     const timeStr = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
     systemPrompt += `Current Date & Time: ${dateStr}, ore ${timeStr}\n\n---\n\n`;
+
+    // ===================================================================
+    // Browser RAG context (sent from client-side, for guests)
+    // ===================================================================
+    if (ragContext && Array.isArray(ragContext) && ragContext.length > 0) {
+      systemPrompt += 'RETRIEVED DOCUMENTS (browser RAG):\n\n';
+      for (const item of ragContext) {
+        const label = item.sourceName || 'Uploaded document';
+        systemPrompt += `[${label} (relevance: ${Math.round((item.similarity || 0) * 100)}%)]\n${item.content}\n\n`;
+      }
+      systemPrompt += '---\n\n';
+      systemPrompt += 'IMPORTANT: Use the above document excerpts to answer the user\'s question.\n\n';
+    }
+
+    // ===================================================================
+    // RAG: Search uploaded documents for relevant context
+    // Only runs if the user has indexed uploaded documents
+    // ===================================================================
+    if (geminiKey) {
+      const userQuery = conversationHistory?.[conversationHistory.length - 1]?.content || '';
+      if (userQuery.trim()) {
+        try {
+          const supabase = await createClient();
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            // Gate: only call embedding API if user has indexed documents
+            const { count } = await supabase
+              .from('documents')
+              .select('id', { count: 'exact', head: true })
+              .eq('user_id', user.id)
+              .eq('source_type', 'uploaded_file')
+              .eq('status', 'indexed');
+            
+            if (count && count > 0) {
+              const docContext = await searchUploadedFiles(userQuery, geminiKey, supabase, user.id);
+              if (docContext) {
+                systemPrompt += docContext + '\n';
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[RAG] Search unavailable:', err instanceof Error ? err.message : err);
+        }
+      }
+    }
 
     if (sheetData && Array.isArray(sheetData)) {
       systemPrompt += 'Google Sheets Database (ALL SHEETS - COMPLETE DATA):\n\n';
