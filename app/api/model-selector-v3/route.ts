@@ -106,7 +106,6 @@ export async function GET(req: NextRequest) {
 
     const mergedRows: Array<Record<string, string>> = [];
     const mergedCellMetas: Array<Record<string, CellMeta>> = [];
-    const usedBenchIndices = new Set<number>();
 
     for (let fi = 0; fi < freeTiers.length; fi++) {
       const freeRow = freeTiers[fi];
@@ -114,15 +113,12 @@ export async function GET(req: NextRequest) {
       const freeName = (freeRow.Name || freeRow.Model || '').toLowerCase().trim();
       let match: Record<string, string> | null = null;
       let matchMeta: Record<string, CellMeta> | null = null;
-      let matchIndex = -1;
 
       for (let bi = 0; bi < benchmarks.length; bi++) {
-        if (usedBenchIndices.has(bi)) continue;
         const benchName = (benchmarks[bi].Name || benchmarks[bi].Model || '').toLowerCase().trim();
         if (freeName && benchName && matchesName(freeName, benchName)) {
           match = benchmarks[bi];
           matchMeta = benchCellMetas[bi] || {};
-          matchIndex = bi;
           break;
         }
       }
@@ -130,7 +126,6 @@ export async function GET(req: NextRequest) {
       const merged: Record<string, string> = { ...freeRow };
       const mergedMeta: Record<string, CellMeta> = { ...freeMeta };
       if (match) {
-        usedBenchIndices.add(matchIndex);
         for (const key of benchExclusive) {
           if (match[key]) {
             merged[key] = match[key];
