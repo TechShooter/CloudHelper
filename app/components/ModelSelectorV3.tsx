@@ -45,13 +45,12 @@ export default function ModelSelectorV3({ selectedModel, onModelSelect }: ModelS
   const [showColumnMenu, setShowColumnMenu] = useState(false);
   const [columnOrder, setColumnOrder] = useState<string[]>([]);
   const [sortConfig, setSortConfig] = useState<{ column: string | null; direction: 'asc' | 'desc' | null }>({
-    column: null,
-    direction: null,
+    column: 'Intelligence',
+    direction: 'desc',
   });
 
+  // Fetch model data on mount — not just when the modal opens
   useEffect(() => {
-    if (!isOpen) return;
-
     const fetchData = async () => {
       setLoading(true);
       setError(null);
@@ -84,7 +83,7 @@ export default function ModelSelectorV3({ selectedModel, onModelSelect }: ModelS
     } catch {
       // ignore
     }
-  }, [isOpen]);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -268,7 +267,7 @@ export default function ModelSelectorV3({ selectedModel, onModelSelect }: ModelS
         onClick={handleOpen}
         className="rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-indigo-600/25 transition-all hover:from-indigo-500 hover:to-purple-500 hover:shadow-xl hover:shadow-indigo-600/30 active:scale-[0.97] sm:px-4 sm:py-2 sm:text-sm"
       >
-        Compare
+        Selector
       </button>
 
       {isOpen && (
@@ -335,7 +334,7 @@ export default function ModelSelectorV3({ selectedModel, onModelSelect }: ModelS
               </button>
             </div>
 
-            {loading && (
+            {(!isOpen && rows.length > 0) ? null : loading && (
               <div className="flex flex-1 items-center justify-center text-gray-400">
                 <div className="flex items-center gap-3">
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-500/30 border-t-indigo-400" />
@@ -424,6 +423,15 @@ export default function ModelSelectorV3({ selectedModel, onModelSelect }: ModelS
                             key={rowIndex}
                             onClick={() => {
                               onModelSelect(modelId);
+                              // Detect provider by searching ALL column values for a known provider URL
+                              let provider = 'gemini';
+                              for (const key of Object.keys(row)) {
+                                const val = (row[key] || '').toLowerCase();
+                                if (val.includes('aistudio.google')) { provider = 'gemini'; break; }
+                                if (val.includes('groq')) { provider = 'groq'; break; }
+                                if (val.includes('openrouter')) { provider = 'openrouter'; break; }
+                              }
+                              window.dispatchEvent(new CustomEvent('cloudhelper:provider-change', { detail: provider }));
                               setIsOpen(false);
                             }}
                             className={`border-t border-gray-700/20 cursor-pointer transition-all ${

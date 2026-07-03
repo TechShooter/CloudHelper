@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, Suspense, lazy, useCallback } from 'react'
 
 // Dynamic imports to reduce initial bundle size
 const WorkspaceManager = lazy(() => import('../components/WorkspaceManager'));
-const ModelSelector = lazy(() => import('../components/ModelSelector'));
 const ModelSelectorV3 = lazy(() => import('../components/ModelSelectorV3'));
 const LogoutButton = lazy(() => import('../components/LogoutButton'));
 const ApiKeySettings = lazy(() => import('../components/ApiKeySettings'));
@@ -14,6 +13,7 @@ import { getApiKey } from '../lib/api-keys';
 export default function Home() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [aiModel, setAiModel] = useState<string>('gemini-flash-latest');
+  const [aiProvider, setAiProvider] = useState<string>('gemini');
   const [sheetData, setSheetData] = useState<any>(null);
   const [notionPages, setNotionPages] = useState<any[]>([]);
   const [hierarchicalNotionPages, setHierarchicalNotionPages] = useState<any[]>([]);
@@ -73,12 +73,21 @@ export default function Home() {
       }
     };
 
+    const handleProviderChange = (event: Event) => {
+      const customEvent = event as CustomEvent<string>;
+      if (typeof customEvent.detail === 'string') {
+        setAiProvider(customEvent.detail);
+      }
+    };
+
     window.addEventListener('storage', handleStorage);
     window.addEventListener('cloudhelper:model-change', handleModelSync as EventListener);
+    window.addEventListener('cloudhelper:provider-change', handleProviderChange);
 
     return () => {
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('cloudhelper:model-change', handleModelSync as EventListener);
+      window.removeEventListener('cloudhelper:provider-change', handleProviderChange);
     };
   }, []);
 
@@ -330,7 +339,6 @@ export default function Home() {
         <span className="text-xs font-semibold text-white sm:text-base">☁️ CloudHelper</span>
         <div className="flex items-center gap-1 sm:gap-2">
           <Suspense fallback={<div className="text-white text-xs">...</div>}>
-            <ModelSelector selectedModel={aiModel} onModelSelect={setAiModel} />
             <ModelSelectorV3 selectedModel={aiModel} onModelSelect={setAiModel} />
             <ApiKeySettings />
             <LogoutButton />
@@ -344,6 +352,7 @@ export default function Home() {
             ref={workspaceManagerRef}
             notes={[]}
             aiModel={aiModel}
+            aiProvider={aiProvider}
             sheetData={sheetData}
             notionPages={notionPages}
             allNotionPages={notionPages}

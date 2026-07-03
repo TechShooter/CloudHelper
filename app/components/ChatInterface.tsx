@@ -5,6 +5,7 @@ import ChatHeader, { ChatHeaderRef } from './ChatHeader';
 import { createClient } from '@/utils/supabase/client';
 import { getApiKey, hasApiKey } from '../lib/api-keys';
 import { ingestFile, searchQuery, removeDocument, getStats } from '../lib/browser-rag';
+import { saveChat, saveMessages, loadMessages } from '../lib/chat-storage';
 
 interface UploadedFile {
   id: string;
@@ -15,11 +16,6 @@ interface UploadedFile {
   charCount?: number;
   sourceId?: string;
   documentId?: string;
-}
-
-let guestChatCounter = 0;
-function generateGuestChatId(): string {
-  return `guest-${Date.now()}-${++guestChatCounter}`;
 }
 
 // Lightweight markdown parser (replaces heavy react-markdown)
@@ -124,6 +120,7 @@ interface Props {
   selectedContexts: string[];
   notes: { id: string, title: string, content: string }[];
   aiModel: string;
+  aiProvider?: string;
   sheetData: any;
   notionPages: any[];
   workspacePrompt?: string;
@@ -132,7 +129,7 @@ interface Props {
   nutrientEntries?: any[];
 }
 
-export default function ChatInterface({ selectedContexts, notes, aiModel, sheetData, notionPages, workspacePrompt, workspaceId, calendarEvents, nutrientEntries }: Props) {
+export default function ChatInterface({ selectedContexts, notes, aiModel, aiProvider, sheetData, notionPages, workspacePrompt, workspaceId, calendarEvents, nutrientEntries }: Props) {
   const chatHeaderRef = useRef<ChatHeaderRef>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -194,29 +191,21 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     };
   }, [activeChatId]);
 
-  // Load messages from Supabase when activeChatId changes
+  // Load messages from IndexedDB when activeChatId changes
   useEffect(() => {
-    const loadMessages = async () => {
-      if (!activeChatId || isGuestRef.current) {
-        return;
-      }
+    const loadFromDB = async () => {
+      if (!activeChatId) return;
       // Skip loading if this is a newly created chat (messages are already in state)
       if (isNewlyCreatedChatRef.current) {
         isNewlyCreatedChatRef.current = false;
         return;
       }
-      // Clear messages and load from Supabase when switching chats
       setMessages([]);
       setLoadingMessages(true);
       try {
-        const res = await fetch(`/api/chat-persistence?chatId=${activeChatId}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.messages) {
-            setMessages(data.messages);
-          }
-        } else {
-          console.error('Failed to load messages, status:', res.status);
+        const msgs = await loadMessages(activeChatId);
+        if (msgs.length > 0) {
+          setMessages(msgs);
         }
       } catch (error) {
         console.error('Failed to load messages:', error);
@@ -224,28 +213,19 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
         setLoadingMessages(false);
       }
     };
-
-    loadMessages();
+    loadFromDB();
   }, [activeChatId]);
 
-  // Save messages to Supabase with debounce (backup for non-streaming responses)
+  // Save messages to IndexedDB with debounce
   useEffect(() => {
-    if (!activeChatId || isGuestRef.current) return;
+    if (!activeChatId || messages.length === 0) return;
     const timeoutId = setTimeout(async () => {
       try {
-        const res = await fetch('/api/chat-persistence', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chatId: activeChatId, messages })
-        });
-        if (!res.ok) {
-          console.error('Failed to save messages, status:', res.status);
-        }
+        await saveMessages(activeChatId, messages);
       } catch (error) {
         console.error('Failed to save messages:', error);
       }
-    }, 5000); // Increased to 5 seconds since server handles streaming persistence
-
+    }, 2000);
     return () => clearTimeout(timeoutId);
   }, [messages, activeChatId]);
 
@@ -299,54 +279,22 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     let chatIdToUse = currentActiveChatId;
     let isNewChat = false;
     if (!chatIdToUse) {
-      const isGuest = isGuestRef.current;
-      if (isGuest) {
-        // Guest mode: use a local chat ID, skip Supabase
-        chatIdToUse = generateGuestChatId();
-        isNewChat = true;
-        setActiveChatId(chatIdToUse);
-      } else {
-        try {
-          // Generate title from first message (first 50 characters)
-          const title = input.trim().substring(0, 50) + (input.length > 50 ? '...' : '');
-          const res = await fetch('/api/chats', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workspaceId, title })
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.chat) {
-              chatIdToUse = data.chat.id;
-              isNewChat = true;
-              isNewlyCreatedChatRef.current = true;
-              setActiveChatId(chatIdToUse);
-              // Refresh chat header to show the new chat immediately
-              chatHeaderRef.current?.refreshChats();
-            }
-          }
-        } catch (error) {
-          console.error('Failed to create chat:', error);
-          return;
-        }
-      }
+      // Use local IndexedDB for all users (guests and logged-in)
+      chatIdToUse = `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      isNewChat = true;
+      isNewlyCreatedChatRef.current = true;
+      const title = input.trim().substring(0, 50) + (input.length > 50 ? '...' : '');
+      const now = new Date().toISOString();
+      await saveChat({ id: chatIdToUse, workspaceId, title, createdAt: now, updatedAt: now });
+      setActiveChatId(chatIdToUse);
+      chatHeaderRef.current?.refreshChats();
     }
 
     if (!chatIdToUse) return;
 
-    // Update chat title if it's the first message in the chat
-    if (!isNewChat && currentMessages.length === 0 && !isGuestRef.current) {
-      try {
-        const title = input.trim().substring(0, 50) + (input.length > 50 ? '...' : '');
-        await fetch('/api/chats', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chatId: chatIdToUse, title })
-        });
-        chatHeaderRef.current?.refreshChats();
-      } catch (error) {
-        console.error('Failed to update chat title:', error);
-      }
+    // Update chat title in IndexedDB if it's the first message
+    if (isNewChat) {
+      // Title already set above during creation
     }
 
     const controller = new AbortController();
@@ -404,6 +352,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
       workspacePrompt: workspacePrompt,
       conversationHistory: updatedMessages.slice(-6), // Use updatedMessages with the new user message
       aiModel: aiModel,
+      aiProvider: aiProvider || 'gemini',
       chatId: chatIdToUse, // Pass chatId for server-side persistence
       stream: true,
       calendarEvents: calendarEvents,
@@ -544,7 +493,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
       setAbortController(null);
       setLoadingStatus('connecting');
     }
-  }, [input, loading, currentMessages, messages, workspaceId, notes, selectedContexts, sheetData, notionPages, workspacePrompt, aiModel, calendarEvents, nutrientEntries]);
+  }, [input, loading, currentMessages, messages, workspaceId, notes, selectedContexts, sheetData, notionPages, workspacePrompt, aiModel, aiProvider, calendarEvents, nutrientEntries]);
 
   // Memoize delete handler to prevent re-renders
   const handleDeleteMessage = useCallback((index: number) => {

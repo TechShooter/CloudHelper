@@ -15,7 +15,6 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
   const supabase = createClient();
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -24,25 +23,13 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     setError('');
 
     try {
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/chat`,
-          },
-        });
-        if (error) throw error;
-        setError('Check your email to confirm your account!');
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
-        onClose();
-        router.refresh();
-      }
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) throw error;
+      onClose();
+      router.refresh();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -56,9 +43,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-bold text-white">
-            {isSignUp ? 'Create Account' : 'Sign In'}
-          </h3>
+          <h3 className="text-xl font-bold text-white">Sign In</h3>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white text-xl"
@@ -109,19 +94,13 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
             disabled={loading}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
           >
-            {loading
-              ? (isSignUp ? 'Creating account...' : 'Signing in...')
-              : (isSignUp ? 'Sign Up' : 'Sign In')}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => { setIsSignUp(!isSignUp); setError(''); }}
-            className="w-full text-blue-400 hover:text-blue-300 text-sm"
-          >
-            {isSignUp ? 'Already have an account? Sign in' : 'Need an account? Sign up'}
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+
+        <p className="mt-4 text-center text-sm text-amber-400/80">
+          Sign ups are currently closed.
+        </p>
       </div>
     </div>
   );

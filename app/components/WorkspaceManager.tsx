@@ -137,6 +137,7 @@ const DEFAULT_WORKSPACES: Workspace[] = [
 interface Props {
   notes: { id: string, title: string, content: string }[];
   aiModel: string;
+  aiProvider?: string;
   sheetData: any;
   notionPages: any[];
   allNotionPages: any[];
@@ -147,7 +148,7 @@ interface Props {
   onStopNotion?: () => void;
 }
 
-export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData, notionPages, allNotionPages, hierarchicalNotionPages, notionError, isLoadingNotion, onReloadNotion, onStopNotion }: Props, ref) {
+export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider, sheetData, notionPages, allNotionPages, hierarchicalNotionPages, notionError, isLoadingNotion, onReloadNotion, onStopNotion }: Props, ref) {
   const [activeWorkspace, setActiveWorkspace] = useState('general');
   const [activeTab, setActiveTab] = useState<'chat' | 'docs' | 'calendar' | 'nutrients'>('chat');
   const [workspaces] = useState<Workspace[]>(DEFAULT_WORKSPACES);
@@ -1831,6 +1832,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                 selectedContexts={selectedContexts}
                 notes={notes}
                 aiModel={aiModel}
+                aiProvider={aiProvider || "gemini"}
                 sheetData={currentWorkspace.autoLoadSheets ? sheetData : null}
                 notionPages={getNotionPages()}
                 workspacePrompt={currentWorkspace.systemPrompt}
