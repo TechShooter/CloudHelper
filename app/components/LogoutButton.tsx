@@ -12,17 +12,22 @@ export default function LogoutButton() {
   const [showLogin, setShowLogin] = useState(false);
 
   useEffect(() => {
-    const check = async () => {
-      try {
-        const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        setIsLoggedIn(!!user);
-      } catch {
-        setIsLoggedIn(false);
-      }
+    const supabase = createClient();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(!!session);
       setChecking(false);
-    };
-    check();
+    });
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setIsLoggedIn(!!user);
+      setChecking(false);
+    }).catch(() => {
+      setIsLoggedIn(false);
+      setChecking(false);
+    });
+
+    return () => subscription?.unsubscribe();
   }, []);
 
   const handleLogout = async () => {

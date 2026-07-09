@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createClient } from '@/utils/supabase/client';
+import { getApiKey } from '../lib/api-keys';
 
 interface FoodEntry {
   id: string;
@@ -1011,7 +1012,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
   const currentWeight = weightHistory.length > 0 ? weightHistory[0].weight : null;
 
   return (
-    <div className="flex flex-col bg-gray-900 min-h-screen">
+    <div className="flex flex-col bg-gray-900 h-full overflow-y-auto">
       <div className="bg-gray-800 border-b border-gray-700 p-3 sm:p-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
@@ -1466,6 +1467,22 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                   </button>
                 ));
               })()}
+            </div>
+          )}
+          {searchTerm && filteredFoods.length === 0 && !getApiKey('google-sheet-id') && (
+            <div className="mt-2 bg-gray-800 rounded border border-gray-600 p-4 text-center">
+              <p className="text-sm text-gray-400 mb-3">No food database configured.</p>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('cloudhelper:open-api-settings'))}
+                className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-500 text-sm"
+              >
+                Add Sheet ID
+              </button>
+            </div>
+          )}
+          {searchTerm && filteredFoods.length === 0 && getApiKey('google-sheet-id') && (
+            <div className="mt-2 bg-gray-800 rounded border border-gray-600 p-4 text-center">
+              <p className="text-sm text-gray-400">No foods match your search.</p>
             </div>
           )}
         </div>

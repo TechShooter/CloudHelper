@@ -36,7 +36,7 @@ export default function ApiKeySettings() {
       <button
         onClick={() => setIsOpen(true)}
         className="flex h-7 w-7 items-center justify-center rounded-lg text-sm text-gray-400 transition-colors hover:bg-gray-800 hover:text-white sm:h-8 sm:w-8"
-        title="API Key Settings"
+        title="API Keys and Sources Settings"
       >
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
           <path fillRule="evenodd" d="M11.828 2.25c-.916 0-1.699.663-1.85 1.567l-.091.558a.83.83 0 01-1.415.432l-.404-.404a1.854 1.854 0 00-2.623 0l-.736.736a1.854 1.854 0 000 2.623l.404.404c.368.368.613.896.432 1.415l-.558.09a1.857 1.857 0 00-1.567 1.851v1.036c0 .916.663 1.699 1.567 1.85l.558.091a.83.83 0 01.432 1.415l-.404.404a1.854 1.854 0 000 2.623l.736.736a1.854 1.854 0 002.623 0l.404-.404a.83.83 0 011.415.432l.091.558a1.857 1.857 0 001.85 1.567h1.036c.916 0 1.699-.663 1.85-1.567l.091-.558a.83.83 0 011.415-.432l.404.404a1.854 1.854 0 002.623 0l.736-.736a1.854 1.854 0 000-2.623l-.404-.404a.83.83 0 01-.432-1.415l.558-.09a1.857 1.857 0 001.567-1.851v-1.036c0-.916-.663-1.699-1.567-1.85l-.558-.091a.83.83 0 01-.432-1.415l.404-.404a1.854 1.854 0 000-2.623l-.736-.736a1.854 1.854 0 00-2.623 0l-.404.404a.83.83 0 01-1.415-.432l-.091-.558a1.857 1.857 0 00-1.85-1.567h-1.036zM12 7.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9z" clipRule="evenodd" />
@@ -44,10 +44,10 @@ export default function ApiKeySettings() {
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg shadow-2xl">
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-gray-800 rounded-none sm:rounded-lg p-6 w-full max-w-lg shadow-2xl h-full sm:max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white">API Key Settings</h3>
+              <h3 className="text-lg font-semibold text-white">API Keys and Sources Settings</h3>
               <button
                 onClick={() => setIsOpen(false)}
                 className="text-gray-400 hover:text-white text-xl"
