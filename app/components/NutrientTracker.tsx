@@ -531,77 +531,118 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
     })();
   }, [nutrientNotes, authReady]);
 
-  // Funzione per pulire i valori di costo dal formato italiano
-  const parseItalianCost = (costStr: string): number => {
-    if (!costStr || typeof costStr !== 'string') return 0;
-    
-    // Rimuovi simboli € e spazi
-    let cleaned = costStr.replace(/[€\s]/g, '');
-    
-    // Sostituisci virgola con punto per decimali
+  const parseItalianNumber = (val: string): number => {
+    if (!val || typeof val !== 'string') return 0;
+    let cleaned = val.replace(/[€\s]/g, '');
     cleaned = cleaned.replace(/,/g, '.');
-    
-    // Converti in numero
     const parsed = parseFloat(cleaned);
-    
     return isNaN(parsed) ? 0 : parsed;
+  };
+
+  const parseItalianCost = (costStr: string): number => {
+    return parseItalianNumber(costStr);
   };
 
   const getFoodOptions = () => {
     if (!sheetData || !Array.isArray(sheetData)) {
       return [];
     }
-    
+
+    let headers: string[] = [];
+    for (const sheet of sheetData) {
+      if (sheet.data && Array.isArray(sheet.data) && sheet.data.length > 0) {
+        headers = sheet.data[0];
+        break;
+      }
+    }
+    if (headers.length === 0) return [];
+
+    const colIdx = (name: string, exact = false): number => {
+      if (exact) return headers.indexOf(name);
+      return headers.findIndex(h => h.includes(name));
+    };
+
+    const C = {
+      name: colIdx('Name', false),
+      usualGrams: colIdx('Usual g', false),
+      costPerKg: colIdx('€/kg', true),
+      energyKJ: colIdx('Energy', false),
+      fats: colIdx('Fats', false),
+      saturatedFats: colIdx('saturi', false),
+      carbs: colIdx('Carbo', false),
+      sugars: colIdx('zuccheri', false),
+      fibers: colIdx('Fibre', false),
+      protein: colIdx('Proteine', false),
+      salt: headers.findIndex(h => h.includes('Sale') && !h.includes('tot')),
+      vitaminD: colIdx('Vit D', false),
+      vitaminB1: colIdx('Vit B1', false),
+      vitaminB2: colIdx('Vit B2', false),
+      vitaminB3: colIdx('Vit B3', false),
+      vitaminB5: colIdx('Vit B5', false),
+      vitaminB6: colIdx('Vit B6', false),
+      vitaminB9: colIdx('Vit B9', false),
+      vitaminE: colIdx('Vit E', false),
+      vitaminK: colIdx('Vit K', false),
+      calcium: colIdx('Calcio', false),
+      iron: colIdx('Ferro', false),
+      phosphorus: colIdx('Fosforo', false),
+      magnesium: colIdx('Magnesio', false),
+      potassium: colIdx('Potassio', false),
+      zinc: colIdx('Zinco', false),
+      copper: colIdx('Rame', false),
+      manganese: colIdx('Manganese', false),
+      selenium: colIdx('Selenio', false),
+      comments: colIdx('Comments', false),
+    };
+
     const foods: any[] = [];
-    let totalRowsProcessed = 0;
-    
-    sheetData.forEach((sheet: any, sheetIndex: number) => {
+
+    sheetData.forEach((sheet: any) => {
       if (sheet.data && Array.isArray(sheet.data)) {
-        sheet.data.forEach((row: string[], rowIndex: number) => {
-          totalRowsProcessed++;
-          
-          if (row.length >= 15 && row[0]) {
-            foods.push({
-              name: row[0],
-              usualGrams: parseFloat(row[5]) || 100,
-              costPerKg: parseItalianCost(row[6]),         // Colonna G: €/kg (formato italiano)
-              _debugCostPerKg: row[6], // Debug per vedere il valore originale
-              _debugParsedCost: parseItalianCost(row[6]), // Debug per vedere il valore parsato
-              _debugRowLength: row.length, // Debug per vedere lunghezza riga
-              energyPer100g: parseFloat(row[11]) || 0,      // Colonna L: Energy
-              fatsPer100g: parseFloat(row[12]) || 0,        // Colonna M: Fats %
-              saturatedFatsPer100g: parseFloat(row[13]) || 0, // Colonna N: di cui saturi
-              carbsPer100g: parseFloat(row[14]) || 0,        // Colonna O: Carbo %
-              sugarsPer100g: parseFloat(row[15]) || 0,       // Colonna P: di cui zuccheri
-              fibersPer100g: parseFloat(row[16]) || 0,       // Colonna Q: Fibre %
-              proteinPer100g: parseFloat(row[17]) || 0,       // Colonna R: Proteine %
-              saltPer100g: parseFloat(row[18]) || 0,         // Colonna S: Sale %
-              vitaminDPer100g: parseFloat(row[20]) || 0,     // Colonna U: Vit D
-              vitaminB1Per100g: parseFloat(row[21]) || 0,    // Colonna V: Vit B1
-              vitaminB2Per100g: parseFloat(row[22]) || 0,    // Colonna W: Vit B2
-              vitaminB3Per100g: parseFloat(row[23]) || 0,    // Colonna X: Vit B3
-              vitaminB5Per100g: parseFloat(row[24]) || 0,    // Colonna Y: Vit B5
-              vitaminB6Per100g: parseFloat(row[25]) || 0,    // Colonna Z: Vit B6
-              vitaminB9Per100g: parseFloat(row[26]) || 0,    // Colonna AA: Vit B9
-              vitaminEPer100g: parseFloat(row[31]) || 0,     // Colonna AF: Vit E
-              vitaminKPer100g: parseFloat(row[32]) || 0,     // Colonna AG: Vit K
-              calciumPer100g: parseFloat(row[27]) || 0,       // Colonna AB: Calcio
-              ironPer100g: parseFloat(row[28]) || 0,         // Colonna AC: Ferro
-              phosphorusPer100g: parseFloat(row[29]) || 0,   // Colonna AD: Fosforo
-              magnesiumPer100g: parseFloat(row[30]) || 0,      // Colonna AE: Magnesio
-              potassiumPer100g: parseFloat(row[33]) || 0,      // Colonna AH: Potassio
-              zincPer100g: parseFloat(row[34]) || 0,          // Colonna AI: Zinco
-              copperPer100g: parseFloat(row[35]) || 0,         // Colonna AJ: Rame
-              manganesePer100g: parseFloat(row[36]) || 0,      // Colonna AK: Manganese
-              seleniumPer100g: parseFloat(row[37]) || 0,       // Colonna AL: Selenio
-            });
-          }
-        });
+        for (let i = 1; i < sheet.data.length; i++) {
+          const row = sheet.data[i];
+          const name = C.name >= 0 ? row[C.name] : '';
+          if (!name) continue;
+
+          const val = (idx: number) => (idx >= 0 && idx < row.length ? parseItalianNumber(row[idx]) : 0);
+          const str = (idx: number) => (idx >= 0 && idx < row.length ? (row[idx] || '').trim() : '');
+
+          foods.push({
+            name,
+            usualGrams: val(C.usualGrams) || 100,
+            costPerKg: C.costPerKg >= 0 ? parseItalianCost(row[C.costPerKg]) : 0,
+            energyPer100g: val(C.energyKJ),
+            fatsPer100g: val(C.fats),
+            saturatedFatsPer100g: val(C.saturatedFats),
+            carbsPer100g: val(C.carbs),
+            sugarsPer100g: val(C.sugars),
+            fibersPer100g: val(C.fibers),
+            proteinPer100g: val(C.protein),
+            saltPer100g: val(C.salt),
+            vitaminDPer100g: val(C.vitaminD),
+            vitaminB1Per100g: val(C.vitaminB1),
+            vitaminB2Per100g: val(C.vitaminB2),
+            vitaminB3Per100g: val(C.vitaminB3),
+            vitaminB5Per100g: val(C.vitaminB5),
+            vitaminB6Per100g: val(C.vitaminB6),
+            vitaminB9Per100g: val(C.vitaminB9),
+            vitaminEPer100g: val(C.vitaminE),
+            vitaminKPer100g: val(C.vitaminK),
+            calciumPer100g: val(C.calcium),
+            ironPer100g: val(C.iron),
+            phosphorusPer100g: val(C.phosphorus),
+            magnesiumPer100g: val(C.magnesium),
+            potassiumPer100g: val(C.potassium),
+            zincPer100g: val(C.zinc),
+            copperPer100g: val(C.copper),
+            manganesePer100g: val(C.manganese),
+            seleniumPer100g: val(C.selenium),
+            comments: str(C.comments),
+          });
+        }
       }
     });
-    
-    
-    
+
     return foods;
   };
 
@@ -818,23 +859,21 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
 
   const selectedDayStart = useMemo(() => {
     const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() - dayOffset);
+    start.setHours(start.getHours() - 24 * (dayOffset + 1));
     return start;
   }, [dayOffset]);
 
   const selectedDayEnd = useMemo(() => {
-    const end = new Date(selectedDayStart);
-    end.setDate(end.getDate() + 1);
+    const end = new Date();
+    end.setHours(end.getHours() - 24 * dayOffset);
     return end;
-  }, [selectedDayStart]);
+  }, [dayOffset]);
 
   const selectedDayLabel = useMemo(() => {
-    const formattedDate = selectedDayStart.toLocaleDateString();
-    if (dayOffset === 0) return `Today (${formattedDate})`;
-    if (dayOffset === 1) return `Yesterday (${formattedDate})`;
-    return formattedDate;
-  }, [dayOffset, selectedDayStart]);
+    if (dayOffset === 0) return 'Last 24 hours';
+    if (dayOffset === 1) return '24-48 hours ago';
+    return `${dayOffset * 24}-${(dayOffset + 1) * 24} hours ago`;
+  }, [dayOffset]);
 
   // Filter entries for selected day for totals display (excludes hidden entries)
   const selectedDayEntries = useMemo(() => {
@@ -1459,7 +1498,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                     }}
                     className="w-full text-left px-3 py-2 text-sm text-white hover:bg-gray-700 border-b border-gray-700 last:border-b-0"
                   >
-                    <div className="font-medium">{food.name}</div>
+                    <div className="font-medium flex items-center gap-1">
+                      {food.name}
+                      {food.comments && <span className="text-xs text-gray-500 cursor-help" title={food.comments}>💬</span>}
+                    </div>
                     <div className="text-xs text-gray-400">
                       Per 100g: {food.energyPer100g.toFixed(0)} kJ | P: {food.proteinPer100g}g | C: {food.carbsPer100g}g | F: {food.fatsPer100g}g
                       {food.usualGrams !== 100 && <span className="ml-2 text-blue-400">(Usual: {food.usualGrams}g)</span>}
@@ -1654,10 +1696,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
               <div className="text-xs text-gray-400 mb-1">Energy (kJ)</div>
               <div 
                 className="text-xl font-bold text-white cursor-pointer hover:text-blue-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientEdit('energyKJ', 'Energy', totals.energy, targets.energy, 'kJ')}
+                onClick={() => handleNutrientClick('energy', 'Energy', 'kJ')}
               >
                 {totals.energy.toFixed(0)}
-                <span className="text-xs text-gray-500">✏️</span>
               </div>
               {targets.energy > 0 && (
                 <>
@@ -1682,10 +1723,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
               <div className="text-xs text-gray-400 mb-1">Protein (g)</div>
               <div 
                 className="text-xl font-bold text-white cursor-pointer hover:text-green-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientEdit('protein', 'Protein', totals.protein, targets.protein, 'g')}
+                onClick={() => handleNutrientClick('protein', 'Protein', 'g')}
               >
                 {totals.protein.toFixed(1)}
-                <span className="text-xs text-gray-500">✏️</span>
               </div>
               {targets.protein > 0 && (
                 <>
@@ -1710,10 +1750,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
               <div className="text-xs text-gray-400 mb-1">Carbs (g)</div>
               <div 
                 className="text-xl font-bold text-white cursor-pointer hover:text-yellow-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientEdit('carbs', 'Carbs', totals.carbs, targets.carbs, 'g')}
+                onClick={() => handleNutrientClick('carbs', 'Carbs', 'g')}
               >
                 {totals.carbs.toFixed(1)}
-                <span className="text-xs text-gray-500">✏️</span>
               </div>
               {targets.carbs > 0 && (
                 <>
@@ -1738,10 +1777,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
               <div className="text-xs text-gray-400 mb-1">Fats (g)</div>
               <div 
                 className="text-xl font-bold text-white cursor-pointer hover:text-purple-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientEdit('fats', 'Fats', totals.fats, targets.fats, 'g')}
+                onClick={() => handleNutrientClick('fats', 'Fats', 'g')}
               >
                 {totals.fats.toFixed(1)}
-                <span className="text-xs text-gray-500">✏️</span>
               </div>
               {targets.fats > 0 && (
                 <>
@@ -1769,10 +1807,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
               <div className="text-xs text-gray-400 mb-1">Fiber (g)</div>
               <div 
                 className="text-xl font-bold text-white cursor-pointer hover:text-orange-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientEdit('fibers', 'Fiber', totals.fibers, goals.fibers, 'g')}
+                onClick={() => handleNutrientClick('fibers', 'Fiber', 'g')}
               >
                 {totals.fibers.toFixed(1)}
-                <span className="text-xs text-gray-500">✏️</span>
               </div>
               {goals.fibers > 0 && (
                 <>
@@ -1797,10 +1834,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
               <div className="text-xs text-gray-400 mb-1">Salt (g)</div>
               <div 
                 className="text-lg font-bold text-white cursor-pointer hover:text-orange-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientEdit('salt', 'Salt', totals.salt, goals.salt, 'g', true)}
+                onClick={() => handleNutrientClick('salt', 'Salt', 'g')}
               >
                 {totals.salt.toFixed(1)}
-                <span className="text-xs text-gray-500">✏️</span>
               </div>
               <div className="text-xs text-gray-400 mt-1">Limit: {goals.salt}g ⚠️</div>
               <div className="flex items-center gap-2 mt-2">
@@ -1830,10 +1866,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
               <div className="text-xs text-gray-400 mb-1">Sugars (g)</div>
               <div 
                 className="text-lg font-bold text-white cursor-pointer hover:text-pink-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientEdit('sugars', 'Sugars', totals.sugars, goals.sugars, 'g')}
+                onClick={() => handleNutrientClick('sugars', 'Sugars', 'g')}
               >
                 {totals.sugars.toFixed(1)}
-                <span className="text-xs text-gray-500">✏️</span>
               </div>
               {goals.sugars > 0 && (
                 <>
@@ -1858,10 +1893,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
               <div className="text-xs text-gray-400 mb-1">Sat. Fats (g)</div>
               <div 
                 className="text-lg font-bold text-white cursor-pointer hover:text-red-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientEdit('saturatedFats', 'Saturated Fats', totals.saturatedFats, goals.saturatedFats, 'g', true)}
+                onClick={() => handleNutrientClick('saturatedFats', 'Saturated Fats', 'g')}
               >
                 {totals.saturatedFats.toFixed(1)}
-                <span className="text-xs text-gray-500">✏️</span>
               </div>
               <div className="text-xs text-gray-400 mt-1">Limit: {goals.saturatedFats}g ⚠️</div>
               <div className="flex items-center gap-2 mt-2">
@@ -1896,10 +1930,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Vit A (μg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-red-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('vitaminA', 'Vitamin A', totals.vitaminA, goals.vitaminA, 'μg')}
+                  onClick={() => handleNutrientClick('vitaminA', 'Vitamin A', 'μg')}
                 >
                   {totals.vitaminA.toFixed(0)}
-                  <span className="text-xs text-gray-500">✏️</span>
                 </div>
                 {goals.vitaminA > 0 && (
                   <>
@@ -1924,10 +1957,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Vit C (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-orange-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('vitaminC', 'Vitamin C', totals.vitaminC, goals.vitaminC, 'mg')}
+                  onClick={() => handleNutrientClick('vitaminC', 'Vitamin C', 'mg')}
                 >
                   {totals.vitaminC.toFixed(1)}
-                  <span className="text-xs text-gray-500">✏️</span>
                 </div>
                 {goals.vitaminC > 0 && (
                   <>
@@ -1952,10 +1984,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Vit D (μg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-indigo-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('vitaminD', 'Vitamin D', totals.vitaminD, goals.vitaminD, 'μg')}
+                  onClick={() => handleNutrientClick('vitaminD', 'Vitamin D', 'μg')}
                 >
                   {totals.vitaminD.toFixed(1)}
-                  <span className="text-xs text-gray-500">✏️</span>
                 </div>
                 {goals.vitaminD > 0 && (
                   <>
@@ -1980,10 +2011,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Vit B1 (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-cyan-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('vitaminB1', 'Vitamin B1', totals.vitaminB1, goals.vitaminB1, 'mg')}
+                  onClick={() => handleNutrientClick('vitaminB1', 'Vitamin B1', 'mg')}
                 >
                   {totals.vitaminB1.toFixed(2)}
-                  <span className="text-xs text-gray-500">✏️</span>
                 </div>
                 {goals.vitaminB1 > 0 && (
                   <>
@@ -2008,10 +2038,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Vit B2 (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-teal-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('vitaminB2', 'Vitamin B2', totals.vitaminB2, goals.vitaminB2, 'mg')}
+                  onClick={() => handleNutrientClick('vitaminB2', 'Vitamin B2', 'mg')}
                 >
                   {totals.vitaminB2.toFixed(2)}
-                  <span className="text-xs text-gray-500">✏️</span>
                 </div>
                 {goals.vitaminB2 > 0 && (
                   <>
@@ -2036,10 +2065,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Vit B3 (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-yellow-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('vitaminB3', 'Vitamin B3', totals.vitaminB3, goals.vitaminB3, 'mg')}
+                  onClick={() => handleNutrientClick('vitaminB3', 'Vitamin B3', 'mg')}
                 >
                   {totals.vitaminB3.toFixed(1)}
-                  <span className="text-xs text-gray-500">✏️</span>
                 </div>
                 {goals.vitaminB3 > 0 && (
                   <>
@@ -2064,10 +2092,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Vit B5 (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-purple-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('vitaminB5', 'Vitamin B5', totals.vitaminB5, goals.vitaminB5, 'mg')}
+                  onClick={() => handleNutrientClick('vitaminB5', 'Vitamin B5', 'mg')}
                 >
                   {totals.vitaminB5.toFixed(1)}
-                  <span className="text-xs text-gray-500">✏️</span>
                 </div>
                 {goals.vitaminB5 > 0 && (
                   <>
@@ -2092,10 +2119,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Vit B6 (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-pink-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('vitaminB6', 'Vitamin B6', totals.vitaminB6, goals.vitaminB6, 'mg')}
+                  onClick={() => handleNutrientClick('vitaminB6', 'Vitamin B6', 'mg')}
                 >
                   {totals.vitaminB6.toFixed(2)}
-                  <span className="text-xs text-gray-500">✏️</span>
                 </div>
                 {goals.vitaminB6 > 0 && (
                   <>
@@ -2120,10 +2146,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Vit B9 (μg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-orange-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('vitaminB9', 'Vitamin B9', totals.vitaminB9, goals.vitaminB9, 'μg')}
+                  onClick={() => handleNutrientClick('vitaminB9', 'Vitamin B9', 'μg')}
                 >
                   {totals.vitaminB9.toFixed(0)}
-                  <span className="text-xs text-gray-500">✏️</span>
                 </div>
                 {goals.vitaminB9 > 0 && (
                   <>
@@ -2148,10 +2173,9 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Vit B12 (μg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-red-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('vitaminB12', 'Vitamin B12', totals.vitaminB12, goals.vitaminB12, 'μg')}
+                  onClick={() => handleNutrientClick('vitaminB12', 'Vitamin B12', 'μg')}
                 >
                   {totals.vitaminB12.toFixed(1)}
-                  <span className="text-xs text-gray-500">✏️</span>
                 </div>
                 {goals.vitaminB12 > 0 && (
                   <>
@@ -2176,10 +2200,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Vit E (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-amber-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('vitaminE', 'Vitamin E', totals.vitaminE, goals.vitaminE, 'mg')}
+                  onClick={() => handleNutrientClick('vitaminE', 'Vitamin E', 'mg')}
                 >
                   {totals.vitaminE.toFixed(1)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 {goals.vitaminE > 0 && (
                   <>
@@ -2204,10 +2228,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Vit K (μg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-lime-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('vitaminK', 'Vitamin K', totals.vitaminK, goals.vitaminK, 'μg')}
+                  onClick={() => handleNutrientClick('vitaminK', 'Vitamin K', 'μg')}
                 >
                   {totals.vitaminK.toFixed(0)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 {goals.vitaminK > 0 && (
                   <>
@@ -2238,10 +2262,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Calcium (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-blue-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('calcium', 'Calcium', totals.calcium, goals.calcium, 'mg')}
+                  onClick={() => handleNutrientClick('calcium', 'Calcium', 'mg')}
                 >
                   {totals.calcium.toFixed(0)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 {goals.calcium > 0 && (
                   <>
@@ -2266,10 +2290,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Iron (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-green-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('iron', 'Iron', totals.iron, goals.iron, 'mg')}
+                  onClick={() => handleNutrientClick('iron', 'Iron', 'mg')}
                 >
                   {totals.iron.toFixed(1)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 {goals.iron > 0 && (
                   <>
@@ -2294,10 +2318,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Phosphorus (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-gray-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('phosphorus', 'Phosphorus', totals.phosphorus, goals.phosphorus, 'mg')}
+                  onClick={() => handleNutrientClick('phosphorus', 'Phosphorus', 'mg')}
                 >
                   {totals.phosphorus.toFixed(0)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 {goals.phosphorus > 0 && (
                   <>
@@ -2322,10 +2346,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Magnesium (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-gray-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('magnesium', 'Magnesium', totals.magnesium, goals.magnesium, 'mg')}
+                  onClick={() => handleNutrientClick('magnesium', 'Magnesium', 'mg')}
                 >
                   {totals.magnesium.toFixed(0)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 {goals.magnesium > 0 && (
                   <>
@@ -2350,10 +2374,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Potassium (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-yellow-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('potassium', 'Potassium', totals.potassium, goals.potassium, 'mg')}
+                  onClick={() => handleNutrientClick('potassium', 'Potassium', 'mg')}
                 >
                   {totals.potassium.toFixed(0)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 {goals.potassium > 0 && (
                   <>
@@ -2378,10 +2402,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Zinc (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-orange-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('zinc', 'Zinc', totals.zinc, goals.zinc, 'mg')}
+                  onClick={() => handleNutrientClick('zinc', 'Zinc', 'mg')}
                 >
                   {totals.zinc.toFixed(1)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 {goals.zinc > 0 && (
                   <>
@@ -2406,10 +2430,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Copper (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-red-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('copper', 'Copper', totals.copper, goals.copper, 'mg')}
+                  onClick={() => handleNutrientClick('copper', 'Copper', 'mg')}
                 >
                   {totals.copper.toFixed(2)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 {goals.copper > 0 && (
                   <>
@@ -2434,10 +2458,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Manganese (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-purple-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('manganese', 'Manganese', totals.manganese, goals.manganese, 'mg')}
+                  onClick={() => handleNutrientClick('manganese', 'Manganese', 'mg')}
                 >
                   {totals.manganese.toFixed(2)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 {goals.manganese > 0 && (
                   <>
@@ -2462,10 +2486,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Selenium (μg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-pink-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('selenium', 'Selenium', totals.selenium, goals.selenium, 'μg')}
+                  onClick={() => handleNutrientClick('selenium', 'Selenium', 'μg')}
                 >
                   {totals.selenium.toFixed(0)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 {goals.selenium > 0 && (
                   <>
@@ -2490,10 +2514,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Chromium (μg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-gray-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('chromium', 'Chromium', totals.chromium, goals.chromium, 'μg')}
+                  onClick={() => handleNutrientClick('chromium', 'Chromium', 'μg')}
                 >
                   {totals.chromium.toFixed(0)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 {goals.chromium > 0 && (
                   <>
@@ -2518,10 +2542,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Fluoride (μg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-cyan-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('fluoride', 'Fluoride', totals.fluoride, goals.fluoride, 'μg')}
+                  onClick={() => handleNutrientClick('fluoride', 'Fluoride', 'μg')}
                 >
                   {totals.fluoride.toFixed(0)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 {goals.fluoride > 0 && (
                   <>
@@ -2546,10 +2570,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Iodine (μg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-violet-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('iodine', 'Iodine', totals.iodine, goals.iodine, 'μg')}
+                  onClick={() => handleNutrientClick('iodine', 'Iodine', 'μg')}
                 >
                   {totals.iodine.toFixed(0)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 {goals.iodine > 0 && (
                   <>
@@ -2574,10 +2598,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Molybdenum (μg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-slate-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('molybdenum', 'Molybdenum', totals.molybdenum, goals.molybdenum, 'μg')}
+                  onClick={() => handleNutrientClick('molybdenum', 'Molybdenum', 'μg')}
                 >
                   {totals.molybdenum.toFixed(0)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 {goals.molybdenum > 0 && (
                   <>
@@ -2602,10 +2626,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 <div className="text-xs text-gray-400 mb-1">Sodium (mg)</div>
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-amber-300 transition-colors flex items-center gap-2"
-                  onClick={() => handleNutrientEdit('sodium', 'Sodium', totals.sodium, goals.sodium, 'mg', true)}
+                  onClick={() => handleNutrientClick('sodium', 'Sodium', 'mg')}
                 >
                   {totals.sodium.toFixed(0)}
-                  <span className="text-xs text-gray-500">✏️</span>
+                  
                 </div>
                 <div className="text-xs text-gray-400 mt-1">Limit: {goals.sodium}mg ⚠️</div>
                 <div className="flex items-center gap-2 mt-2">
