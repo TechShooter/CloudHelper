@@ -280,12 +280,19 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
   const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+    const supabase = createClient();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       isGuestRef.current = !session;
       setAuthReady(true);
-    })();
+    });
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      isGuestRef.current = !session;
+      setAuthReady(true);
+    });
+
+    return () => subscription?.unsubscribe();
   }, []);
 
   const [goalsText, setGoalsText] = useState<string>(getInitialGoalsText());
@@ -365,6 +372,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
   // Save nutrient entries to Supabase with debounce
   useEffect(() => {
     if (!authReady || isGuestRef.current) return;
+    if (entries.length === 0) return;
     const timeoutId = setTimeout(async () => {
       setSaveStatus('saving');
       try {
@@ -1836,7 +1844,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                 className="text-lg font-bold text-white cursor-pointer hover:text-orange-300 transition-colors flex items-center gap-2"
                 onClick={() => handleNutrientClick('salt', 'Salt', 'g')}
               >
-                {totals.salt.toFixed(1)}
+                {totals.salt.toFixed(2)}
               </div>
               <div className="text-xs text-gray-400 mt-1">Limit: {goals.salt}g ⚠️</div>
               <div className="flex items-center gap-2 mt-2">

@@ -196,14 +196,12 @@ export async function POST(req: NextRequest) {
     const { type, data } = await req.json();
 
     if (type === 'entries') {
-      // Delete existing entries
-      await supabase
-        .from('nutrient_entries')
-        .delete()
-        .eq('user_id', user.id);
-
-      // Insert new entries
       if (data && Array.isArray(data) && data.length > 0) {
+        // Delete existing entries before re-inserting
+        await supabase
+          .from('nutrient_entries')
+          .delete()
+          .eq('user_id', user.id);
         const entriesToInsert = data.map((entry: any) => ({
           user_id: user.id,
           time: entry.time,
