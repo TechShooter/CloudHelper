@@ -18,6 +18,7 @@ interface FoodEntry {
   fibers: number;
   sugars: number;
   salt: number;
+  redMeat: number;
   vitaminA: number;
   vitaminB1: number;
   vitaminB2: number;
@@ -145,6 +146,7 @@ interface NutrientGoals {
   fibers: number;
   sugars: number;
   salt: number;
+  redMeat: number;
   vitaminA: number;
   vitaminB1: number;
   vitaminB2: number;
@@ -211,6 +213,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       fibers: 25,
       sugars: 50,
       salt: 6,
+      redMeat: 0,
       vitaminA: 900,
       vitaminB1: 1.2,
       vitaminB2: 1.3,
@@ -582,6 +585,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       fibers: colIdx('Fibre', false),
       protein: colIdx('Proteine', false),
       salt: headers.findIndex(h => h.includes('Sale') && !h.includes('tot')),
+      redMeat: colIdx('Carne rossa', false),
       vitaminD: colIdx('Vit D', false),
       vitaminB1: colIdx('Vit B1', false),
       vitaminB2: colIdx('Vit B2', false),
@@ -627,6 +631,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
             fibersPer100g: val(C.fibers),
             proteinPer100g: val(C.protein),
             saltPer100g: val(C.salt),
+            redMeatPer100g: val(C.redMeat),
             vitaminDPer100g: val(C.vitaminD),
             vitaminB1Per100g: val(C.vitaminB1),
             vitaminB2Per100g: val(C.vitaminB2),
@@ -686,6 +691,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       fibers: food.fibersPer100g * multiplier,
       sugars: food.sugarsPer100g * multiplier,
       salt: food.saltPer100g * multiplier,
+      redMeat: (food.redMeatPer100g || 0) * multiplier,
       vitaminA: 0, // Not available in food data
       vitaminB1: food.vitaminB1Per100g * multiplier,
       vitaminB2: food.vitaminB2Per100g * multiplier,
@@ -761,6 +767,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
         fibers: food.fibersPer100g * multiplier,
         sugars: food.sugarsPer100g * multiplier,
         salt: food.saltPer100g * multiplier,
+        redMeat: (food.redMeatPer100g || 0) * multiplier,
         vitaminA: 0, // Not available in food data
         vitaminB1: food.vitaminB1Per100g * multiplier,
         vitaminB2: food.vitaminB2Per100g * multiplier,
@@ -813,6 +820,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
         fibers: food.fibersPer100g * multiplier,
         sugars: food.sugarsPer100g * multiplier,
         salt: food.saltPer100g * multiplier,
+        redMeat: (food.redMeatPer100g || 0) * multiplier,
         vitaminA: 0, // Not available in food data
         vitaminB1: food.vitaminB1Per100g * multiplier,
         vitaminB2: food.vitaminB2Per100g * multiplier,
@@ -908,6 +916,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
     fibers: acc.fibers + (entry.fibers || 0),
     sugars: acc.sugars + (entry.sugars || 0),
     salt: acc.salt + (entry.salt || 0),
+    redMeat: acc.redMeat + (entry.redMeat || 0),
     vitaminA: acc.vitaminA + (entry.vitaminA || 0),
     vitaminB1: acc.vitaminB1 + (entry.vitaminB1 || 0),
     vitaminB2: acc.vitaminB2 + (entry.vitaminB2 || 0),
@@ -937,6 +946,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
     cost: acc.cost + (entry.cost || 0)
   }), { 
     energy: 0, protein: 0, carbs: 0, fats: 0, saturatedFats: 0, fibers: 0, sugars: 0, salt: 0,
+    redMeat: 0,
     vitaminA: 0, vitaminB1: 0, vitaminB2: 0, vitaminB3: 0, vitaminB5: 0, vitaminB6: 0, vitaminB9: 0,
     vitaminB12: 0, vitaminC: 0, vitaminD: 0, vitaminE: 0, vitaminK: 0,
     calcium: 0, chromium: 0, copper: 0, fluoride: 0, iodine: 0, iron: 0, magnesium: 0,
@@ -1722,8 +1732,8 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                   </div>
                 </>
               )}
-              {nutrientNotes.energyKJ && (
-                <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.energyKJ}</div>
+              {nutrientNotes.energy && (
+                <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.energy}</div>
               )}
             </div>
 
@@ -1926,6 +1936,19 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
               )}
               {nutrientNotes.saturatedFats && (
                 <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.saturatedFats}</div>
+              )}
+            </div>
+
+            <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-red-700">
+              <div className="text-xs text-gray-400 mb-1">Red Meat (g)</div>
+              <div 
+                className="text-lg font-bold text-white cursor-pointer hover:text-red-300 transition-colors flex items-center gap-2"
+                onClick={() => handleNutrientClick('redMeat', 'Red Meat', 'g')}
+              >
+                {totals.redMeat.toFixed(1)}
+              </div>
+              {nutrientNotes.redMeat && (
+                <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.redMeat}</div>
               )}
             </div>
           </div>
