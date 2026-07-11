@@ -141,10 +141,12 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
   const [visibleMessageCount, setVisibleMessageCount] = useState(50);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isNewlyCreatedChatRef = useRef(false);
   const isGuestRef = useRef<boolean | null>(null);
+  const isLoggedInRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadedFilesRef = useRef(uploadedFiles);
   useEffect(() => {
@@ -158,12 +160,22 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
   }, []);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+    const supabase = createClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(!!session);
+      isLoggedInRef.current = !!session;
+      isGuestRef.current = !session;
+    });
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setIsLoggedIn(!!user);
+      isLoggedInRef.current = !!user;
       isGuestRef.current = !user;
-    };
-    checkAuth();
+    }).catch(() => {
+      setIsLoggedIn(false);
+      isLoggedInRef.current = false;
+      isGuestRef.current = true;
+    });
+    return () => subscription?.unsubscribe();
   }, []);
 
   // Memoize current messages to avoid recalculation on every render
@@ -191,11 +203,10 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
     };
   }, [activeChatId]);
 
-  // Load messages from IndexedDB when activeChatId changes
+  // Load messages from IndexedDB (and Supabase if logged in) when activeChatId changes
   useEffect(() => {
     const loadFromDB = async () => {
       if (!activeChatId) return;
-      // Skip loading if this is a newly created chat (messages are already in state)
       if (isNewlyCreatedChatRef.current) {
         isNewlyCreatedChatRef.current = false;
         return;
@@ -206,6 +217,15 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
         const msgs = await loadMessages(activeChatId);
         if (msgs.length > 0) {
           setMessages(msgs);
+        } else if (isLoggedIn) {
+          const res = await fetch(`/api/chat-persistence?chatId=${encodeURIComponent(activeChatId)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.messages && data.messages.length > 0) {
+              setMessages(data.messages);
+              saveMessages(activeChatId, data.messages);
+            }
+          }
         }
       } catch (error) {
         console.error('Failed to load messages:', error);
@@ -214,20 +234,27 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
       }
     };
     loadFromDB();
-  }, [activeChatId]);
+  }, [activeChatId, isLoggedIn]);
 
-  // Save messages to IndexedDB with debounce
+  // Save messages to IndexedDB with debounce, sync to Supabase if logged in
   useEffect(() => {
     if (!activeChatId || messages.length === 0) return;
     const timeoutId = setTimeout(async () => {
       try {
         await saveMessages(activeChatId, messages);
+        if (isLoggedIn) {
+          await fetch('/api/chat-persistence', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chatId: activeChatId, messages })
+          });
+        }
       } catch (error) {
         console.error('Failed to save messages:', error);
       }
     }, 2000);
     return () => clearTimeout(timeoutId);
-  }, [messages, activeChatId]);
+  }, [messages, activeChatId, isLoggedIn]);
 
   useEffect(() => {
     if (!userScrolledUp) {
@@ -279,7 +306,6 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
     let chatIdToUse = currentActiveChatId;
     let isNewChat = false;
     if (!chatIdToUse) {
-      // Use local IndexedDB for all users (guests and logged-in)
       chatIdToUse = `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       isNewChat = true;
       isNewlyCreatedChatRef.current = true;

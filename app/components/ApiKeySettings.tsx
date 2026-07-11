@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ALL_API_KEYS, type ApiKeyName, getApiKey, setApiKey, getKeyLabel, obfuscateKey, isResourceIdKey } from '../lib/api-keys';
+import { ALL_API_KEYS, type ApiKeyName, getApiKey, setApiKey, getKeyLabel, obfuscateKey, isResourceIdKey, syncApiKeysToSupabase } from '../lib/api-keys';
 
 export default function ApiKeySettings() {
   const [isOpen, setIsOpen] = useState(false);
@@ -24,11 +24,13 @@ export default function ApiKeySettings() {
 
   const saveKey = (name: ApiKeyName) => {
     setApiKey(name, keys[name] || '');
+    syncApiKeysToSupabase();
   };
 
   const clearKey = (name: ApiKeyName) => {
     setKeys((prev) => ({ ...prev, [name]: '' }));
     setApiKey(name, '');
+    syncApiKeysToSupabase();
   };
 
   return (

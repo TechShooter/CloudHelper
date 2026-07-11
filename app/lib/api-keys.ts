@@ -59,3 +59,49 @@ export function obfuscateKey(key: string): string {
   if (key.length <= 8) return key.slice(0, 4) + '....';
   return key.slice(0, 6) + '....' + key.slice(-4);
 }
+
+// Sync all API keys to Supabase (for logged-in users)
+export async function syncApiKeysToSupabase(): Promise<void> {
+  try {
+    const keys: Record<string, string> = {};
+    for (const name of ALL_API_KEYS) {
+      keys[name] = getApiKey(name);
+    }
+
+    const res = await fetch('/api/workspace-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId: '__global__',
+        settingKey: 'api-keys',
+        settingValue: keys
+      })
+    });
+
+    if (!res.ok) {
+      console.error('Failed to sync API keys to Supabase:', res.status);
+    }
+  } catch (error) {
+    console.error('Failed to sync API keys to Supabase:', error);
+  }
+}
+
+// Load API keys from Supabase into localStorage (only fills missing keys)
+export async function loadApiKeysFromSupabase(): Promise<void> {
+  try {
+    const res = await fetch('/api/workspace-settings?workspaceId=__global__&settingKey=api-keys');
+    if (!res.ok) return;
+
+    const data = await res.json();
+    const keys = data?.settings?.['__global___api-keys'];
+    if (!keys || typeof keys !== 'object') return;
+
+    for (const name of ALL_API_KEYS) {
+      if (keys[name] && !getApiKey(name)) {
+        setApiKey(name, keys[name]);
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load API keys from Supabase:', error);
+  }
+}

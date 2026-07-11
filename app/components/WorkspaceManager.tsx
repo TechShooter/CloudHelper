@@ -2504,33 +2504,61 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
                       </h3>
 
                       <div className="space-y-4">
-                        {/* Selected Contexts Summary */}
+                        {/* Content Preview (merged with selection) */}
                         <div>
-                          <h4 className="text-sm font-medium text-gray-300 mb-2">Selected Contexts</h4>
-                          <div className="space-y-2">
-                            {/* Google Sheets toggle */}
-                            {(sheetData || selectedContexts.includes('sheet')) && (
-                              <div
-                                onClick={() => {
-                                  if (selectedContexts.includes('sheet')) {
-                                    setSelectedContexts(selectedContexts.filter(ctx => ctx !== 'sheet'));
-                                  } else {
-                                    setSelectedContexts([...selectedContexts, 'sheet']);
-                                  }
-                                }}
-                                className={`text-xs p-2 rounded cursor-pointer transition ${
-                                  selectedContexts.includes('sheet')
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                                }`}
-                              >
-                                {selectedContexts.includes('sheet') ? '☑' : '☐'} 📊 Google Sheets
-                              </div>
-                            )}
+                          <h4 className="text-sm font-medium text-gray-300 mb-2">Content Preview</h4>
+                          <div className="space-y-1">
+                            {/* Google Sheets */}
+                            {sheetData && (() => {
+                              const isSelected = selectedContexts.includes('sheet');
+                              const isExpanded = expandedPreviewPages.has('__sheet__');
+                              return (
+                                <div className="bg-gray-900 rounded">
+                                  <div className="flex items-center justify-between px-3 py-2">
+                                    <div
+                                      className={`text-xs font-medium cursor-pointer select-none transition ${
+                                        isSelected ? 'text-purple-400' : 'text-gray-400'
+                                      }`}
+                                      onClick={() => {
+                                        const newSet = new Set(expandedPreviewPages);
+                                        if (newSet.has('__sheet__')) newSet.delete('__sheet__');
+                                        else newSet.add('__sheet__');
+                                        setExpandedPreviewPages(newSet);
+                                      }}
+                                    >
+                                      📊 Google Sheets
+                                    </div>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (isSelected) {
+                                          setSelectedContexts(selectedContexts.filter(ctx => ctx !== 'sheet'));
+                                        } else {
+                                          setSelectedContexts([...selectedContexts, 'sheet']);
+                                        }
+                                      }}
+                                      className="text-xs"
+                                    >
+                                      <span className={isSelected ? 'text-blue-400' : 'text-gray-500'}>
+                                        {isSelected ? '☑' : '☐'}
+                                      </span>
+                                    </button>
+                                  </div>
+                                  {isExpanded && (
+                                    <div className="px-3 pb-2 text-xs text-gray-400">
+                                      {Array.isArray(sheetData) ? `${sheetData.length} sheets loaded` : '1 sheet loaded'}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
 
-                            {/* Default Notion pages - always show them with toggle */}
+                            {/* Default Notion pages */}
                             {(() => {
                               const defaultPageIds = Array.from(pageDefaults[activeWorkspace] || []);
+                              if (defaultPageIds.length === 0) {
+                                return <span className="text-xs text-gray-500 block px-3 py-1">No default contexts. Set defaults to see them here!</span>;
+                              }
                               const rendered = new Set<string>();
                               const items: JSX.Element[] = [];
 
@@ -2540,36 +2568,15 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
 
                                 const ctx = `notion-${pageId}`;
                                 const isSelected = selectedContexts.includes(ctx);
+                                const isExpanded = expandedPreviewPages.has(pageId);
 
-                                // Try to find page in API results first
-                                let apiResult = selectedApiResults.find(p => p.id === pageId);
-                                if (apiResult) {
-                                  const icon = apiResult.object === 'database' ? '🗄️' : apiResult.object === 'data_source' ? '📊' : '📄';
-                                  items.push(
-                                    <div
-                                      key={ctx}
-                                      onClick={() => {
-                                        if (isSelected) {
-                                          setSelectedContexts(selectedContexts.filter(c => c !== ctx));
-                                        } else {
-                                          setSelectedContexts([...selectedContexts, ctx]);
-                                        }
-                                      }}
-                                      className={`text-xs p-2 rounded cursor-pointer transition ${
-                                        isSelected
-                                          ? 'bg-blue-600 text-white'
-                                          : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                                      }`}
-                                    >
-                                      {isSelected ? '☑' : '☐'} {icon} {apiResult.title || 'Untitled'}
-                                    </div>
-                                  );
-                                  return;
-                                }
+                                let icon = '📄';
+                                let label = 'Untitled';
+                                let displayContent = '';
+                                const needsTruncation = false;
 
-                                // Try to find in hierarchy
-                                let page = allNotionPages.find(p => p.id === pageId);
-                                if (!page && hierarchicalNotionPages) {
+                                const apiResult = selectedApiResults.find(p => p.id === pageId);
+                                const page = apiResult || allNotionPages.find(p => p.id === pageId) || (() => {
                                   const findInHierarchy = (pages: any[], targetId: string): any => {
                                     for (const p of pages) {
                                       if (p.id === targetId) return p;
@@ -2580,124 +2587,173 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
                                     }
                                     return null;
                                   };
-                                  page = findInHierarchy(hierarchicalNotionPages, pageId);
-                                }
+                                  return hierarchicalNotionPages ? findInHierarchy(hierarchicalNotionPages, pageId) : null;
+                                })();
 
                                 if (page) {
-                                  let label = page.title || 'Untitled';
-                                  let icon = '📄';
-
-                                  if (page.object === 'database') {
-                                    const countDescendants = (p: any): number => {
-                                      let count = 0;
-                                      if (p.children && p.children.length > 0) {
-                                        count += p.children.length;
-                                        p.children.forEach((child: any) => {
-                                          count += countDescendants(child);
-                                        });
-                                      }
-                                      return count;
-                                    };
-                                    const totalItems = countDescendants(page);
-                                    label = `${page.title} (+${totalItems} items)`;
-                                    icon = '🗄️';
-                                  } else if (page.object === 'data_source') {
-                                    const itemCount = page.children ? page.children.length : 0;
-                                    label = `${page.title} (+${itemCount} items)`;
-                                    icon = '📊';
-                                  }
-
-                                  items.push(
-                                    <div
-                                      key={ctx}
-                                      onClick={() => {
-                                        if (isSelected) {
-                                          setSelectedContexts(selectedContexts.filter(c => c !== ctx));
-                                        } else {
-                                          setSelectedContexts([...selectedContexts, ctx]);
+                                  if (apiResult) {
+                                    icon = apiResult.object === 'database' ? '🗄️' : apiResult.object === 'data_source' ? '📊' : '📄';
+                                    label = apiResult.title || 'Untitled';
+                                    displayContent = apiResult.content || '';
+                                  } else {
+                                    label = page.title || 'Untitled';
+                                    if (page.object === 'database') {
+                                      const countDescendants = (p: any): number => {
+                                        let count = 0;
+                                        if (p.children && p.children.length > 0) {
+                                          count += p.children.length;
+                                          p.children.forEach((child: any) => { count += countDescendants(child); });
                                         }
-                                      }}
-                                      className={`text-xs p-2 rounded cursor-pointer transition ${
-                                        isSelected
-                                          ? 'bg-blue-600 text-white'
-                                          : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                                      }`}
-                                    >
-                                      {isSelected ? '☑' : '☐'} {icon} {label}
-                                    </div>
-                                  );
+                                        return count;
+                                      };
+                                      const totalItems = countDescendants(page);
+                                      label = `${page.title} (+${totalItems} items)`;
+                                      icon = '🗄️';
+                                    } else if (page.object === 'data_source') {
+                                      const itemCount = page.children ? page.children.length : 0;
+                                      label = `${page.title} (+${itemCount} items)`;
+                                      icon = '📊';
+                                    }
+                                    displayContent = page.content || '';
+                                  }
                                 }
+
+                                items.push(
+                                  <div key={ctx} className="bg-gray-900 rounded">
+                                    <div className="flex items-center justify-between px-3 py-2">
+                                      <div
+                                        className={`text-xs font-medium cursor-pointer select-none transition ${
+                                          isSelected ? 'text-purple-400' : 'text-gray-400'
+                                        }`}
+                                        onClick={() => {
+                                          const newSet = new Set(expandedPreviewPages);
+                                          if (newSet.has(pageId)) newSet.delete(pageId);
+                                          else newSet.add(pageId);
+                                          setExpandedPreviewPages(newSet);
+                                        }}
+                                      >
+                                        {icon} {label}
+                                      </div>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (isSelected) {
+                                            setSelectedContexts(selectedContexts.filter(c => c !== ctx));
+                                          } else {
+                                            setSelectedContexts([...selectedContexts, ctx]);
+                                          }
+                                        }}
+                                        className="text-xs"
+                                      >
+                                        <span className={isSelected ? 'text-blue-400' : 'text-gray-500'}>
+                                          {isSelected ? '☑' : '☐'}
+                                        </span>
+                                      </button>
+                                    </div>
+                                    {isExpanded && displayContent && (
+                                      <div className="px-3 pb-2 text-xs text-gray-400 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                                        {displayContent.length > 500 ? displayContent.substring(0, 500) + '...' : displayContent}
+                                        {displayContent.length > 500 && (
+                                          <button
+                                            onClick={() => toggleExpandedPreview(pageId)}
+                                            className="ml-1 text-blue-400 hover:text-blue-300"
+                                          >
+                                            More
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
                               });
 
                               return items;
                             })()}
 
+                            {/* Food Entries */}
                             {(() => {
-                              const defaultPageIds = Array.from(pageDefaults[activeWorkspace] || []);
-                              return defaultPageIds.length === 0 ? (
-                                <span className="text-sm text-gray-500">No default contexts. Set defaults to see them here!</span>
-                              ) : null;
-                            })()}
-                          </div>
-                        </div>
-
-                        {/* Content Preview */}
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-300 mb-2">Content Preview</h4>
-                          <div className="bg-gray-900 rounded p-3 max-h-96 overflow-y-auto text-xs font-mono text-gray-300">
-                            {selectedContexts.includes('sheet') && sheetData && (
-                              <div className="mb-3">
-                                <div className="text-green-400 font-bold mb-1">Google Sheets Data:</div>
-                                <div className="text-gray-400">
-                                  {Array.isArray(sheetData) ? `${sheetData.length} sheets loaded` : '1 sheet loaded'}
-                                </div>
-                              </div>
-                            )}
-
-                            {getNotionPages().map((page: any) => {
-                              const isExpanded = expandedPreviewPages.has(page.id);
-                              const displayContent = isExpanded ? page.content : page.content?.substring(0, 500);
-                              const needsTruncation = page.content?.length > 500;
-
+                              const isSelected = nutrientSettings.includeFoodEntries;
+                              const isExpanded = expandedPreviewPages.has('__food__');
                               return (
-                                <div key={page.id} className="mb-3">
-                                  <div className="text-purple-400 font-bold mb-1">{page.title}:</div>
-                                  <div className="text-gray-400 whitespace-pre-wrap">
-                                    {displayContent}
-                                    {needsTruncation && !isExpanded && '...'}
-                                  </div>
-                                  {needsTruncation && (
-                                    <button
-                                      onClick={() => toggleExpandedPreview(page.id)}
-                                      className="mt-1 text-xs text-blue-400 hover:text-blue-300"
+                                <div className="bg-gray-900 rounded">
+                                  <div className="flex items-center justify-between px-3 py-2">
+                                    <div
+                                      className={`text-xs font-medium cursor-pointer select-none transition ${
+                                        isSelected ? 'text-orange-400' : 'text-gray-400'
+                                      }`}
+                                      onClick={() => {
+                                        const newSet = new Set(expandedPreviewPages);
+                                        if (newSet.has('__food__')) newSet.delete('__food__');
+                                        else newSet.add('__food__');
+                                        setExpandedPreviewPages(newSet);
+                                      }}
                                     >
-                                      {isExpanded ? 'Show less' : 'More'}
+                                      🍽️ Food Entries & Daily Nutrients
+                                    </div>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleDefaultNutrientSetting('includeFoodEntries');
+                                      }}
+                                      className="text-xs"
+                                    >
+                                      <span className={isSelected ? 'text-blue-400' : 'text-gray-500'}>
+                                        {isSelected ? '☑' : '☐'}
+                                      </span>
                                     </button>
+                                  </div>
+                                  {isExpanded && (
+                                    <div className="px-3 pb-2 text-xs text-gray-400 whitespace-pre-wrap">
+                                      {formatFoodEntriesAndDailyNutrients()}
+                                    </div>
                                   )}
                                 </div>
                               );
-                            })}
+                            })()}
 
-                            {nutrientSettings.includeFoodEntries && (
-                              <div className="mb-3">
-                                <div className="text-orange-400 font-bold mb-1">🍽️ Food Entries & Daily Nutrients:</div>
-                                <div className="text-gray-400 whitespace-pre-wrap text-xs">
-                                  {formatFoodEntriesAndDailyNutrients()}
+                            {/* Vitamins & Minerals */}
+                            {(() => {
+                              const isSelected = nutrientSettings.includeVitaminsMinerals;
+                              const isExpanded = expandedPreviewPages.has('__vitamins__');
+                              return (
+                                <div className="bg-gray-900 rounded">
+                                  <div className="flex items-center justify-between px-3 py-2">
+                                    <div
+                                      className={`text-xs font-medium cursor-pointer select-none transition ${
+                                        isSelected ? 'text-cyan-400' : 'text-gray-400'
+                                      }`}
+                                      onClick={() => {
+                                        const newSet = new Set(expandedPreviewPages);
+                                        if (newSet.has('__vitamins__')) newSet.delete('__vitamins__');
+                                        else newSet.add('__vitamins__');
+                                        setExpandedPreviewPages(newSet);
+                                      }}
+                                    >
+                                      💊 Vitamins & Minerals
+                                    </div>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleDefaultNutrientSetting('includeVitaminsMinerals');
+                                      }}
+                                      className="text-xs"
+                                    >
+                                      <span className={isSelected ? 'text-blue-400' : 'text-gray-500'}>
+                                        {isSelected ? '☑' : '☐'}
+                                      </span>
+                                    </button>
+                                  </div>
+                                  {isExpanded && (
+                                    <div className="px-3 pb-2 text-xs text-gray-400 whitespace-pre-wrap">
+                                      {formatVitaminsAndMinerals()}
+                                    </div>
+                                  )}
                                 </div>
-                              </div>
-                            )}
-
-                            {nutrientSettings.includeVitaminsMinerals && (
-                              <div className="mb-3">
-                                <div className="text-cyan-400 font-bold mb-1">💊 Vitamins & Minerals:</div>
-                                <div className="text-gray-400 whitespace-pre-wrap text-xs">
-                                  {formatVitaminsAndMinerals()}
-                                </div>
-                              </div>
-                            )}
+                              );
+                            })()}
 
                             {selectedContexts.filter(ctx => ctx.startsWith('notion-')).length === 0 && !selectedContexts.includes('sheet') && !nutrientSettings.includeFoodEntries && !nutrientSettings.includeVitaminsMinerals && (
-                              <div className="text-gray-500">No content will be sent to AI</div>
+                              <div className="text-gray-500 text-xs px-3 py-2">No content will be sent to AI</div>
                             )}
                           </div>
                         </div>

@@ -8,7 +8,7 @@ const ModelSelectorV3 = lazy(() => import('../components/ModelSelectorV3'));
 const LogoutButton = lazy(() => import('../components/LogoutButton'));
 const ApiKeySettings = lazy(() => import('../components/ApiKeySettings'));
 
-import { getApiKey } from '../lib/api-keys';
+import { getApiKey, loadApiKeysFromSupabase } from '../lib/api-keys';
 
 export default function Home() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -38,6 +38,26 @@ export default function Home() {
     } catch (error) {
       console.error('Failed to load saved model:', error);
     }
+  }, []);
+
+  useEffect(() => {
+    loadApiKeysFromSupabase().then(() => {
+      const sheetId = getApiKey('google-sheet-id');
+      if (sheetId) {
+        fetch('/api/sheets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'getAllSheets',
+            sheetId
+          })
+        }).then(res => {
+          if (res.ok) return res.json();
+        }).then(data => {
+          if (data?.sheets) setSheetData(data.sheets);
+        }).catch(err => console.error('Failed to load sheets:', err));
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -304,24 +324,6 @@ export default function Home() {
       notionAbortControllerRef.current = null;
     }
   };
-
-  useEffect(() => {
-    const sheetId = getApiKey('google-sheet-id');
-    if (!sheetId) return;
-
-    fetch('/api/sheets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'getAllSheets',
-        sheetId
-      })
-    }).then(res => {
-      if (res.ok) return res.json();
-    }).then(data => {
-      if (data?.sheets) setSheetData(data.sheets);
-    }).catch(err => console.error('Failed to load sheets:', err));
-  }, []);
 
   const reloadNotion = async () => {
     setNotionPages([]);
