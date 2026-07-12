@@ -23,3 +23,7 @@ ALTER TABLE nutrient_goals
 -- Add red_meat column for tracking red meat consumption
 ALTER TABLE nutrient_entries
   ADD COLUMN IF NOT EXISTS red_meat NUMERIC DEFAULT 0;
+
+-- Add red_meat column to nutrient_goals table
+ALTER TABLE nutrient_goals
+  ADD COLUMN IF NOT EXISTS red_meat NUMERIC DEFAULT 0;

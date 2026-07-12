@@ -421,17 +421,22 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
   // Save nutrient goals to Supabase
   useEffect(() => {
     if (!authReady || isGuestRef.current) return;
-    (async () => {
+    const timeoutId = setTimeout(async () => {
       try {
-        await fetch('/api/nutrients', {
+        const res = await fetch('/api/nutrients', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type: 'goals', data: goals })
         });
+        if (!res.ok) {
+          const err = await res.json();
+          console.error('Failed to save goals:', err);
+        }
       } catch (error) {
         console.error('Failed to save goals:', error);
       }
-    })();
+    }, 1000);
+    return () => clearTimeout(timeoutId);
   }, [goals, authReady]);
 
   // Sync tempGoals with goals whenever goals changes, but only when Goals modal is not open
@@ -517,7 +522,10 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
         if (res.ok) {
           const data = await res.json();
           if (data.nutrientNotes) {
-            setNutrientNotes(data.nutrientNotes);
+            setNutrientNotes(prev => {
+              if (Object.keys(prev).length > 0) return prev;
+              return data.nutrientNotes;
+            });
           }
         }
       } catch (error) {
@@ -529,13 +537,18 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
   // Save nutrient notes to Supabase
   useEffect(() => {
     if (!authReady || isGuestRef.current) return;
+    if (Object.keys(nutrientNotes).length === 0) return;
     (async () => {
       try {
-        await fetch('/api/nutrients', {
+        const res = await fetch('/api/nutrients', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type: 'nutrient-notes', data: nutrientNotes })
         });
+        if (!res.ok) {
+          const err = await res.json();
+          console.error('Failed to save nutrient notes:', err);
+        }
       } catch (error) {
         console.error('Failed to save nutrient notes:', error);
       }
@@ -677,9 +690,11 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
     
 
 
+    const parsedTime = new Date(time).toISOString();
+
     const newEntry: FoodEntry = {
       id: Date.now().toString(),
-      time,
+      time: parsedTime,
       food: food.name,
       grams,
       cost: (food.costPerKg || 0) * (grams / 1000), // Cost = €/kg * kg
@@ -809,7 +824,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       const multiplier = newGrams / 100;
       return {
         ...entry,
-        time: newTime,
+        time: new Date(newTime).toISOString(),
         grams: newGrams,
         cost: (food.costPerKg || 0) * (newGrams / 1000), // Cost = €/kg * kg
         energy: food.energyPer100g * multiplier,
