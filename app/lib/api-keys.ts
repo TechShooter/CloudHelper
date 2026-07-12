@@ -86,7 +86,7 @@ export async function syncApiKeysToSupabase(): Promise<void> {
   }
 }
 
-// Load API keys from Supabase into localStorage (only fills missing keys)
+// Load API keys from Supabase into localStorage (overwrites local values)
 export async function loadApiKeysFromSupabase(): Promise<void> {
   try {
     const res = await fetch('/api/workspace-settings?workspaceId=__global__&settingKey=api-keys');
@@ -97,11 +97,39 @@ export async function loadApiKeysFromSupabase(): Promise<void> {
     if (!keys || typeof keys !== 'object') return;
 
     for (const name of ALL_API_KEYS) {
-      if (keys[name] && !getApiKey(name)) {
+      if (keys[name]) {
         setApiKey(name, keys[name]);
       }
     }
   } catch (error) {
     console.error('Failed to load API keys from Supabase:', error);
+  }
+}
+
+// Sync local API keys to Supabase (pushes any local keys not in cloud)
+export async function pushLocalApiKeysToSupabase(): Promise<void> {
+  try {
+    const res = await fetch('/api/workspace-settings?workspaceId=__global__&settingKey=api-keys');
+    if (!res.ok) return;
+
+    const data = await res.json();
+    const cloudKeys = data?.settings?.['__global___api-keys'] || {};
+
+    const merged: Record<string, string> = {};
+    for (const name of ALL_API_KEYS) {
+      merged[name] = getApiKey(name) || cloudKeys[name] || '';
+    }
+
+    await fetch('/api/workspace-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId: '__global__',
+        settingKey: 'api-keys',
+        settingValue: merged
+      })
+    });
+  } catch (error) {
+    console.error('Failed to push local API keys to Supabase:', error);
   }
 }

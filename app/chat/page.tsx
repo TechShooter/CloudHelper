@@ -8,7 +8,7 @@ const ModelSelectorV3 = lazy(() => import('../components/ModelSelectorV3'));
 const LogoutButton = lazy(() => import('../components/LogoutButton'));
 const ApiKeySettings = lazy(() => import('../components/ApiKeySettings'));
 
-import { getApiKey, loadApiKeysFromSupabase } from '../lib/api-keys';
+import { getApiKey, loadApiKeysFromSupabase, pushLocalApiKeysToSupabase } from '../lib/api-keys';
 
 export default function Home() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -42,6 +42,7 @@ export default function Home() {
 
   useEffect(() => {
     loadApiKeysFromSupabase().then(() => {
+      pushLocalApiKeysToSupabase();
       const sheetId = getApiKey('google-sheet-id');
       if (sheetId) {
         fetch('/api/sheets', {
