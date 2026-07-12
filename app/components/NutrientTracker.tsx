@@ -585,7 +585,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       fibers: colIdx('Fibre', false),
       protein: colIdx('Proteine', false),
       salt: headers.findIndex(h => h.includes('Sale') && !h.includes('tot')),
-      redMeat: colIdx('Carne rossa', false),
+      redMeat: headers.findIndex(h => h.toLowerCase().includes('carne') && h.toLowerCase().includes('rossa')),
       vitaminD: colIdx('Vit D', false),
       vitaminB1: colIdx('Vit B1', false),
       vitaminB2: colIdx('Vit B2', false),
@@ -952,6 +952,14 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
     calcium: 0, chromium: 0, copper: 0, fluoride: 0, iodine: 0, iron: 0, magnesium: 0,
     manganese: 0, molybdenum: 0, phosphorus: 0, potassium: 0, selenium: 0, sodium: 0, zinc: 0, cost: 0
   });
+
+  const weeklyRedMeat = useMemo(() => {
+    const weekStart = new Date(selectedDayEnd);
+    weekStart.setHours(weekStart.getHours() - 168);
+    return entries
+      .filter(entry => !hiddenEntries.has(entry.id) && new Date(entry.time) >= weekStart && new Date(entry.time) < selectedDayEnd)
+      .reduce((sum, entry) => sum + (entry.redMeat || 0), 0);
+  }, [entries, hiddenEntries, selectedDayEnd]);
 
   const getProgressColor = (current: number, target: number) => {
     if (!target) return 'bg-gray-600';
@@ -1739,11 +1747,20 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
 
             <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-green-500">
               <div className="text-xs text-gray-400 mb-1">Protein (g)</div>
-              <div 
-                className="text-xl font-bold text-white cursor-pointer hover:text-green-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientClick('protein', 'Protein', 'g')}
-              >
-                {totals.protein.toFixed(1)}
+              <div className="flex items-center gap-2">
+                <div 
+                  className="text-xl font-bold text-white cursor-pointer hover:text-green-300 transition-colors"
+                  onClick={() => handleNutrientClick('protein', 'Protein', 'g')}
+                >
+                  {totals.protein.toFixed(1)}
+                </div>
+                <button
+                  onClick={() => handleNutrientEdit('protein', 'Protein', totals.protein, goals.protein, 'g')}
+                  className="text-gray-400 hover:text-white text-xs cursor-pointer"
+                  title="Edit goal & notes"
+                >
+                  ✏️
+                </button>
               </div>
               {targets.protein > 0 && (
                 <>
@@ -1766,11 +1783,20 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
 
             <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-yellow-500">
               <div className="text-xs text-gray-400 mb-1">Carbs (g)</div>
-              <div 
-                className="text-xl font-bold text-white cursor-pointer hover:text-yellow-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientClick('carbs', 'Carbs', 'g')}
-              >
-                {totals.carbs.toFixed(1)}
+              <div className="flex items-center gap-2">
+                <div 
+                  className="text-xl font-bold text-white cursor-pointer hover:text-yellow-300 transition-colors"
+                  onClick={() => handleNutrientClick('carbs', 'Carbs', 'g')}
+                >
+                  {totals.carbs.toFixed(1)}
+                </div>
+                <button
+                  onClick={() => handleNutrientEdit('carbs', 'Carbs', totals.carbs, goals.carbs, 'g')}
+                  className="text-gray-400 hover:text-white text-xs cursor-pointer"
+                  title="Edit goal & notes"
+                >
+                  ✏️
+                </button>
               </div>
               {targets.carbs > 0 && (
                 <>
@@ -1793,11 +1819,20 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
 
             <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-purple-500">
               <div className="text-xs text-gray-400 mb-1">Fats (g)</div>
-              <div 
-                className="text-xl font-bold text-white cursor-pointer hover:text-purple-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientClick('fats', 'Fats', 'g')}
-              >
-                {totals.fats.toFixed(1)}
+              <div className="flex items-center gap-2">
+                <div 
+                  className="text-xl font-bold text-white cursor-pointer hover:text-purple-300 transition-colors"
+                  onClick={() => handleNutrientClick('fats', 'Fats', 'g')}
+                >
+                  {totals.fats.toFixed(1)}
+                </div>
+                <button
+                  onClick={() => handleNutrientEdit('fats', 'Fats', totals.fats, goals.fats, 'g')}
+                  className="text-gray-400 hover:text-white text-xs cursor-pointer"
+                  title="Edit goal & notes"
+                >
+                  ✏️
+                </button>
               </div>
               {targets.fats > 0 && (
                 <>
@@ -1823,11 +1858,20 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-orange-500">
               <div className="text-xs text-gray-400 mb-1">Fiber (g)</div>
-              <div 
-                className="text-xl font-bold text-white cursor-pointer hover:text-orange-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientClick('fibers', 'Fiber', 'g')}
-              >
-                {totals.fibers.toFixed(1)}
+              <div className="flex items-center gap-2">
+                <div 
+                  className="text-xl font-bold text-white cursor-pointer hover:text-orange-300 transition-colors"
+                  onClick={() => handleNutrientClick('fibers', 'Fiber', 'g')}
+                >
+                  {totals.fibers.toFixed(1)}
+                </div>
+                <button
+                  onClick={() => handleNutrientEdit('fibers', 'Fiber', totals.fibers, goals.fibers, 'g')}
+                  className="text-gray-400 hover:text-white text-xs cursor-pointer"
+                  title="Edit goal & notes"
+                >
+                  ✏️
+                </button>
               </div>
               {goals.fibers > 0 && (
                 <>
@@ -1850,11 +1894,20 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
 
             <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-orange-500">
               <div className="text-xs text-gray-400 mb-1">Salt (g)</div>
-              <div 
-                className="text-lg font-bold text-white cursor-pointer hover:text-orange-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientClick('salt', 'Salt', 'g')}
-              >
-                {totals.salt.toFixed(2)}
+              <div className="flex items-center gap-2">
+                <div 
+                  className="text-lg font-bold text-white cursor-pointer hover:text-orange-300 transition-colors"
+                  onClick={() => handleNutrientClick('salt', 'Salt', 'g')}
+                >
+                  {totals.salt.toFixed(2)}
+                </div>
+                <button
+                  onClick={() => handleNutrientEdit('salt', 'Salt', totals.salt, goals.salt, 'g', true)}
+                  className="text-gray-400 hover:text-white text-xs cursor-pointer"
+                  title="Edit goal & notes"
+                >
+                  ✏️
+                </button>
               </div>
               <div className="text-xs text-gray-400 mt-1">Limit: {goals.salt}g ⚠️</div>
               <div className="flex items-center gap-2 mt-2">
@@ -1882,11 +1935,20 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
 
             <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-pink-500">
               <div className="text-xs text-gray-400 mb-1">Sugars (g)</div>
-              <div 
-                className="text-lg font-bold text-white cursor-pointer hover:text-pink-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientClick('sugars', 'Sugars', 'g')}
-              >
-                {totals.sugars.toFixed(1)}
+              <div className="flex items-center gap-2">
+                <div 
+                  className="text-lg font-bold text-white cursor-pointer hover:text-pink-300 transition-colors"
+                  onClick={() => handleNutrientClick('sugars', 'Sugars', 'g')}
+                >
+                  {totals.sugars.toFixed(1)}
+                </div>
+                <button
+                  onClick={() => handleNutrientEdit('sugars', 'Sugars', totals.sugars, goals.sugars, 'g')}
+                  className="text-gray-400 hover:text-white text-xs cursor-pointer"
+                  title="Edit goal & notes"
+                >
+                  ✏️
+                </button>
               </div>
               {goals.sugars > 0 && (
                 <>
@@ -1909,11 +1971,20 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
 
             <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-red-500">
               <div className="text-xs text-gray-400 mb-1">Sat. Fats (g)</div>
-              <div 
-                className="text-lg font-bold text-white cursor-pointer hover:text-red-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientClick('saturatedFats', 'Saturated Fats', 'g')}
-              >
-                {totals.saturatedFats.toFixed(1)}
+              <div className="flex items-center gap-2">
+                <div 
+                  className="text-lg font-bold text-white cursor-pointer hover:text-red-300 transition-colors"
+                  onClick={() => handleNutrientClick('saturatedFats', 'Saturated Fats', 'g')}
+                >
+                  {totals.saturatedFats.toFixed(1)}
+                </div>
+                <button
+                  onClick={() => handleNutrientEdit('saturatedFats', 'Saturated Fats', totals.saturatedFats, goals.saturatedFats, 'g', true)}
+                  className="text-gray-400 hover:text-white text-xs cursor-pointer"
+                  title="Edit goal & notes"
+                >
+                  ✏️
+                </button>
               </div>
               <div className="text-xs text-gray-400 mt-1">Limit: {goals.saturatedFats}g ⚠️</div>
               <div className="flex items-center gap-2 mt-2">
@@ -1940,13 +2011,43 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
             </div>
 
             <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-red-700">
-              <div className="text-xs text-gray-400 mb-1">Red Meat (g)</div>
-              <div 
-                className="text-lg font-bold text-white cursor-pointer hover:text-red-300 transition-colors flex items-center gap-2"
-                onClick={() => handleNutrientClick('redMeat', 'Red Meat', 'g')}
-              >
-                {totals.redMeat.toFixed(1)}
+              <div className="text-xs text-gray-400 mb-1">Red Meat (g) — This week</div>
+              <div className="flex items-center gap-2">
+                <div 
+                  className="text-lg font-bold text-white cursor-pointer hover:text-red-300 transition-colors"
+                  onClick={() => handleNutrientClick('redMeat', 'Red Meat', 'g')}
+                >
+                  {weeklyRedMeat.toFixed(1)}
+                </div>
+                <button
+                  onClick={() => handleNutrientEdit('redMeat', 'Red Meat', weeklyRedMeat, goals.redMeat, 'g', true)}
+                  className="text-gray-400 hover:text-white text-sm cursor-pointer"
+                  title="Edit goal & notes"
+                >
+                  ✏️
+                </button>
               </div>
+              <div className="text-xs text-gray-400 mt-1">Weekly limit: {goals.redMeat}g ⚠️</div>
+              {goals.redMeat > 0 && (
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="flex-1 bg-gray-600 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full transition-all ${
+                        weeklyRedMeat > goals.redMeat 
+                          ? 'bg-red-500' 
+                          : weeklyRedMeat > goals.redMeat * 0.75 
+                          ? 'bg-orange-500' 
+                          : 'bg-green-500'
+                      }`}
+                      style={{ width: `${Math.min((weeklyRedMeat / goals.redMeat) * 100, 100)}%` }}
+                    ></div>
+                  </div>
+                  <span className="text-xs font-bold text-white">{Math.min(Math.round((weeklyRedMeat / goals.redMeat) * 100), 100)}%</span>
+                </div>
+              )}
+              {weeklyRedMeat > goals.redMeat && goals.redMeat > 0 && (
+                <div className="text-xs text-red-400 mt-1">Over weekly limit</div>
+              )}
               {nutrientNotes.redMeat && (
                 <div className="text-xs text-gray-400 mt-1 italic">{nutrientNotes.redMeat}</div>
               )}
