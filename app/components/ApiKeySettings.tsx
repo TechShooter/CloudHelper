@@ -1,11 +1,29 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ALL_API_KEYS, type ApiKeyName, getApiKey, setApiKey, getKeyLabel, obfuscateKey, isResourceIdKey, syncApiKeysToSupabase } from '../lib/api-keys';
+import { ALL_API_KEYS, type ApiKeyName, getApiKey, setApiKey, getKeyLabel, obfuscateKey, isResourceIdKey, syncApiKeysToSupabase, pushLocalApiKeysToSupabase } from '../lib/api-keys';
+import { createClient } from '@/utils/supabase/client';
 
 export default function ApiKeySettings() {
   const [isOpen, setIsOpen] = useState(false);
   const [keys, setKeys] = useState<Record<string, string>>({});
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsLoggedIn(!!session);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setIsLoggedIn(!!session);
+      if (session) {
+        pushLocalApiKeysToSupabase();
+      }
+    });
+
+    return () => subscription?.unsubscribe();
+  }, []);
 
   useEffect(() => {
     const handler = () => setIsOpen(true);
@@ -24,13 +42,17 @@ export default function ApiKeySettings() {
 
   const saveKey = (name: ApiKeyName) => {
     setApiKey(name, keys[name] || '');
-    syncApiKeysToSupabase();
+    if (isLoggedIn) {
+      syncApiKeysToSupabase();
+    }
   };
 
   const clearKey = (name: ApiKeyName) => {
     setKeys((prev) => ({ ...prev, [name]: '' }));
     setApiKey(name, '');
-    syncApiKeysToSupabase();
+    if (isLoggedIn) {
+      syncApiKeysToSupabase();
+    }
   };
 
   return (
