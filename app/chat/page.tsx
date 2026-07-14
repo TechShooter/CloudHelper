@@ -45,9 +45,13 @@ export default function Home() {
       pushLocalApiKeysToSupabase();
       const sheetId = getApiKey('google-sheet-id');
       if (sheetId) {
+        const sheetsKey = getApiKey('google-sheets-api-key');
         fetch('/api/sheets', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(sheetsKey && { 'x-api-key-google-sheets': sheetsKey }),
+          },
           body: JSON.stringify({
             action: 'getAllSheets',
             sheetId
@@ -211,7 +215,13 @@ export default function Home() {
 
       const controller = new AbortController();
       notionAbortControllerRef.current = controller;
-      const response = await fetch(`/api/notion-stream?t=${Date.now()}`, { signal: controller.signal });
+      const notionKey = getApiKey('notion');
+      const response = await fetch(`/api/notion-stream?t=${Date.now()}`, {
+        signal: controller.signal,
+        headers: {
+          ...(notionKey && { 'x-api-key-notion': notionKey }),
+        },
+      });
       console.log('[FRONTEND] ✅ [2/5] Stream response received:', response.status);
 
       if (!response.ok) {

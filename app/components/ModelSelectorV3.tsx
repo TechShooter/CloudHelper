@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
+import { getApiKey } from '../lib/api-keys';
 
 const HIDDEN_COLS_KEY = 'cloudhelper.model-selector-v3.hidden-columns';
 const COL_ORDER_KEY = 'cloudhelper.model-selector-v3.column-order';
@@ -56,7 +57,12 @@ export default function ModelSelectorV3({ selectedModel, onModelSelect }: ModelS
       setError(null);
 
       try {
-        const response = await fetch('/api/model-selector-v3');
+        const sheetsKey = getApiKey('google-sheets-api-key');
+        const response = await fetch('/api/model-selector-v3', {
+          headers: {
+            ...(sheetsKey && { 'x-api-key-google-sheets': sheetsKey }),
+          },
+        });
         const data = await response.json();
 
         if (!response.ok) {

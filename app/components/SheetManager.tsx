@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { getApiKey } from '../lib/api-keys';
 
 interface Sheet {
   id: string;
@@ -53,9 +54,13 @@ export default function SheetManager({ onSheetLoad }: Props) {
     setLoading(true);
     setSelectedSheet(sheetId);
     try {
+      const sheetsKey = getApiKey('google-sheets-api-key');
       const res = await fetch('/api/sheets', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sheetsKey && { 'x-api-key-google-sheets': sheetsKey }),
+        },
         body: JSON.stringify({ action: 'getAllSheets', sheetId })
       });
       const data = await res.json();

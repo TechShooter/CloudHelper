@@ -98,7 +98,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
           </button>
         </form>
 
-        <p className="mt-4 text-center text-sm text-amber-400/80">
+        <p className="mt-4 text-center text-sm text-gray-500">
           Sign ups are currently closed.
         </p>
       </div>

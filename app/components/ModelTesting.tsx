@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { getApiKey } from '../lib/api-keys';
 import ChatInterface from './ChatInterface';
 
 interface SheetModel {
@@ -36,8 +37,12 @@ export default function ModelTesting({ notes, sheetData, notionPages }: Props) {
     const fetchModels = async () => {
       setLoadingModels(true);
       try {
+        const sheetsKey = getApiKey('google-sheets-api-key');
         const res = await fetch('/api/model-selector-v3', {
-          headers: { 'Content-Type': 'application/json' }
+          headers: {
+            'Content-Type': 'application/json',
+            ...(sheetsKey && { 'x-api-key-google-sheets': sheetsKey }),
+          }
         });
         if (res.ok) {
           const data = await res.json();
@@ -149,9 +154,15 @@ export default function ModelTesting({ notes, sheetData, notionPages }: Props) {
     // Send to all models simultaneously
     const promises = selectedModels.map(async (modelId) => {
       try {
+        const geminiKey = getApiKey('gemini');
+        const groqKey = getApiKey('groq');
         const response = await fetch('/api/chat', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(geminiKey && { 'x-api-key-gemini': geminiKey }),
+            ...(groqKey && { 'x-api-key-groq': groqKey }),
+          },
           body: JSON.stringify({
             aiModel: modelId,
             conversationHistory: [{ role: 'user', content: message }],

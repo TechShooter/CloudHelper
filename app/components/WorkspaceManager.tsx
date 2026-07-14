@@ -3,6 +3,7 @@
 import { useState, useEffect, forwardRef, useImperativeHandle, Suspense, lazy, useRef } from 'react';
 import type { ReactNode, JSX } from 'react';
 import { createClient } from '@/utils/supabase/client';
+import { getApiKey } from '../lib/api-keys';
 
 // Dynamic imports to reduce bundle size - these components are huge!
 const ChatInterface = lazy(() => import('./ChatInterface'));
@@ -758,10 +759,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
 
     setIsSearching(true);
     try {
+      const notionKey = getApiKey('notion');
       const res = await fetch('/api/notion-search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(notionKey && { 'x-api-key-notion': notionKey }),
         },
         body: JSON.stringify({
           query,
@@ -804,9 +807,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
 
     // Fetch full page content from server endpoint
     try {
+      const notionKey = getApiKey('notion');
       const res = await fetch('/api/notion-page', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(notionKey && { 'x-api-key-notion': notionKey }),
+        },
         body: JSON.stringify({ pageId }),
       });
       if (res.ok) {

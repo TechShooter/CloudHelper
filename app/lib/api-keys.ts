@@ -1,6 +1,6 @@
 const STORAGE_PREFIX = 'cloudhelper.api-key.';
 
-export type ApiKeyName = 'gemini' | 'groq' | 'notion' | 'google-sheet-id' | 'google-calendar-id';
+export type ApiKeyName = 'gemini' | 'groq' | 'notion' | 'google-sheet-id' | 'google-calendar-id' | 'google-sheets-api-key';
 
 const KEY_LABELS: Record<ApiKeyName, string> = {
   gemini: 'Gemini API Key',
@@ -8,6 +8,7 @@ const KEY_LABELS: Record<ApiKeyName, string> = {
   notion: 'Notion API Key',
   'google-sheet-id': 'Google Sheet ID (food database)',
   'google-calendar-id': 'Google Calendar ID',
+  'google-sheets-api-key': 'Google Sheets API Key',
 };
 
 export function getApiKey(name: ApiKeyName): string {
@@ -46,7 +47,7 @@ export function getKeyLabel(name: ApiKeyName): string {
   return KEY_LABELS[name];
 }
 
-export const ALL_API_KEYS: ApiKeyName[] = ['gemini', 'groq', 'notion', 'google-sheet-id', 'google-calendar-id'];
+export const ALL_API_KEYS: ApiKeyName[] = ['gemini', 'groq', 'notion', 'google-sheets-api-key', 'google-sheet-id', 'google-calendar-id'];
 
 const RESOURCE_ID_KEYS: ApiKeyName[] = ['google-sheet-id', 'google-calendar-id'];
 
