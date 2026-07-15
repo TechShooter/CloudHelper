@@ -41,26 +41,26 @@ export default function Home() {
     }
   }, []);
 
+  const FOOD_DATABASE_SHEET_ID = '1Vm1JcvHTkh9GQniwINhlyI7XoPD0U1i9yrMblDanZo8';
+
   const loadSheets = useCallback(async () => {
-    const sheetId = getApiKey('google-sheet-id');
-    if (sheetId) {
-      const sheetsKey = getApiKey('google-sheets-api-key');
-      try {
-        const res = await fetch('/api/sheets', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(sheetsKey && { 'x-api-key-google-sheets': sheetsKey }),
-          },
-          body: JSON.stringify({ action: 'getAllSheets', sheetId })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.sheets) setSheetData(data.sheets);
-        }
-      } catch (err) {
-        console.error('Failed to load sheets:', err);
+    const sheetsKey = getApiKey('google-sheets-api-key');
+    if (!sheetsKey) return;
+    try {
+      const res = await fetch('/api/sheets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key-google-sheets': sheetsKey,
+        },
+        body: JSON.stringify({ action: 'getAllSheets', sheetId: FOOD_DATABASE_SHEET_ID })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.sheets) setSheetData(data.sheets);
       }
+    } catch (err) {
+      console.error('Failed to load sheets:', err);
     }
   }, []);
 

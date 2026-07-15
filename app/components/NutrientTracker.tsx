@@ -1552,18 +1552,18 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
               })()}
             </div>
           )}
-          {searchTerm && filteredFoods.length === 0 && !getApiKey('google-sheet-id') && (
+          {searchTerm && filteredFoods.length === 0 && (!sheetData || !Array.isArray(sheetData) || sheetData.length === 0) && (
             <div className="mt-2 bg-gray-800 rounded border border-gray-600 p-4 text-center">
               <p className="text-sm text-gray-400 mb-3">No food database configured.</p>
               <button
                 onClick={() => window.dispatchEvent(new CustomEvent('cloudhelper:open-api-settings'))}
                 className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-500 text-sm"
               >
-                Add Sheet ID
+                Configure API Key
               </button>
             </div>
           )}
-          {searchTerm && filteredFoods.length === 0 && getApiKey('google-sheet-id') && (
+          {searchTerm && filteredFoods.length === 0 && sheetData && Array.isArray(sheetData) && sheetData.length > 0 && (
             <div className="mt-2 bg-gray-800 rounded border border-gray-600 p-4 text-center">
               <p className="text-sm text-gray-400">No foods match your search.</p>
             </div>
