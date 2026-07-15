@@ -45,13 +45,12 @@ export default function Home() {
 
   const loadSheets = useCallback(async () => {
     const sheetsKey = getApiKey('google-sheets-api-key');
-    if (!sheetsKey) return;
     try {
       const res = await fetch('/api/sheets', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key-google-sheets': sheetsKey,
+          ...(sheetsKey && { 'x-api-key-google-sheets': sheetsKey }),
         },
         body: JSON.stringify({ action: 'getAllSheets', sheetId: FOOD_DATABASE_SHEET_ID })
       });

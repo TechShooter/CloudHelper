@@ -2,6 +2,30 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
+async function fetchSheetAsCsv(sheetId: string, gid: number = 0): Promise<string[][] | null> {
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const csvText = await res.text();
+    const rows = csvText.split('\n').filter(r => r.trim());
+    return rows.map(r => {
+      const cols: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      for (const ch of r) {
+        if (ch === '"') { inQuotes = !inQuotes; continue; }
+        if (ch === ',' && !inQuotes) { cols.push(current); current = ''; continue; }
+        current += ch;
+      }
+      cols.push(current);
+      return cols;
+    });
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const apiKey = req.headers.get('x-api-key-google-sheets') || process.env.GOOGLE_SHEETS_API_KEY || '';
@@ -15,29 +39,39 @@ export async function GET(req: NextRequest) {
     }
     const range = 'A:ZZ';
     
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${apiKey}`;
-    
-    const response = await fetch(url);
-    const data = await response.json();
-    
-    if (!response.ok) {
-      console.error('Google Sheets API error:', data);
-      return NextResponse.json({ error: data.error?.message || 'Failed to fetch sheet' }, { status: 500 });
+    let rows: string[][] = [];
+    let totalRows = 0;
+
+    if (apiKey) {
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${apiKey}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        console.error('Google Sheets API error:', data);
+        return NextResponse.json({ error: data.error?.message || 'Failed to fetch sheet' }, { status: 500 });
+      }
+      
+      rows = data.values || [];
+    } else {
+      // Fallback: fetch public sheet as CSV (no API key needed)
+      const csvRows = await fetchSheetAsCsv(sheetId);
+      if (!csvRows) {
+        return NextResponse.json({ error: 'Failed to fetch public sheet' }, { status: 500 });
+      }
+      rows = csvRows;
     }
-    
-    let rows = data.values || [];
-    const totalRows = rows.length;
+
+    totalRows = rows.length;
     
     if (query && rows.length > 0) {
-      // Search functionality
       const headers = rows[0];
       const filtered = rows.filter((row: string[], idx: number) => {
-        if (idx === 0) return true; // Keep headers
+        if (idx === 0) return true;
         return row.some(cell => cell?.toLowerCase().includes(query.toLowerCase()));
       });
       rows = filtered;
     } else if (!full && rows.length > 150) {
-      // Limit to 150 rows + header if not full request
       rows = rows.slice(0, 151);
     }
     
@@ -63,38 +97,53 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'sheetId is required' }, { status: 400 });
       }
       const targetSheetId = sheetId;
-      
-      // Get spreadsheet metadata to find all sheet names
-      const metadataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${targetSheetId}?key=${apiKey}`;
-      const metadataResponse = await fetch(metadataUrl);
-      const metadata = await metadataResponse.json();
-      
-      if (!metadataResponse.ok) {
-        return NextResponse.json({ error: metadata.error?.message || 'Failed to get sheet metadata' }, { status: 500 });
-      }
-      
-      const sheetNames = metadata.sheets.map((sheet: any) => sheet.properties.title);
-      const allData = [];
-      
-      for (const sheetName of sheetNames) {
-        try {
-          const url = `https://sheets.googleapis.com/v4/spreadsheets/${targetSheetId}/values/${encodeURIComponent(sheetName)}!A:ZZ?key=${apiKey}`;
-          const response = await fetch(url);
-          const data = await response.json();
-          
-          if (response.ok && data.values && data.values.length > 0) {
-            allData.push({
-              sheet: sheetName,
-              data: data.values,
-              rows: data.values.length
-            });
-          }
-        } catch (error) {
-          console.log(`Sheet ${sheetName} error:`, error);
+
+      if (apiKey) {
+        // Use API v4 (supports multiple sheets)
+        const metadataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${targetSheetId}?key=${apiKey}`;
+        const metadataResponse = await fetch(metadataUrl);
+        const metadata = await metadataResponse.json();
+        
+        if (!metadataResponse.ok) {
+          return NextResponse.json({ error: metadata.error?.message || 'Failed to get sheet metadata' }, { status: 500 });
         }
+        
+        const sheetNames = metadata.sheets.map((sheet: any) => sheet.properties.title);
+        const allData = [];
+        
+        for (const sheetName of sheetNames) {
+          try {
+            const url = `https://sheets.googleapis.com/v4/spreadsheets/${targetSheetId}/values/${encodeURIComponent(sheetName)}!A:ZZ?key=${apiKey}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (response.ok && data.values && data.values.length > 0) {
+              allData.push({
+                sheet: sheetName,
+                data: data.values,
+                rows: data.values.length
+              });
+            }
+          } catch (error) {
+            console.log(`Sheet ${sheetName} error:`, error);
+          }
+        }
+        
+        return NextResponse.json({ sheets: allData });
+      } else {
+        // Fallback: fetch public sheet as CSV (first sheet only)
+        const csvRows = await fetchSheetAsCsv(targetSheetId);
+        if (!csvRows) {
+          return NextResponse.json({ error: 'Failed to fetch public sheet' }, { status: 500 });
+        }
+        return NextResponse.json({
+          sheets: [{
+            sheet: 'Sheet1',
+            data: csvRows,
+            rows: csvRows.length
+          }]
+        });
       }
-      
-      return NextResponse.json({ sheets: allData });
     }
     
     if (action === 'search') {
