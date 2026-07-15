@@ -3,6 +3,12 @@ import { createClient } from '@/utils/supabase/server';
 
 export const runtime = 'edge';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidUUID(id: string): boolean {
+  return UUID_REGEX.test(id);
+}
+
 // GET: Fetch all chat messages for a chat
 export async function GET(req: NextRequest) {
   try {
@@ -18,6 +24,11 @@ export async function GET(req: NextRequest) {
 
     if (!chatId) {
       return NextResponse.json({ error: 'chatId is required' }, { status: 400 });
+    }
+
+    if (!isValidUUID(chatId)) {
+      console.log('[chat-persistence GET] Non-UUID chatId (local chat), returning empty:', chatId);
+      return NextResponse.json({ messages: [] });
     }
 
     console.log('[chat-persistence GET] Loading messages for chatId:', chatId, 'user:', user.id);
@@ -64,6 +75,11 @@ export async function POST(req: NextRequest) {
     }
 
     console.log('[chat-persistence POST] Saving messages for chatId:', chatId, 'count:', messages.length, 'user:', user.id);
+
+    if (!isValidUUID(chatId)) {
+      console.log('[chat-persistence POST] Non-UUID chatId (local chat), skipping DB persist:', chatId);
+      return NextResponse.json({ success: true });
+    }
 
     // Delete existing messages for this chat
     const { error: deleteError } = await supabase
@@ -129,6 +145,10 @@ export async function DELETE(req: NextRequest) {
 
     if (!chatId) {
       return NextResponse.json({ error: 'chatId is required' }, { status: 400 });
+    }
+
+    if (!isValidUUID(chatId)) {
+      return NextResponse.json({ success: true });
     }
 
     const { error } = await supabase

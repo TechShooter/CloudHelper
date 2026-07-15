@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ALL_API_KEYS, type ApiKeyName, getApiKey, setApiKey, getKeyLabel, obfuscateKey, isResourceIdKey, syncApiKeysToSupabase, pushLocalApiKeysToSupabase } from '../lib/api-keys';
+import { ALL_API_KEYS, type ApiKeyName, getApiKey, setApiKey, getKeyLabel, obfuscateKey, isResourceIdKey, syncApiKeysToSupabase, pushLocalApiKeysToSupabase, loadApiKeysFromSupabase } from '../lib/api-keys';
 import { createClient } from '@/utils/supabase/client';
 
 export default function ApiKeySettings() {
@@ -17,8 +17,10 @@ export default function ApiKeySettings() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setIsLoggedIn(!!session);
-      if (session) {
-        pushLocalApiKeysToSupabase();
+      if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+        loadApiKeysFromSupabase().then(() => {
+          pushLocalApiKeysToSupabase();
+        });
       }
     });
 

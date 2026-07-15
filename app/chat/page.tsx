@@ -9,6 +9,7 @@ const LogoutButton = lazy(() => import('../components/LogoutButton'));
 const ApiKeySettings = lazy(() => import('../components/ApiKeySettings'));
 
 import { getApiKey, loadApiKeysFromSupabase, pushLocalApiKeysToSupabase } from '../lib/api-keys';
+import { createClient } from '@/utils/supabase/client';
 
 export default function Home() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -40,30 +41,47 @@ export default function Home() {
     }
   }, []);
 
-  useEffect(() => {
-    loadApiKeysFromSupabase().then(() => {
-      pushLocalApiKeysToSupabase();
-      const sheetId = getApiKey('google-sheet-id');
-      if (sheetId) {
-        const sheetsKey = getApiKey('google-sheets-api-key');
-        fetch('/api/sheets', {
+  const loadSheets = useCallback(async () => {
+    const sheetId = getApiKey('google-sheet-id');
+    if (sheetId) {
+      const sheetsKey = getApiKey('google-sheets-api-key');
+      try {
+        const res = await fetch('/api/sheets', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             ...(sheetsKey && { 'x-api-key-google-sheets': sheetsKey }),
           },
-          body: JSON.stringify({
-            action: 'getAllSheets',
-            sheetId
-          })
-        }).then(res => {
-          if (res.ok) return res.json();
-        }).then(data => {
+          body: JSON.stringify({ action: 'getAllSheets', sheetId })
+        });
+        if (res.ok) {
+          const data = await res.json();
           if (data?.sheets) setSheetData(data.sheets);
-        }).catch(err => console.error('Failed to load sheets:', err));
+        }
+      } catch (err) {
+        console.error('Failed to load sheets:', err);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    loadApiKeysFromSupabase().then(() => {
+      pushLocalApiKeysToSupabase();
+      loadSheets();
+    });
+
+    const supabase = createClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, _session) => {
+      if (event === 'SIGNED_IN') {
+        loadApiKeysFromSupabase().then(() => {
+          pushLocalApiKeysToSupabase();
+          loadSheets();
+        });
       }
     });
-  }, []);
+
+    return () => subscription?.unsubscribe();
+  }, [loadSheets]);
 
   useEffect(() => {
     history.scrollRestoration = 'manual';
