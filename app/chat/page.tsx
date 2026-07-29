@@ -41,10 +41,10 @@ export default function Home() {
     }
   }, []);
 
-  const FOOD_DATABASE_SHEET_ID = '1Vm1JcvHTkh9GQniwINhlyI7XoPD0U1i9yrMblDanZo8';
-
   const loadSheets = useCallback(async () => {
     const sheetsKey = getApiKey('google-sheets-api-key');
+    const sheetId = getApiKey('google-sheet-id');
+    if (!sheetId) return;
     try {
       const res = await fetch('/api/sheets', {
         method: 'POST',
@@ -52,7 +52,7 @@ export default function Home() {
           'Content-Type': 'application/json',
           ...(sheetsKey && { 'x-api-key-google-sheets': sheetsKey }),
         },
-        body: JSON.stringify({ action: 'getAllSheets', sheetId: FOOD_DATABASE_SHEET_ID })
+        body: JSON.stringify({ action: 'getAllSheets', sheetId })
       });
       if (res.ok) {
         const data = await res.json();

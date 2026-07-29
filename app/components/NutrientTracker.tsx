@@ -2026,7 +2026,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
             </div>
 
             <div className="bg-gray-700 rounded-lg p-3 border-l-4 border-red-700">
-              <div className="text-xs text-gray-400 mb-1">Red Meat (g) — This week</div>
+              <div className="text-xs text-gray-400 mb-1">Red Meat (g) — last 7 days</div>
               <div className="flex items-center gap-2">
                 <div 
                   className="text-lg font-bold text-white cursor-pointer hover:text-red-300 transition-colors"
@@ -2877,7 +2877,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
               
               <div className="mb-4">
                 <label className="text-xs text-gray-400 block mb-1">
-                  {nutrientEditState.isLimit ? 'Daily Limit' : 'Daily Goal'} ({nutrientEditState.unit})
+                  {nutrientEditState.nutrientKey === 'redMeat' ? 'Weekly limit' : nutrientEditState.isLimit ? 'Daily Limit' : 'Daily Goal'} ({nutrientEditState.unit})
                 </label>
                 <input
                   type="number"
