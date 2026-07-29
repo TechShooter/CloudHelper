@@ -147,6 +147,7 @@ interface NutrientGoals {
   sugars: number;
   salt: number;
   redMeat: number;
+  redMeatLimit2: number;
   vitaminA: number;
   vitaminB1: number;
   vitaminB2: number;
@@ -185,6 +186,7 @@ interface NutrientEditState {
   nutrientName: string;
   currentValue: number;
   currentGoal: number;
+  currentGoal2: number;
   unit: string;
   isLimit?: boolean;
 }
@@ -214,6 +216,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       sugars: 50,
       salt: 6,
       redMeat: 0,
+      redMeatLimit2: 0,
       vitaminA: 900,
       vitaminB1: 1.2,
       vitaminB2: 1.3,
@@ -318,9 +321,11 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
     nutrientName: '',
     currentValue: 0,
     currentGoal: 0,
+    currentGoal2: 0,
     unit: ''
   });
   const [tempGoalValue, setTempGoalValue] = useState<number>(0);
+  const [tempGoalValue2, setTempGoalValue2] = useState<number>(0);
   const [tempNoteValue, setTempNoteValue] = useState<string>('');
   const [dayOffset, setDayOffset] = useState<number>(0);
 
@@ -1024,17 +1029,19 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
     setSelectedNutrient(details);
   };
 
-  const handleNutrientEdit = (nutrientKey: string, name: string, currentValue: number, goal: number, unit: string, isLimit: boolean = false) => {
+  const handleNutrientEdit = (nutrientKey: string, name: string, currentValue: number, goal: number, unit: string, isLimit: boolean = false, goal2: number = 0) => {
     setNutrientEditState({
       isOpen: true,
       nutrientKey,
       nutrientName: name,
       currentValue,
       currentGoal: goal,
+      currentGoal2: goal2,
       unit,
       isLimit
     });
     setTempGoalValue(goal || 0);
+    setTempGoalValue2(goal2 || 0);
     setTempNoteValue(nutrientNotes[nutrientKey] || '');
   };
 
@@ -1042,14 +1049,16 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
     // Update goal
     setGoals(prev => ({
       ...prev,
-      [nutrientEditState.nutrientKey]: tempGoalValue
+      [nutrientEditState.nutrientKey]: tempGoalValue,
+      ...(nutrientEditState.nutrientKey === 'redMeat' ? { redMeatLimit2: tempGoalValue2 } : {})
     }));
 
     // Also update tempGoals if Goals modal is open
     if (editingGoals) {
       setTempGoals(prev => ({
         ...prev,
-        [nutrientEditState.nutrientKey]: tempGoalValue
+        [nutrientEditState.nutrientKey]: tempGoalValue,
+        ...(nutrientEditState.nutrientKey === 'redMeat' ? { redMeatLimit2: tempGoalValue2 } : {})
       }));
     }
 
@@ -1066,6 +1075,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       nutrientName: '',
       currentValue: 0,
       currentGoal: 0,
+      currentGoal2: 0,
       unit: ''
     });
   };
@@ -1077,6 +1087,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       nutrientName: '',
       currentValue: 0,
       currentGoal: 0,
+      currentGoal2: 0,
       unit: ''
     });
   };
@@ -2035,32 +2046,32 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                   {weeklyRedMeat.toFixed(1)}
                 </div>
                 <button
-                  onClick={() => handleNutrientEdit('redMeat', 'Red Meat', weeklyRedMeat, goals.redMeat, 'g', true)}
+                  onClick={() => handleNutrientEdit('redMeat', 'Red Meat', weeklyRedMeat, goals.redMeat, 'g', true, goals.redMeatLimit2)}
                   className="text-gray-400 hover:text-white text-sm cursor-pointer"
                   title="Edit goal & notes"
                 >
                   ✏️
                 </button>
               </div>
-              <div className="text-xs text-gray-400 mt-1">Weekly limit: {goals.redMeat}g ⚠️</div>
-              {goals.redMeat > 0 && (
+              <div className="text-xs text-gray-400 mt-1">Weekly limit: {goals.redMeat}-{goals.redMeatLimit2}g ⚠️</div>
+              {goals.redMeatLimit2 > 0 && (
                 <div className="flex items-center gap-2 mt-2">
                   <div className="flex-1 bg-gray-600 rounded-full h-2">
                     <div 
                       className={`h-2 rounded-full transition-all ${
-                        weeklyRedMeat > goals.redMeat 
-                          ? 'bg-red-500' 
-                          : weeklyRedMeat > goals.redMeat * 0.75 
-                          ? 'bg-orange-500' 
+                        weeklyRedMeat > goals.redMeatLimit2
+                          ? 'bg-red-500'
+                          : weeklyRedMeat > goals.redMeat
+                          ? 'bg-yellow-500'
                           : 'bg-green-500'
                       }`}
-                      style={{ width: `${Math.min((weeklyRedMeat / goals.redMeat) * 100, 100)}%` }}
+                      style={{ width: `${Math.min((weeklyRedMeat / goals.redMeatLimit2) * 100, 100)}%` }}
                     ></div>
                   </div>
-                  <span className="text-xs font-bold text-white">{Math.min(Math.round((weeklyRedMeat / goals.redMeat) * 100), 100)}%</span>
+                  <span className="text-xs font-bold text-white">{Math.min(Math.round((weeklyRedMeat / goals.redMeatLimit2) * 100), 100)}%</span>
                 </div>
               )}
-              {weeklyRedMeat > goals.redMeat && goals.redMeat > 0 && (
+              {weeklyRedMeat > goals.redMeatLimit2 && goals.redMeatLimit2 > 0 && (
                 <div className="text-xs text-red-400 mt-1">Over weekly limit</div>
               )}
               {nutrientNotes.redMeat && (
@@ -2877,7 +2888,7 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
               
               <div className="mb-4">
                 <label className="text-xs text-gray-400 block mb-1">
-                  {nutrientEditState.nutrientKey === 'redMeat' ? 'Weekly limit' : nutrientEditState.isLimit ? 'Daily Limit' : 'Daily Goal'} ({nutrientEditState.unit})
+                  {nutrientEditState.nutrientKey === 'redMeat' ? 'First limit' : nutrientEditState.isLimit ? 'Daily Limit' : 'Daily Goal'} ({nutrientEditState.unit})
                 </label>
                 <input
                   type="number"
@@ -2887,6 +2898,21 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
                   className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 text-sm"
                   placeholder={`Enter ${nutrientEditState.isLimit ? 'limit' : 'goal'}...`}
                 />
+                {nutrientEditState.nutrientKey === 'redMeat' && (
+                  <div className="mt-3">
+                    <label className="text-xs text-gray-400 block mb-1">
+                      Second limit ({nutrientEditState.unit})
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={tempGoalValue2 || 0}
+                      onChange={(e) => setTempGoalValue2(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 text-sm"
+                      placeholder="Enter second limit..."
+                    />
+                  </div>
+                )}
               </div>
               
               <div className="mb-4">
