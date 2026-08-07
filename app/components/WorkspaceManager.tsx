@@ -1720,6 +1720,10 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
     return <>{renderHierarchicalPages(pages)}</>;
   };
 
+  // The Nutrients tab is only available to logged-in users (guests don't have
+  // persistent storage for it).
+  const visibleTabs = (isGuestRef.current ? (['chat', 'docs'] as const) : (['chat', 'docs', 'nutrients'] as const));
+
   return (
     <div className="flex-1 flex min-w-0 min-h-0 sm:min-w-[800px]">
       {/* Sidebar */}
@@ -1786,7 +1790,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
               </button>
               {showTabMenu && (
                 <div className="absolute left-0 top-full z-30 mt-1 min-w-[160px] rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-2xl">
-                  {(['chat', 'docs', 'nutrients'] as const).map((tab) => (
+                  {visibleTabs.map((tab) => (
                     <button
                       key={tab}
                       onClick={() => { setActiveTab(tab); setShowTabMenu(false); }}
@@ -1802,7 +1806,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
 
             {/* Desktop tabs */}
             <div className="hidden sm:flex items-center gap-0.5">
-              {(['chat', 'docs', 'nutrients'] as const).map((tab) => (
+              {visibleTabs.map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -1893,106 +1897,23 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
                     </div>
                   </div>
 
-                  {/* Controls */}
-                  <div className="mb-4 space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-gray-800 rounded">
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                          <label className="text-sm text-gray-300">Sort:</label>
-                          <select
-                            value={sortOrder}
-                            onChange={(e) => setSortOrder(e.target.value as any)}
-                            className="text-sm bg-gray-700 text-white px-3 py-1 rounded border border-gray-600"
-                          >
-                            <option value="hierarchy">Hierarchy</option>
-                            <option value="title">Title</option>
-                            <option value="type">Type</option>
-                          </select>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <label className="flex items-center gap-2 text-sm text-gray-300">
-                            <input
-                              type="radio"
-                              name="grouping"
-                              checked={!groupByTags}
-                              onChange={() => {
-                                setGroupByParent(true);
-                                setGroupByTags(false);
-                              }}
-                              className="form-radio h-4 w-4"
-                            />
-                            Hierarchical
-                          </label>
-                          <label className="flex items-center gap-2 text-sm text-gray-300">
-                            <input
-                              type="radio"
-                              name="grouping"
-                              checked={groupByTags}
-                              onChange={() => {
-                                setGroupByParent(false);
-                                setGroupByTags(true);
-                              }}
-                              className="form-radio h-4 w-4"
-                            />
-                            By Tags
-                          </label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              // Expand all pages that have children in hierarchical structure
-                              const allPages = hierarchicalNotionPages || allNotionPages.map(p => ({ ...p, children: [] }));
-                              const pagesWithChildren = new Set<string>();
-                              const findPagesWithChildren = (pages: any[]) => {
-                                pages.forEach(page => {
-                                  if (page.children && page.children.length > 0) {
-                                    pagesWithChildren.add(page.id);
-                                    findPagesWithChildren(page.children);
-                                  }
-                                });
-                              };
-                              findPagesWithChildren(allPages);
-                              setExpandedPages(pagesWithChildren);
-                            }}
-                            className="text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 cursor-pointer"
-                          >
-                            Expand All
-                          </button>
-                          <button
-                            onClick={() => setExpandedPages(new Set())}
-                            className="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 cursor-pointer"
-                          >
-                            Collapse All
-                          </button>
-                        </div>
+                  {/* Notion API key missing notice — opens "API Keys & Sources Settings".
+                      Guests save the key to localStorage only (no Supabase sync). */}
+                  {!getApiKey('notion') && (
+                    <div className="p-3 bg-amber-900/30 border border-amber-600/40 rounded-lg mb-3 flex items-center justify-between gap-3">
+                      <div className="text-sm text-amber-200">
+                        No Notion API key set yet. Add one to search and load your pages.
                       </div>
+                      <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('cloudhelper:open-api-settings'))}
+                        className="text-sm bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-500 shrink-0 cursor-pointer"
+                      >
+                        ⚙️ Manage Notion API
+                      </button>
                     </div>
+                  )}
 
-                    {/* Local Search - Only if pages are loaded */}
-                    {(hierarchicalNotionPages && hierarchicalNotionPages.length > 0) && (
-                      <div className="p-3 bg-gray-800 rounded mb-3">
-                        <div className="text-xs text-gray-400 mb-2 font-semibold">📂 Loaded Pages</div>
-                        <div className="flex items-center gap-2">
-                          <label className="text-sm text-gray-300">Search:</label>
-                          <input
-                            type="text"
-                            placeholder="Search by page name..."
-                            value={notionSearchQuery}
-                            onChange={(e) => setNotionSearchQuery(e.target.value)}
-                            className="flex-1 text-sm bg-gray-700 text-white px-3 py-1 rounded border border-gray-600 placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                          />
-                          {notionSearchQuery && (
-                            <button
-                              onClick={() => setNotionSearchQuery('')}
-                              className="text-xs bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-500 cursor-pointer"
-                            >
-                              Clear
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
+                  <div className="mb-4 space-y-3">
                     {/* Notion API Search - Always available */}
                     <div className="p-3 bg-gray-800 rounded mb-3">
                       <div className="text-xs text-gray-400 mb-2 font-semibold">🔍 Search Notion</div>
@@ -2080,421 +2001,9 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
                       )}
                     </div>
 
-                    {/* Tag Filter */}
-                    {(hierarchicalNotionPages || allNotionPages) && (
-                      <div className="p-3 bg-gray-800 rounded">
-                        <div className="flex items-center gap-2 mb-2">
-                          <label className="text-sm text-gray-300">Filter by tags:</label>
-                          <button
-                            onClick={() => setSelectedTags(new Set())}
-                            className="text-xs bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-500 cursor-pointer"
-                          >
-                            Clear All
-                          </button>
-                          <button
-                            onClick={() => {
-                              const allTags = getAllTags(hierarchicalNotionPages || allNotionPages);
-                              setSelectedTags(new Set(allTags));
-                            }}
-                            className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 cursor-pointer"
-                          >
-                            Select All
-                          </button>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {getAllTags(hierarchicalNotionPages || allNotionPages).map(tag => (
-                            <button
-                              key={tag}
-                              onClick={() => toggleTag(tag)}
-                              className={`text-xs px-3 py-1 rounded transition-colors cursor-pointer ${selectedTags.has(tag)
-                                ? 'bg-purple-600 text-white'
-                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                                }`}
-                            >
-                              {tag}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    
                   </div>
 
-                  <div className="space-y-3">
-                    {sheetData ? (
-                      <div className="flex items-center justify-between gap-2 text-sm text-green-300 p-3 bg-gray-800 rounded">
-                        <label className="flex items-center gap-2 flex-1">
-                          <input
-                            type="checkbox"
-                            checked={selectedContexts.includes('sheet')}
-                            onChange={() => toggleContext('sheet')}
-                            className="form-checkbox h-4 w-4"
-                          />
-                          Food I eat db (loaded)
-                        </label>
-                        <button
-                          onClick={() => toggleDefaultDoc('sheet')}
-                          className={`text-xs px-2 py-1 rounded cursor-pointer ${isDefaultDoc('sheet')
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                            }`}
-                          title="Mark as default for this chat"
-                        >
-                          {isDefaultDoc('sheet') ? '✓ Default' : 'Default'}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="text-sm text-gray-500 p-3 bg-gray-800 rounded">
-                        Google Sheet data is not loaded yet.
-                      </div>
-                    )}
-
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
-                        Notion Pages
-                        {loadingNotion && <span className="text-sm text-purple-400">(Loading...)</span>}
-                        {selectedTags.size > 0 && (
-                          <span className="text-xs text-purple-400">
-                            (filtered by {selectedTags.size} tag{selectedTags.size > 1 ? 's' : ''})
-                          </span>
-                        )}
-                        <span className="text-xs text-gray-500">
-                          (hierarchical: {hierarchicalNotionPages?.length || 0}, flat: {allNotionPages?.length || 0})
-                        </span>
-                      </h4>
-                      {allNotionPages && allNotionPages.length > 0 ? (
-                        <div className="space-y-1">
-                          {(() => {
-                            // Show hierarchical structure first (if available)
-                            const hierarchicalPages = hierarchicalNotionPages || [];
-                            const allFlatPages = allNotionPages.map(page => ({ ...page, children: [] }));
-
-                            // First, deduplicate the hierarchical structure itself
-                            const deduplicateHierarchical = (pages: any[]): any[] => {
-                              const seenIds = new Set();
-                              const deduplicated = [];
-
-                              const processPage = (page: any): any => {
-                                if (!page.id || typeof page.id !== 'string') return null;
-                                if (seenIds.has(page.id)) return null;
-
-                                seenIds.add(page.id);
-                                const dedupPage = { ...page };
-
-                                if (page.children && page.children.length > 0) {
-                                  dedupPage.children = page.children
-                                    .map(processPage)
-                                    .filter((child: any) => child !== null);
-                                }
-
-                                return dedupPage;
-                              };
-
-                              return pages
-                                .map(processPage)
-                                .filter(page => page !== null);
-                            };
-
-                            const deduplicatedHierarchicalPages = deduplicateHierarchical(hierarchicalPages);
-
-                            // Get IDs of pages actually in hierarchical structure (now properly deduplicated)
-                            const hierarchicalPageIds = new Set();
-                            const collectPageIds = (pages: any[]) => {
-                              pages.forEach(page => {
-                                if (page.id && typeof page.id === 'string') {
-                                  hierarchicalPageIds.add(page.id);
-                                }
-                                if (page.children && page.children.length > 0) {
-                                  collectPageIds(page.children);
-                                }
-                              });
-                            };
-                            collectPageIds(deduplicatedHierarchicalPages);
-
-                            // Filter out pages that are actually in hierarchy
-                            const standalonePages = allFlatPages.filter(page =>
-                              page.id &&
-                              typeof page.id === 'string' &&
-                              !hierarchicalPageIds.has(page.id)
-                            );
-
-                            // Debug: Show which pages are being marked as standalone vs hierarchical
-                            console.log('[RENDER DEBUG] Total pages in allNotionPages:', allFlatPages.length);
-                            console.log('[RENDER DEBUG] Hierarchical page IDs found:', Array.from(hierarchicalPageIds));
-                            console.log('[RENDER DEBUG] Standalone page IDs:', standalonePages.map(p => p.id));
-
-                            console.log('[RENDER DEBUG] Original hierarchical pages:', hierarchicalPages.length);
-                            console.log('[RENDER DEBUG] Deduplicated hierarchical pages:', deduplicatedHierarchicalPages.length);
-                            console.log('[RENDER DEBUG] Standalone pages:', standalonePages.length);
-
-                            // Check for "Cosa c'è in casa" in all pages
-                            const casaPageInHierarchical = deduplicatedHierarchicalPages.find(p => p.title.toLowerCase().includes('casa'));
-                            const casaPageInStandalone = standalonePages.find(p => p.title.toLowerCase().includes('casa'));
-                            console.log('[RENDER DEBUG] Casa page in hierarchical:', !!casaPageInHierarchical);
-                            console.log('[RENDER DEBUG] Casa page in standalone:', !!casaPageInStandalone);
-
-                            // Log all hierarchical page titles to see what's there
-                            console.log('[RENDER DEBUG] ========== COMPLETE HIERARCHY TREE ==========');
-                            const collectTitles = (pages: any[], depth = 0, pageNumbers = { count: 0 }) => {
-                              pages.forEach(page => {
-                                pageNumbers.count++;
-                                const indent = '  '.repeat(depth);
-                                const hasChildren = page.children && page.children.length > 0;
-                                const childCount = hasChildren ? ` [+${page.children.length}]` : '';
-                                console.log(`${indent}${pageNumbers.count}. "${page.title}" (${page.id}) ${childCount} [${page.object}]`);
-                                if (page.children && page.children.length > 0) {
-                                  collectTitles(page.children, depth + 1, pageNumbers);
-                                }
-                              });
-                            };
-                            collectTitles(deduplicatedHierarchicalPages);
-                            console.log('[RENDER DEBUG] ========== ROOT LEVEL PAGES ==========');
-                            deduplicatedHierarchicalPages.forEach((page, idx) => {
-                              const childCount = page.children?.length || 0;
-                              console.log(`${idx + 1}. ROOT: "${page.title}" (${page.id}) [${page.object}] with ${childCount} children`);
-                            });
-                            console.log('[RENDER DEBUG] ==========================================');
-
-
-
-
-                            return (
-                              <>
-                                {/* Hierarchical structure - contains all pages */}
-                                {deduplicatedHierarchicalPages.length > 0 && (
-                                  <div className="mb-4">
-                                    {renderGroupedPages(filterPagesByTags(deduplicatedHierarchicalPages))}
-                                  </div>
-                                )}
-                              </>
-                            );
-                          })()}
-                        </div>
-                      ) : loadingNotion ? (
-                        <div className="text-sm text-gray-400 p-4 bg-gray-800 rounded border border-gray-700">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="inline-block animate-spin">⟳</span>
-                            <span>Loading Notion pages...</span>
-                          </div>
-                          <div className="text-xs text-gray-500 ml-6">
-                            Processing and organizing your Notion data. Pages will appear below as they load.
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-sm text-gray-500 p-3 bg-gray-800 rounded">
-                          No Notion pages found. Click "↻ Reload" to fetch them.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Nutrients Section */}
-                  <div className="mt-6 p-4 bg-gray-800 rounded">
-                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                      🥗 Nutrients
-                      <span className="text-sm text-gray-400">(Include nutrient data from Nutrients tab)</span>
-                    </h3>
-
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-2 text-sm text-orange-300 p-3 bg-gray-800 rounded">
-                        <label className="flex items-center gap-2 flex-1 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={nutrientSettings.includeFoodEntries}
-                            onChange={(e) => setNutrientSettings(prev => ({ ...prev, includeFoodEntries: e.target.checked }))}
-                            className="form-checkbox h-4 w-4"
-                          />
-                          <span>Food Entries & Daily Nutrients (Last 24h)</span>
-                        </label>
-                        <button
-                          onClick={() => toggleDefaultNutrientSetting('includeFoodEntries')}
-                          className={`text-xs px-2 py-1 rounded cursor-pointer ${isDefaultNutrientSetting('includeFoodEntries')
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                            }`}
-                          title="Mark as default for this chat"
-                        >
-                          {isDefaultNutrientSetting('includeFoodEntries') ? '✓ Default' : 'Default'}
-                        </button>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 text-sm text-cyan-300 p-3 bg-gray-800 rounded">
-                        <label className="flex items-center gap-2 flex-1 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={nutrientSettings.includeVitaminsMinerals}
-                            onChange={(e) => setNutrientSettings(prev => ({ ...prev, includeVitaminsMinerals: e.target.checked }))}
-                            className="form-checkbox h-4 w-4"
-                          />
-                          <span>Vitamins & Minerals (Last 24h)</span>
-                        </label>
-                        <button
-                          onClick={() => toggleDefaultNutrientSetting('includeVitaminsMinerals')}
-                          className={`text-xs px-2 py-1 rounded cursor-pointer ${isDefaultNutrientSetting('includeVitaminsMinerals')
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                            }`}
-                          title="Mark as default for this chat"
-                        >
-                          {isDefaultNutrientSetting('includeVitaminsMinerals') ? '✓ Default' : 'Default'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Prompt Control Section */}
-                  <div className="mt-6 p-4 bg-gray-800 rounded">
-                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                      🔍 Prompt Control
-                      <span className="text-sm text-gray-400">(Manage what gets sent to AI)</span>
-                    </h3>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Data Sources */}
-                      <div className="space-y-3">
-                        <h4 className="text-white font-medium">Data Sources</h4>
-
-                        <label className="flex items-center gap-2 text-white">
-                          <input
-                            type="checkbox"
-                            checked={promptSettings.includeSheets}
-                            onChange={(e) => setPromptSettings(prev => ({ ...prev, includeSheets: e.target.checked }))}
-                            className="form-checkbox"
-                          />
-                          Google Sheets ({sheetData ? Array.isArray(sheetData) ? sheetData.length : 1 : 0} sheets)
-                        </label>
-
-                        {promptSettings.includeSheets && (
-                          <div className="ml-6">
-                            <label className="text-gray-300 text-sm">
-                              Max rows per sheet:
-                              <input
-                                type="number"
-                                value={promptSettings.maxSheetRows}
-                                onChange={(e) => setPromptSettings(prev => ({ ...prev, maxSheetRows: parseInt(e.target.value) || 0 }))}
-                                className="ml-2 w-20 px-2 py-1 bg-gray-700 rounded text-white"
-                                min="1"
-                                max="1000"
-                              />
-                            </label>
-                          </div>
-                        )}
-
-                        <label className="flex items-center gap-2 text-white">
-                          <input
-                            type="checkbox"
-                            checked={promptSettings.includeNotion}
-                            onChange={(e) => setPromptSettings(prev => ({ ...prev, includeNotion: e.target.checked }))}
-                            className="form-checkbox"
-                          />
-                          Notion Pages ({allNotionPages.length} pages)
-                        </label>
-
-                        {promptSettings.includeNotion && (
-                          <div className="ml-6">
-                            <label className="text-gray-300 text-sm">
-                              Max pages:
-                              <input
-                                type="number"
-                                value={promptSettings.maxNotionPages}
-                                onChange={(e) => setPromptSettings(prev => ({ ...prev, maxNotionPages: parseInt(e.target.value) || 0 }))}
-                                className="ml-2 w-20 px-2 py-1 bg-gray-700 rounded text-white"
-                                min="1"
-                                max="100"
-                              />
-                            </label>
-                          </div>
-                        )}
-
-                      </div>
-
-                      {/* Chat Control */}
-                      <div className="space-y-3">
-                        <h4 className="text-white font-medium">Chat Context</h4>
-
-                        <label className="flex items-center gap-2 text-white">
-                          <input
-                            type="checkbox"
-                            checked={promptSettings.includeChatHistory}
-                            onChange={(e) => setPromptSettings(prev => ({ ...prev, includeChatHistory: e.target.checked }))}
-                            className="form-checkbox"
-                          />
-                          Include Previous Messages
-                        </label>
-
-                        {promptSettings.includeChatHistory && (
-                          <div className="ml-6">
-                            <label className="text-gray-300 text-sm">
-                              Max previous messages:
-                              <input
-                                type="number"
-                                value={promptSettings.maxChatMessages}
-                                onChange={(e) => setPromptSettings(prev => ({ ...prev, maxChatMessages: parseInt(e.target.value) || 0 }))}
-                                className="ml-2 w-20 px-2 py-1 bg-gray-700 rounded text-white"
-                                min="1"
-                                max="20"
-                              />
-                            </label>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Quick Actions */}
-                    <div className="mt-4 pt-4 border-t border-gray-700">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => setPromptSettings({
-                            includeSheets: true,
-                            includeNotion: true,
-                            includeChatHistory: true,
-                            maxChatMessages: 6,
-                            maxSheetRows: 100,
-                            maxNotionPages: 50
-                          })}
-                          className="text-sm bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700"
-                        >
-                          ✅ Enable All
-                        </button>
-                        <button
-                          onClick={() => setPromptSettings({
-                            includeSheets: false,
-                            includeNotion: false,
-                            includeChatHistory: false,
-                            maxChatMessages: 6,
-                            maxSheetRows: 100,
-                            maxNotionPages: 50
-                          })}
-                          className="text-sm bg-red-600 text-white px-3 py-2 rounded hover:bg-red-700"
-                        >
-                          ❌ Disable All
-                        </button>
-                        <button
-                          onClick={() => setPromptSettings({
-                            includeSheets: false,
-                            includeNotion: false,
-                            includeChatHistory: true,
-                            maxChatMessages: 2,
-                            maxSheetRows: 100,
-                            maxNotionPages: 50
-                          })}
-                          className="text-sm bg-yellow-600 text-white px-3 py-2 rounded hover:bg-yellow-700"
-                        >
-                          ⚡ Groq Mode (Minimal)
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 flex justify-end gap-2">
-                    <button
-                      onClick={() => {
-                        setSelectedContexts(getAutoContexts());
-                      }}
-                      className="text-sm bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-600"
-                    >
-                      Reset to defaults
-                    </button>
-                  </div>
                 </div>
 
                 {/* Right Column - Prompt Preview */}
@@ -2512,51 +2021,6 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
                         <div>
                           <h4 className="text-sm font-medium text-gray-300 mb-2">Content Preview</h4>
                           <div className="space-y-1">
-                            {/* Google Sheets */}
-                            {sheetData && (() => {
-                              const isSelected = selectedContexts.includes('sheet');
-                              const isExpanded = expandedPreviewPages.has('__sheet__');
-                              return (
-                                <div className="bg-gray-900 rounded">
-                                  <div className="flex items-center justify-between px-3 py-2">
-                                    <div
-                                      className={`text-xs font-medium cursor-pointer select-none transition ${
-                                        isSelected ? 'text-purple-400' : 'text-gray-400'
-                                      }`}
-                                      onClick={() => {
-                                        const newSet = new Set(expandedPreviewPages);
-                                        if (newSet.has('__sheet__')) newSet.delete('__sheet__');
-                                        else newSet.add('__sheet__');
-                                        setExpandedPreviewPages(newSet);
-                                      }}
-                                    >
-                                      📊 Google Sheets
-                                    </div>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (isSelected) {
-                                          setSelectedContexts(selectedContexts.filter(ctx => ctx !== 'sheet'));
-                                        } else {
-                                          setSelectedContexts([...selectedContexts, 'sheet']);
-                                        }
-                                      }}
-                                      className="text-xs"
-                                    >
-                                      <span className={isSelected ? 'text-blue-400' : 'text-gray-500'}>
-                                        {isSelected ? '☑' : '☐'}
-                                      </span>
-                                    </button>
-                                  </div>
-                                  {isExpanded && (
-                                    <div className="px-3 pb-2 text-xs text-gray-400">
-                                      {Array.isArray(sheetData) ? `${sheetData.length} sheets loaded` : '1 sheet loaded'}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })()}
-
                             {/* Default Notion pages */}
                             {(() => {
                               const defaultPageIds = Array.from(pageDefaults[activeWorkspace] || []);
@@ -2674,89 +2138,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
                               return items;
                             })()}
 
-                            {/* Food Entries */}
-                            {(() => {
-                              const isSelected = nutrientSettings.includeFoodEntries;
-                              const isExpanded = expandedPreviewPages.has('__food__');
-                              return (
-                                <div className="bg-gray-900 rounded">
-                                  <div className="flex items-center justify-between px-3 py-2">
-                                    <div
-                                      className={`text-xs font-medium cursor-pointer select-none transition ${
-                                        isSelected ? 'text-orange-400' : 'text-gray-400'
-                                      }`}
-                                      onClick={() => {
-                                        const newSet = new Set(expandedPreviewPages);
-                                        if (newSet.has('__food__')) newSet.delete('__food__');
-                                        else newSet.add('__food__');
-                                        setExpandedPreviewPages(newSet);
-                                      }}
-                                    >
-                                      🍽️ Food Entries & Daily Nutrients
-                                    </div>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleDefaultNutrientSetting('includeFoodEntries');
-                                      }}
-                                      className="text-xs"
-                                    >
-                                      <span className={isSelected ? 'text-blue-400' : 'text-gray-500'}>
-                                        {isSelected ? '☑' : '☐'}
-                                      </span>
-                                    </button>
-                                  </div>
-                                  {isExpanded && (
-                                    <div className="px-3 pb-2 text-xs text-gray-400 whitespace-pre-wrap">
-                                      {formatFoodEntriesAndDailyNutrients()}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })()}
-
-                            {/* Vitamins & Minerals */}
-                            {(() => {
-                              const isSelected = nutrientSettings.includeVitaminsMinerals;
-                              const isExpanded = expandedPreviewPages.has('__vitamins__');
-                              return (
-                                <div className="bg-gray-900 rounded">
-                                  <div className="flex items-center justify-between px-3 py-2">
-                                    <div
-                                      className={`text-xs font-medium cursor-pointer select-none transition ${
-                                        isSelected ? 'text-cyan-400' : 'text-gray-400'
-                                      }`}
-                                      onClick={() => {
-                                        const newSet = new Set(expandedPreviewPages);
-                                        if (newSet.has('__vitamins__')) newSet.delete('__vitamins__');
-                                        else newSet.add('__vitamins__');
-                                        setExpandedPreviewPages(newSet);
-                                      }}
-                                    >
-                                      💊 Vitamins & Minerals
-                                    </div>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleDefaultNutrientSetting('includeVitaminsMinerals');
-                                      }}
-                                      className="text-xs"
-                                    >
-                                      <span className={isSelected ? 'text-blue-400' : 'text-gray-500'}>
-                                        {isSelected ? '☑' : '☐'}
-                                      </span>
-                                    </button>
-                                  </div>
-                                  {isExpanded && (
-                                    <div className="px-3 pb-2 text-xs text-gray-400 whitespace-pre-wrap">
-                                      {formatVitaminsAndMinerals()}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })()}
-
-                            {selectedContexts.filter(ctx => ctx.startsWith('notion-')).length === 0 && !selectedContexts.includes('sheet') && !nutrientSettings.includeFoodEntries && !nutrientSettings.includeVitaminsMinerals && (
+                            {selectedContexts.filter(ctx => ctx.startsWith('notion-')).length === 0 && (
                               <div className="text-gray-500 text-xs px-3 py-2">No content will be sent to AI</div>
                             )}
                           </div>
