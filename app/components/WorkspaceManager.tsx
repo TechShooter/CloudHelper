@@ -7,7 +7,6 @@ import { getApiKey } from '../lib/api-keys';
 
 // Dynamic imports to reduce bundle size - these components are huge!
 const ChatInterface = lazy(() => import('./ChatInterface'));
-const CalendarView = lazy(() => import('./CalendarView'));
 const NutrientTracker = lazy(() => import('./NutrientTracker'));
 const ModelTesting = lazy(() => import('./ModelTesting'));
 
@@ -155,7 +154,6 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
   const [workspaces] = useState<Workspace[]>(DEFAULT_WORKSPACES);
   const [showMenu, setShowMenu] = useState(false);
   const [showTabMenu, setShowTabMenu] = useState(false);
-  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [nutrientEntries, setNutrientEntries] = useState<any[]>([]);
   const isGuestRef = useRef<boolean>(true);
   const [authReady, setAuthReady] = useState(false);
@@ -1780,7 +1778,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
                 onClick={() => setShowTabMenu(!showTabMenu)}
                 className="flex items-center gap-1.5 rounded-lg border-l-2 border-blue-500/30 bg-gray-800/20 px-2.5 py-1.5 text-xs font-medium text-gray-200 hover:bg-gray-800/40"
               >
-                <span>{activeTab === 'chat' ? '💬' : activeTab === 'docs' ? '📄' : activeTab === 'calendar' ? '📅' : '🥗'}</span>
+                <span>{activeTab === 'chat' ? '💬' : activeTab === 'docs' ? '📄' : '🥗'}</span>
                 <span className="capitalize">{activeTab}</span>
                 <svg className={`h-3 w-3 transition-transform ${showTabMenu ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
@@ -1788,13 +1786,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
               </button>
               {showTabMenu && (
                 <div className="absolute left-0 top-full z-30 mt-1 min-w-[160px] rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-2xl">
-                  {(['chat', 'docs', 'calendar', 'nutrients'] as const).map((tab) => (
+                  {(['chat', 'docs', 'nutrients'] as const).map((tab) => (
                     <button
                       key={tab}
                       onClick={() => { setActiveTab(tab); setShowTabMenu(false); }}
                       className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${activeTab === tab ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                     >
-                      <span>{tab === 'chat' ? '💬' : tab === 'docs' ? '📄' : tab === 'calendar' ? '📅' : '🥗'}</span>
+                      <span>{tab === 'chat' ? '💬' : tab === 'docs' ? '📄' : '🥗'}</span>
                       <span className="capitalize">{tab}</span>
                     </button>
                   ))}
@@ -1804,7 +1802,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
 
             {/* Desktop tabs */}
             <div className="hidden sm:flex items-center gap-0.5">
-              {(['chat', 'docs', 'calendar', 'nutrients'] as const).map((tab) => (
+              {(['chat', 'docs', 'nutrients'] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -1814,7 +1812,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
                       : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
                   }`}
                 >
-                  {tab === 'chat' ? '💬' : tab === 'docs' ? '📄' : tab === 'calendar' ? '📅' : '🥗'} {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  {tab === 'chat' ? '💬' : tab === 'docs' ? '📄' : '🥗'} {tab.charAt(0).toUpperCase() + tab.slice(1)}
                 </button>
               ))}
             </div>
@@ -1844,7 +1842,6 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
                 notionPages={getNotionPages()}
                 workspacePrompt={currentWorkspace.systemPrompt}
                 workspaceId={currentWorkspace.id}
-                calendarEvents={calendarEvents}
                 nutrientEntries={currentWorkspace.id === 'nutrition' ? nutrientEntries : []}
               />
             </Suspense>
@@ -2772,13 +2769,6 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
             </div>
           )}
 
-
-
-          {activeTab === 'calendar' && (
-            <Suspense fallback={<div className="text-white p-4">Loading Calendar...</div>}>
-              <CalendarView onEventsChange={setCalendarEvents} />
-            </Suspense>
-          )}
 
           {activeTab === 'nutrients' && (
             <Suspense fallback={<div className="text-white p-4">Loading Nutrients...</div>}>
