@@ -72,18 +72,25 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    loadApiKeysFromSupabase().then(() => {
-      pushLocalApiKeysToSupabase();
-      loadSheets();
+    const supabase = createClient();
+
+    const syncKeysAndLoadSheets = () => {
+      loadApiKeysFromSupabase().then(() => {
+        pushLocalApiKeysToSupabase();
+        loadSheets();
+      });
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      // Only try to sync keys when logged in; otherwise the sync API returns
+      // 401 and there is nothing to load anyway.
+      if (session) syncKeysAndLoadSheets();
+      else loadSheets();
     });
 
-    const supabase = createClient();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, _session) => {
       if (event === 'SIGNED_IN') {
-        loadApiKeysFromSupabase().then(() => {
-          pushLocalApiKeysToSupabase();
-          loadSheets();
-        });
+        syncKeysAndLoadSheets();
       }
     });
 

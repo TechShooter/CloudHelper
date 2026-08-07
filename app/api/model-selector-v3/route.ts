@@ -69,29 +69,139 @@ function matchesName(freeName: string, benchName: string): boolean {
   return a.includes(b) || b.includes(a);
 }
 
+// --- No-API-key public fallback (CSV export) -----------------------------
+// Used when no key is configured so the sheet (which has a hardcoded ID) can
+// still be read. Loses cell background colors but keeps all the data.
+function parseCsv(text: string): string[][] {
+  return text
+    .split('\n')
+    .filter((r) => r.trim())
+    .map((r) => {
+      const cols: string[] = [];
+      let cur = '';
+      let inQ = false;
+      for (let i = 0; i < r.length; i++) {
+        const ch = r[i];
+        if (inQ) {
+          if (ch === '"') {
+            if (r[i + 1] === '"') { cur += '"'; i++; } else { inQ = false; }
+          } else {
+            cur += ch;
+          }
+        } else if (ch === '"') {
+          inQ = true;
+        } else if (ch === ',') {
+          cols.push(cur);
+          cur = '';
+        } else {
+          cur += ch;
+        }
+      }
+      cols.push(cur);
+      return cols;
+    });
+}
+
+interface CsvTab { name: string; gid: number; }
+
+async function discoverTabs(): Promise<CsvTab[]> {
+  const tabs: CsvTab[] = [];
+  try {
+    const res = await fetch(`https://spreadsheets.google.com/feeds/worksheets/${SHEET_ID}/public/basic?alt=json`);
+    if (res.ok) {
+      const json = await res.json();
+      for (const e of json?.feed?.entry ?? []) {
+        const name = (e?.title?.$t ?? '').trim();
+        const m = (e?.id?.$t ?? '').match(/(\d+)\/?$/);
+        const gid = m ? Number(m[1]) : NaN;
+        if (name && Number.isFinite(gid) && gid >= 0) tabs.push({ name, gid });
+      }
+    }
+  } catch { /* ignore */ }
+
+  if (!tabs.some((t) => t.gid === 0)) tabs.unshift({ name: 'Sheet1', gid: 0 });
+  return tabs;
+}
+
+async function fetchTabCsv(gid: number): Promise<string[][] | null> {
+  try {
+    const res = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`);
+    if (!res.ok) return null;
+    return parseCsv(await res.text());
+  } catch {
+    return null;
+  }
+}
+
+function buildTab(raw: string[][] | null): { headers: string[]; rows: Record<string, string>[]; cellMetas: Record<string, CellMeta>[] } {
+  if (!raw || !raw.length) return { headers: [], rows: [], cellMetas: [] };
+  const headers = (raw[0] || []).map((h) => h.trim());
+  const rows: Record<string, string>[] = [];
+  const cellMetas: Record<string, CellMeta>[] = [];
+  for (let i = 1; i < raw.length; i++) {
+    const cells = raw[i];
+    const row: Record<string, string> = {};
+    let hasValue = false;
+    headers.forEach((h, ci) => {
+      const v = cells[ci] ?? '';
+      row[h] = v;
+      if (v) hasValue = true;
+    });
+    if (!hasValue) continue;
+    rows.push(row);
+    cellMetas.push({});
+  }
+  return { headers, rows, cellMetas };
+}
+
+async function loadTabsFromCsvFallback(): Promise<Record<string, { headers: string[]; rows: Record<string, string>[]; cellMetas: Record<string, CellMeta>[] }>> {
+  const raw: Record<string, { headers: string[]; rows: Record<string, string>[]; cellMetas: Record<string, CellMeta>[] }> = {};
+  const tabs = await discoverTabs();
+  for (const tab of tabs.slice(0, 30)) {
+    const key = tab.name.toLowerCase();
+    const isFree = key.includes('model');
+    const isBench = key.includes('bench');
+    if (!isFree && !isBench) continue;
+    const csv = await fetchTabCsv(tab.gid);
+    const built = buildTab(csv);
+    if (built.rows.length === 0) continue;
+
+    // If the name didn't disambiguate, prefer content heuristics.
+    const headerKey = built.headers.join(' ').toLowerCase();
+    const targetKey = isFree && isBench
+      ? (headerKey.includes('bench') ? 'Benchmarks' : 'ModelSelector [Free tiers]')
+      : isFree ? 'ModelSelector [Free tiers]' : 'Benchmarks';
+
+    if (!raw[targetKey] || raw[targetKey].rows.length === 0) {
+      raw[targetKey] = built;
+    }
+  }
+  return raw;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const apiKey = req.headers.get('x-api-key-google-sheets') || process.env.GOOGLE_SHEETS_API_KEY || '';
-    if (!apiKey) {
-      return NextResponse.json({ error: 'GOOGLE_SHEETS_API_KEY not configured' }, { status: 500 });
-    }
-
     const raw: Record<string, { headers: string[]; rows: Record<string, string>[]; cellMetas: Record<string, CellMeta>[] }> = {};
 
-    for (const sheetName of SHEET_NAMES) {
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?ranges=${encodeURIComponent(sheetName)}&includeGridData=true&fields=sheets.data.rowData.values(effectiveFormat.backgroundColor,hyperlink,formattedValue,userEnteredValue)&key=${apiKey}`;
-      const response = await fetch(url);
-      const data = await response.json();
+    if (!apiKey) {
+      Object.assign(raw, await loadTabsFromCsvFallback());
+    } else {
+      for (const sheetName of SHEET_NAMES) {
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?ranges=${encodeURIComponent(sheetName)}&includeGridData=true&fields=sheets.data.rowData.values(effectiveFormat.backgroundColor,hyperlink,formattedValue,userEnteredValue)&key=${apiKey}`;
+        const response = await fetch(url);
+        const data = await response.json();
 
-      if (!response.ok) {
-        raw[sheetName] = { headers: [], rows: [], cellMetas: [] };
-        console.error(`Failed to fetch sheet "${sheetName}":`, data.error?.message);
-        continue;
+        if (!response.ok) {
+          raw[sheetName] = { headers: [], rows: [], cellMetas: [] };
+          console.error(`Failed to fetch sheet "${sheetName}":`, data.error?.message);
+          continue;
+        }
+
+        const sheet = data?.sheets?.[0];
+        const headerRow = sheetName === 'Benchmarks' ? 1 : 0;
+        raw[sheetName] = parseSheetGrid(sheet, headerRow);
       }
-
-      const sheet = data?.sheets?.[0];
-      const headerRow = sheetName === 'Benchmarks' ? 1 : 0;
-      raw[sheetName] = parseSheetGrid(sheet, headerRow);
     }
 
     const freeTiers = raw['ModelSelector [Free tiers]']?.rows || [];

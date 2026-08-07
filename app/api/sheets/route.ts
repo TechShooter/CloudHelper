@@ -39,25 +39,60 @@ async function fetchSheetAsCsv(sheetId: string, gid: number = 0): Promise<string
   }
 }
 
-// Best-effort discovery of additional tab gids via the public HTML export.
-// The CSV export only gives the first tab when no API key is available, so we
-// scrape the tab gids from the HTML menu to be able to load every tab.
-async function discoverTabGids(sheetId: string): Promise<number[]> {
+// Best-effort discovery of tabs (name + gid) via public, no-API-key sources.
+// The CSV export only gives the first tab, so we enumerate the rest here.
+async function discoverTabs(sheetId: string): Promise<Array<{ name: string; gid: number }>> {
+  const tabs: Array<{ name: string; gid: number }> = [];
+
+  // Source 1: legacy public worksheets feed (works for view-shared sheets).
   try {
-    const res = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/export?format=html`);
-    if (!res.ok) return [];
-    const html = await res.text();
-    const gidPattern = /gid=(\d{3,})/g;
-    const gids = new Set<number>();
-    let m: RegExpExecArray | null;
-    while ((m = gidPattern.exec(html)) !== null) {
-      const n = Number(m[1]);
-      if (Number.isFinite(n) && n > 0 && n <= 2147483647) gids.add(n);
+    const res = await fetch(`https://spreadsheets.google.com/feeds/worksheets/${sheetId}/public/basic?alt=json`);
+    if (res.ok) {
+      const json = await res.json();
+      const entries = json?.feed?.entry ?? [];
+      for (const e of entries) {
+        const name = (e?.title?.$t ?? '').trim();
+        const id = (e?.id?.$t ?? '').trim();
+        const m = id.match(/(\d+)\/?$/);
+        const gid = m ? Number(m[1]) : NaN;
+        if (name && Number.isFinite(gid) && gid >= 0) tabs.push({ name, gid });
+      }
     }
-    return [...gids].slice(0, 30);
   } catch {
-    return [];
+    // ignore
   }
+
+  // Source 2: scrape the HTML export menu if the feed didn't work.
+  if (tabs.length <= 1) {
+    try {
+      const res = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/export?format=html`);
+      if (res.ok) {
+        const html = await res.text();
+        const pairs: Array<{ name: string; gid: number }> = [];
+        const re = /(?:gid|data-tabid)=["']?(\d{2,})["']?/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(html)) !== null) {
+          const gid = Number(m[1]);
+          if (Number.isFinite(gid) && gid >= 0 && gid <= 2147483647) {
+            pairs.push({ name: `Sheet-${gid}`, gid });
+          }
+        }
+        const seen = new Set<number>();
+        for (const p of pairs) {
+          if (!seen.has(p.gid)) {
+            seen.add(p.gid);
+            tabs.push(p);
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Always ensure the first tab (gid 0) is present.
+  if (!tabs.some((t) => t.gid === 0)) tabs.unshift({ name: 'Sheet1', gid: 0 });
+  return tabs;
 }
 
 export async function GET(req: NextRequest) {
@@ -167,17 +202,16 @@ export async function POST(req: NextRequest) {
       } else {
         // Fallback: fetch public sheet as CSV. Load every discovered tab so a
         // food database that isn't on the first tab is still found.
-        const csvRows = await fetchSheetAsCsv(targetSheetId, 0);
-        if (!csvRows) {
-          return NextResponse.json({ error: 'Failed to fetch public sheet' }, { status: 500 });
-        }
-        const sheets = [{ sheet: 'Sheet1', data: csvRows, rows: csvRows.length }];
-        const extraGids = await discoverTabGids(targetSheetId);
-        for (const gid of extraGids) {
-          const extra = await fetchSheetAsCsv(targetSheetId, gid);
-          if (extra && extra.length > 0) {
-            sheets.push({ sheet: `Sheet-${gid}`, data: extra, rows: extra.length });
+        const tabs = await discoverTabs(targetSheetId);
+        const sheets: Array<{ sheet: string; data: string[][]; rows: number }> = [];
+        for (const tab of tabs.slice(0, 30)) {
+          const rows = await fetchSheetAsCsv(targetSheetId, tab.gid);
+          if (rows && rows.length > 0) {
+            sheets.push({ sheet: tab.name, data: rows, rows: rows.length });
           }
+        }
+        if (sheets.length === 0) {
+          return NextResponse.json({ error: 'Failed to fetch public sheet' }, { status: 500 });
         }
         return NextResponse.json({ sheets, usedFallback: true });
       }
