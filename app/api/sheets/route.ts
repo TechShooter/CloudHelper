@@ -90,6 +90,30 @@ async function discoverTabs(sheetId: string): Promise<Array<{ name: string; gid:
     }
   }
 
+  // Source 3: scrape tab ids straight out of the htmlview page. The legacy
+  // feed and the HTML export both fail for many "anyone with link" sheets,
+  // but htmlview exposes every gid reliably.
+  if (tabs.length <= 1) {
+    try {
+      const res = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/htmlview`);
+      if (res.ok) {
+        const html = await res.text();
+        const seen = new Set<number>(tabs.map((t) => t.gid));
+        const re = /gid=(\d{2,})/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(html)) !== null) {
+          const gid = Number(m[1]);
+          if (Number.isFinite(gid) && gid >= 0 && !seen.has(gid)) {
+            seen.add(gid);
+            tabs.push({ name: `Sheet-${gid}`, gid });
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   // Always ensure the first tab (gid 0) is present.
   if (!tabs.some((t) => t.gid === 0)) tabs.unshift({ name: 'Sheet1', gid: 0 });
   return tabs;
@@ -204,16 +228,29 @@ export async function POST(req: NextRequest) {
         // food database that isn't on the first tab is still found.
         const tabs = await discoverTabs(targetSheetId);
         const sheets: Array<{ sheet: string; data: string[][]; rows: number }> = [];
+        const loadErrors: string[] = [];
         for (const tab of tabs.slice(0, 30)) {
           const rows = await fetchSheetAsCsv(targetSheetId, tab.gid);
           if (rows && rows.length > 0) {
             sheets.push({ sheet: tab.name, data: rows, rows: rows.length });
+          } else {
+            loadErrors.push(`gid:${tab.gid} (empty)`);
           }
         }
         if (sheets.length === 0) {
           return NextResponse.json({ error: 'Failed to fetch public sheet' }, { status: 500 });
         }
-        return NextResponse.json({ sheets, usedFallback: true });
+        return NextResponse.json({
+          sheets,
+          usedFallback: true,
+          debug: {
+            sheetId: targetSheetId,
+            method: 'csv-fallback',
+            discovered: tabs.map((t) => t.name || `gid:${t.gid}`),
+            loaded: sheets.map((s) => `${s.sheet}(${s.rows} rows)`),
+            loadErrors,
+          },
+        });
       }
     }
     

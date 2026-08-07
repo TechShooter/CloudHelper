@@ -106,6 +106,8 @@ interface CsvTab { name: string; gid: number; }
 
 async function discoverTabs(): Promise<CsvTab[]> {
   const tabs: CsvTab[] = [];
+
+  // Source 1: legacy public worksheets feed.
   try {
     const res = await fetch(`https://spreadsheets.google.com/feeds/worksheets/${SHEET_ID}/public/basic?alt=json`);
     if (res.ok) {
@@ -119,6 +121,31 @@ async function discoverTabs(): Promise<CsvTab[]> {
     }
   } catch { /* ignore */ }
 
+  // Source 2: scrape the tab gids out of the htmlview page. The legacy feed
+  // frequently 404s for "anyone with link" sheets, but htmlview exposes the
+  // gids so we can still enumerate every tab via the CSV export.
+  if (tabs.length <= 1) {
+    try {
+      const res = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/htmlview`);
+      if (res.ok) {
+        const html = await res.text();
+        const seen = new Set<number>(tabs.map((t) => t.gid));
+        const re = /gid=(\d{2,})/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(html)) !== null) {
+          const gid = Number(m[1]);
+          if (Number.isFinite(gid) && gid >= 0 && !seen.has(gid)) {
+            seen.add(gid);
+            tabs.push({ name: `Sheet-${gid}`, gid });
+          }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Always ensure the first tab (gid 0) is present — it is the main list for
+  // this spreadsheet and must never be skipped just because its name is
+  // generic ("Sheet1").
   if (!tabs.some((t) => t.gid === 0)) tabs.unshift({ name: 'Sheet1', gid: 0 });
   return tabs;
 }
@@ -154,38 +181,70 @@ function buildTab(raw: string[][] | null): { headers: string[]; rows: Record<str
   return { headers, rows, cellMetas };
 }
 
-async function loadTabsFromCsvFallback(): Promise<Record<string, { headers: string[]; rows: Record<string, string>[]; cellMetas: Record<string, CellMeta>[] }>> {
+async function loadTabsFromCsvFallback(): Promise<{
+  raw: Record<string, { headers: string[]; rows: Record<string, string>[]; cellMetas: Record<string, CellMeta>[] }>;
+  debug: { method: string; discovered: string[]; loaded: string[]; rejected: string[] };
+}> {
   const raw: Record<string, { headers: string[]; rows: Record<string, string>[]; cellMetas: Record<string, CellMeta>[] }> = {};
+
   const tabs = await discoverTabs();
+  const discovered = tabs.map((t) => t.name || `gid:${t.gid}`);
+  const loaded: string[] = [];
+  const rejected: string[] = [];
+
+  // Slot for the main model list and (best-effort) the benchmarks tab.
+  let freeTier: { headers: string[]; rows: Record<string, string>[]; cellMetas: Record<string, CellMeta>[]; gid: number } | null = null;
+  let benchmark: { headers: string[]; rows: Record<string, string>[]; cellMetas: Record<string, CellMeta>[]; gid: number } | null = null;
+
   for (const tab of tabs.slice(0, 30)) {
-    const key = tab.name.toLowerCase();
-    const isFree = key.includes('model');
-    const isBench = key.includes('bench');
-    if (!isFree && !isBench) continue;
     const csv = await fetchTabCsv(tab.gid);
     const built = buildTab(csv);
-    if (built.rows.length === 0) continue;
-
-    // If the name didn't disambiguate, prefer content heuristics.
-    const headerKey = built.headers.join(' ').toLowerCase();
-    const targetKey = isFree && isBench
-      ? (headerKey.includes('bench') ? 'Benchmarks' : 'ModelSelector [Free tiers]')
-      : isFree ? 'ModelSelector [Free tiers]' : 'Benchmarks';
-
-    if (!raw[targetKey] || raw[targetKey].rows.length === 0) {
-      raw[targetKey] = built;
+    if (built.rows.length === 0) {
+      rejected.push(`gid:${tab.gid} (empty)`);
+      continue;
     }
+    loaded.push(`gid:${tab.gid}(${built.rows.length} rows)`);
+
+    // Classify by header CONTENT, not by tab name, because the discovered
+    // name can be a generic "Sheet1"/"Sheet-<gid>" and the main list is the
+    // first tab. A tab is the main list when it has Name/Company + license or
+    // tier columns; benchmarks have Intelligence/Speed or a bench marker.
+    const headerKey = built.headers.join(' ').toLowerCase();
+    const has = (kw: string) => headerKey.includes(kw);
+    // Main list: Name + Company AND a license/tier or privacy column. The
+    // "ModelSelector [Free tiers]" tab is the only one carrying those, which
+    // keeps the often first-in-list summary tabs from being picked instead.
+    const isMain = has('name') && has('company') && (has('licen') || has('privacy'));
+    const isBench = has('bench') || (has('intelligence') && (has('speed') || has('reasoning')));
+
+    if (isMain && !freeTier) freeTier = { ...built, gid: tab.gid };
+    else if (isBench && !benchmark) benchmark = { ...built, gid: tab.gid };
   }
-  return raw;
+
+  if (freeTier) raw['ModelSelector [Free tiers]'] = freeTier;
+  if (benchmark) raw['Benchmarks'] = benchmark;
+
+  return { raw, debug: { method: 'csv-fallback', discovered, loaded, rejected } };
 }
 
 export async function GET(req: NextRequest) {
-  try {
-    const apiKey = req.headers.get('x-api-key-google-sheets') || process.env.GOOGLE_SHEETS_API_KEY || '';
-    const raw: Record<string, { headers: string[]; rows: Record<string, string>[]; cellMetas: Record<string, CellMeta>[] }> = {};
+  const apiKey = req.headers.get('x-api-key-google-sheets') || process.env.GOOGLE_SHEETS_API_KEY || '';
+  const debug: any = {
+    sheetId: SHEET_ID,
+    method: apiKey ? 'sheets-api' : 'csv-fallback',
+    hasApiKey: !!apiKey,
+    errors: [] as string[],
+    discovered: [] as string[],
+    loaded: [] as string[],
+  };
+  const raw: Record<string, { headers: string[]; rows: Record<string, string>[]; cellMetas: Record<string, CellMeta>[] }> = {};
 
+  try {
     if (!apiKey) {
-      Object.assign(raw, await loadTabsFromCsvFallback());
+      const { raw: fbRaw, debug: fbDebug } = await loadTabsFromCsvFallback();
+      Object.assign(raw, fbRaw);
+      debug.discovered = fbDebug.discovered;
+      debug.loaded = fbDebug.loaded;
     } else {
       for (const sheetName of SHEET_NAMES) {
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?ranges=${encodeURIComponent(sheetName)}&includeGridData=true&fields=sheets.data.rowData.values(effectiveFormat.backgroundColor,hyperlink,formattedValue,userEnteredValue)&key=${apiKey}`;
@@ -194,6 +253,7 @@ export async function GET(req: NextRequest) {
 
         if (!response.ok) {
           raw[sheetName] = { headers: [], rows: [], cellMetas: [] };
+          debug.errors.push(`Failed to fetch sheet "${sheetName}": ${data.error?.message}`);
           console.error(`Failed to fetch sheet "${sheetName}":`, data.error?.message);
           continue;
         }
@@ -201,6 +261,7 @@ export async function GET(req: NextRequest) {
         const sheet = data?.sheets?.[0];
         const headerRow = sheetName === 'Benchmarks' ? 1 : 0;
         raw[sheetName] = parseSheetGrid(sheet, headerRow);
+        debug.loaded.push(`${sheetName}(${raw[sheetName].rows.length} rows)`);
       }
     }
 
@@ -257,8 +318,15 @@ export async function GET(req: NextRequest) {
       headers: allHeaders,
       rows: mergedRows,
       cellMetas: mergedCellMetas,
+      debug: {
+        ...debug,
+        freeRows: freeTiers.length,
+        benchRows: benchmarks.length,
+        mergedRows: mergedRows.length,
+      },
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    debug.errors.push(error.message);
+    return NextResponse.json({ error: error.message, debug }, { status: 500 });
   }
 }

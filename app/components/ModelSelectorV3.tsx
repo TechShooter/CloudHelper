@@ -38,6 +38,7 @@ export default function ModelSelectorV3({ selectedModel, onModelSelect }: ModelS
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [cellMetas, setCellMetas] = useState<Record<string, CellMeta>[]>([]);
@@ -55,6 +56,7 @@ export default function ModelSelectorV3({ selectedModel, onModelSelect }: ModelS
     const fetchData = async () => {
       setLoading(true);
       setError(null);
+      setDebugInfo(null);
 
       try {
         const sheetsKey = getApiKey('google-sheets-api-key');
@@ -72,6 +74,7 @@ export default function ModelSelectorV3({ selectedModel, onModelSelect }: ModelS
         setHeaders(data.headers || []);
         setRows(data.rows || []);
         setCellMetas(data.cellMetas || []);
+        setDebugInfo(data.debug || null);
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -346,6 +349,31 @@ export default function ModelSelectorV3({ selectedModel, onModelSelect }: ModelS
                 ↺
               </button>
             </div>
+
+            {!loading && rows.length === 0 && !error && (
+              <div className="mx-4 mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-200/90 sm:mx-6">
+                <p className="font-medium text-amber-200 mb-1">
+                  No models loaded — this selector always reads the sheet{' '}
+                  <code className="text-[11px] break-all">{debugInfo?.sheetId ?? '1Vm1JcvHTkh9GQniwINhlyI7XoPD0U1i9yrMblDanZo8'}</code>
+                </p>
+                {debugInfo && (
+                  <div className="space-y-0.5 text-[11px] text-amber-200/70">
+                    <div>Method: {debugInfo.method || '?'}{debugInfo.hasApiKey ? ' (API key present)' : ' (no API key, CSV fallback)'}</div>
+                    {Array.isArray(debugInfo.discovered) && (
+                      <div>Discovered tabs ({debugInfo.discovered.length}): {debugInfo.discovered.join(', ') || '(none)'}</div>
+                    )}
+                    {Array.isArray(debugInfo.loaded) && (
+                      <div>Loaded tabs ({debugInfo.loaded.length}): {debugInfo.loaded.join(', ') || '(none)'}</div>
+                    )}
+                    {debugInfo.freeRows !== undefined && <div>Main-list rows: {debugInfo.freeRows}</div>}
+                    {debugInfo.benchRows !== undefined && <div>Benchmark rows: {debugInfo.benchRows}</div>}
+                    {Array.isArray(debugInfo.errors) && debugInfo.errors.length > 0 && (
+                      <div>Errors: {debugInfo.errors.join(' | ')}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {(!isOpen && rows.length > 0) ? null : loading && (
               <div className="flex flex-1 items-center justify-center text-gray-400">
