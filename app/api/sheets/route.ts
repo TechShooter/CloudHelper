@@ -13,10 +13,23 @@ async function fetchSheetAsCsv(sheetId: string, gid: number = 0): Promise<string
       const cols: string[] = [];
       let current = '';
       let inQuotes = false;
-      for (const ch of r) {
-        if (ch === '"') { inQuotes = !inQuotes; continue; }
-        if (ch === ',' && !inQuotes) { cols.push(current); current = ''; continue; }
-        current += ch;
+      for (let i = 0; i < r.length; i++) {
+        const ch = r[i];
+        if (inQuotes) {
+          if (ch === '"') {
+            if (r[i + 1] === '"') { current += '"'; i++; continue; } // escaped quote
+            inQuotes = false;
+          } else {
+            current += ch;
+          }
+        } else if (ch === '"') {
+          inQuotes = true;
+        } else if (ch === ',') {
+          cols.push(current);
+          current = '';
+        } else {
+          current += ch;
+        }
       }
       cols.push(current);
       return cols;

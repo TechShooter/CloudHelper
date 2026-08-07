@@ -161,6 +161,13 @@ export default function ModelSelectorV3({ selectedModel, onModelSelect }: ModelS
     });
   }, [filteredRows, sortConfig]);
 
+  const selectedModelName = useMemo(() => {
+    if (!selectedModel) return 'Selector';
+    const matchingRow = rows.find((row) => row.Model === selectedModel || row.Name === selectedModel);
+    if (matchingRow) return matchingRow.Name || matchingRow.Model || selectedModel;
+    return selectedModel;
+  }, [rows, selectedModel]);
+
   const intelligenceRange = useMemo(() => {
     const values = rows
       .map((r) => {
@@ -269,12 +276,12 @@ export default function ModelSelectorV3({ selectedModel, onModelSelect }: ModelS
 
   return (
     <div className="relative">
-      <button
-        onClick={handleOpen}
-        className="rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-indigo-600/25 transition-all hover:from-indigo-500 hover:to-purple-500 hover:shadow-xl hover:shadow-indigo-600/30 active:scale-[0.97] sm:px-4 sm:py-2 sm:text-sm"
-      >
-        Selector
-      </button>
+<button
+          onClick={handleOpen}
+          className="rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-indigo-600/25 transition-all hover:from-indigo-500 hover:to-purple-500 hover:shadow-xl hover:shadow-indigo-600/30 active:scale-[0.97] sm:px-4 sm:py-2 sm:text-sm"
+        >
+          {selectedModelName}
+        </button>
 
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 backdrop-blur-sm sm:p-4">

@@ -577,14 +577,22 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       return [];
     }
 
-    let headers: string[] = [];
+    // Locate the tab that actually contains the food database header (has a
+    // "Name" AND an energy column). Ignore any other tabs so that a wrongly
+    // ordered leading tab doesn't zero-out every nutritional value.
+    let foodSheet: any = null;
     for (const sheet of sheetData) {
-      if (sheet.data && Array.isArray(sheet.data) && sheet.data.length > 0) {
-        headers = sheet.data[0];
+      const row0 = sheet.data && Array.isArray(sheet.data) && sheet.data.length > 0 ? sheet.data[0] : [];
+      const lower = (v: any) => String(v || '').toLowerCase();
+      if (row0.some((h: any) => lower(h).includes('name')) &&
+          row0.some((h: any) => lower(h).includes('energy'))) {
+        foodSheet = sheet;
         break;
       }
     }
-    if (headers.length === 0) return [];
+    if (!foodSheet) return [];
+
+    const headers: string[] = foodSheet.data[0] || [];
 
     const colIdx = (name: string, exact = false): number => {
       if (exact) return headers.indexOf(name);
@@ -627,52 +635,49 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
 
     const foods: any[] = [];
 
-    sheetData.forEach((sheet: any) => {
-      if (sheet.data && Array.isArray(sheet.data)) {
-        for (let i = 1; i < sheet.data.length; i++) {
-          const row = sheet.data[i];
-          const name = C.name >= 0 ? row[C.name] : '';
-          if (!name) continue;
+    const sheetDataRows = foodSheet.data as any[];
+    for (let i = 1; i < sheetDataRows.length; i++) {
+      const row = sheetDataRows[i];
+      const name = C.name >= 0 ? row[C.name] : '';
+      if (!name) continue;
 
           const val = (idx: number) => (idx >= 0 && idx < row.length ? parseItalianNumber(row[idx]) : 0);
-          const str = (idx: number) => (idx >= 0 && idx < row.length ? (row[idx] || '').trim() : '');
+      const str = (idx: number) => (idx >= 0 && idx < row.length ? (row[idx] || '').trim() : '');
 
-          foods.push({
-            name,
-            usualGrams: val(C.usualGrams) || 100,
-            costPerKg: C.costPerKg >= 0 ? parseItalianCost(row[C.costPerKg]) : 0,
-            energyPer100g: val(C.energyKJ),
-            fatsPer100g: val(C.fats),
-            saturatedFatsPer100g: val(C.saturatedFats),
-            carbsPer100g: val(C.carbs),
-            sugarsPer100g: val(C.sugars),
-            fibersPer100g: val(C.fibers),
-            proteinPer100g: val(C.protein),
-            saltPer100g: val(C.salt),
-            redMeatPer100g: val(C.redMeat),
-            vitaminDPer100g: val(C.vitaminD),
-            vitaminB1Per100g: val(C.vitaminB1),
-            vitaminB2Per100g: val(C.vitaminB2),
-            vitaminB3Per100g: val(C.vitaminB3),
-            vitaminB5Per100g: val(C.vitaminB5),
-            vitaminB6Per100g: val(C.vitaminB6),
-            vitaminB9Per100g: val(C.vitaminB9),
-            vitaminEPer100g: val(C.vitaminE),
-            vitaminKPer100g: val(C.vitaminK),
-            calciumPer100g: val(C.calcium),
-            ironPer100g: val(C.iron),
-            phosphorusPer100g: val(C.phosphorus),
-            magnesiumPer100g: val(C.magnesium),
-            potassiumPer100g: val(C.potassium),
-            zincPer100g: val(C.zinc),
-            copperPer100g: val(C.copper),
-            manganesePer100g: val(C.manganese),
-            seleniumPer100g: val(C.selenium),
-            comments: str(C.comments),
-          });
-        }
-      }
-    });
+      foods.push({
+        name,
+        usualGrams: val(C.usualGrams) || 100,
+        costPerKg: C.costPerKg >= 0 ? parseItalianCost(row[C.costPerKg]) : 0,
+        energyPer100g: val(C.energyKJ),
+        fatsPer100g: val(C.fats),
+        saturatedFatsPer100g: val(C.saturatedFats),
+        carbsPer100g: val(C.carbs),
+        sugarsPer100g: val(C.sugars),
+        fibersPer100g: val(C.fibers),
+        proteinPer100g: val(C.protein),
+        saltPer100g: val(C.salt),
+        redMeatPer100g: val(C.redMeat),
+        vitaminDPer100g: val(C.vitaminD),
+        vitaminB1Per100g: val(C.vitaminB1),
+        vitaminB2Per100g: val(C.vitaminB2),
+        vitaminB3Per100g: val(C.vitaminB3),
+        vitaminB5Per100g: val(C.vitaminB5),
+        vitaminB6Per100g: val(C.vitaminB6),
+        vitaminB9Per100g: val(C.vitaminB9),
+        vitaminEPer100g: val(C.vitaminE),
+        vitaminKPer100g: val(C.vitaminK),
+        calciumPer100g: val(C.calcium),
+        ironPer100g: val(C.iron),
+        phosphorusPer100g: val(C.phosphorus),
+        magnesiumPer100g: val(C.magnesium),
+        potassiumPer100g: val(C.potassium),
+        zincPer100g: val(C.zinc),
+        copperPer100g: val(C.copper),
+        manganesePer100g: val(C.manganese),
+        seleniumPer100g: val(C.selenium),
+        comments: str(C.comments),
+      });
+    }
 
     return foods;
   };
