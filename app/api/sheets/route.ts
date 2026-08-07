@@ -39,6 +39,27 @@ async function fetchSheetAsCsv(sheetId: string, gid: number = 0): Promise<string
   }
 }
 
+// Best-effort discovery of additional tab gids via the public HTML export.
+// The CSV export only gives the first tab when no API key is available, so we
+// scrape the tab gids from the HTML menu to be able to load every tab.
+async function discoverTabGids(sheetId: string): Promise<number[]> {
+  try {
+    const res = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/export?format=html`);
+    if (!res.ok) return [];
+    const html = await res.text();
+    const gidPattern = /gid=(\d{3,})/g;
+    const gids = new Set<number>();
+    let m: RegExpExecArray | null;
+    while ((m = gidPattern.exec(html)) !== null) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n) && n > 0 && n <= 2147483647) gids.add(n);
+    }
+    return [...gids].slice(0, 30);
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const apiKey = req.headers.get('x-api-key-google-sheets') || process.env.GOOGLE_SHEETS_API_KEY || '';
@@ -142,20 +163,23 @@ export async function POST(req: NextRequest) {
           }
         }
         
-        return NextResponse.json({ sheets: allData });
+        return NextResponse.json({ sheets: allData, usedFallback: false });
       } else {
-        // Fallback: fetch public sheet as CSV (first sheet only)
-        const csvRows = await fetchSheetAsCsv(targetSheetId);
+        // Fallback: fetch public sheet as CSV. Load every discovered tab so a
+        // food database that isn't on the first tab is still found.
+        const csvRows = await fetchSheetAsCsv(targetSheetId, 0);
         if (!csvRows) {
           return NextResponse.json({ error: 'Failed to fetch public sheet' }, { status: 500 });
         }
-        return NextResponse.json({
-          sheets: [{
-            sheet: 'Sheet1',
-            data: csvRows,
-            rows: csvRows.length
-          }]
-        });
+        const sheets = [{ sheet: 'Sheet1', data: csvRows, rows: csvRows.length }];
+        const extraGids = await discoverTabGids(targetSheetId);
+        for (const gid of extraGids) {
+          const extra = await fetchSheetAsCsv(targetSheetId, gid);
+          if (extra && extra.length > 0) {
+            sheets.push({ sheet: `Sheet-${gid}`, data: extra, rows: extra.length });
+          }
+        }
+        return NextResponse.json({ sheets, usedFallback: true });
       }
     }
     

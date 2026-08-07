@@ -44,7 +44,11 @@ export default function Home() {
   const loadSheets = useCallback(async () => {
     const sheetsKey = getApiKey('google-sheets-api-key');
     const sheetId = getApiKey('google-sheet-id');
-    if (!sheetId) return;
+    console.debug('[sheet-load] sheetId:', sheetId, '| hasSheetsKey:', !!sheetsKey);
+    if (!sheetId) {
+      console.debug('[sheet-load] Aborting: hmm no Sheet ID configured (google-sheet-id).');
+      return;
+    }
     try {
       const res = await fetch('/api/sheets', {
         method: 'POST',
@@ -56,10 +60,14 @@ export default function Home() {
       });
       if (res.ok) {
         const data = await res.json();
+        console.debug('[sheet-load] response usedFallback:', data?.usedFallback, '| tabs:', data?.sheets?.length, '| sheets:', data?.sheets?.map((s: any) => s.sheet));
         if (data?.sheets) setSheetData(data.sheets);
+      } else {
+        const errTxt = await res.text();
+        console.warn('[sheet-load] HTTP', res.status, errTxt);
       }
     } catch (err) {
-      console.error('Failed to load sheets:', err);
+      console.error('[sheet-load] Failed to load sheets:', err);
     }
   }, []);
 

@@ -577,15 +577,21 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
       return [];
     }
 
-    // Locate the tab that actually contains the food database header (has a
-    // "Name" AND an energy column). Ignore any other tabs so that a wrongly
-    // ordered leading tab doesn't zero-out every nutritional value.
+    // Locate the tab that actually contains the food database header. It must
+    // have a "Name"-like column AND at least one nutritional column. This
+    // avoids picking an unrelated leading tab (which zeros every value) while
+    // tolerating header spelling variations (e.g. Energy vs Energia vs kJ).
+    const NUTRITION_HEADERS = [
+      'energy', 'enreg', 'kj', 'kcal', 'proteine', 'protein', 'proteina',
+      'fats', 'fat', 'grassi', 'carb', 'fibre', 'fibre', 'zuccher', 'sale', 'salt',
+    ];
     let foodSheet: any = null;
     for (const sheet of sheetData) {
       const row0 = sheet.data && Array.isArray(sheet.data) && sheet.data.length > 0 ? sheet.data[0] : [];
       const lower = (v: any) => String(v || '').toLowerCase();
-      if (row0.some((h: any) => lower(h).includes('name')) &&
-          row0.some((h: any) => lower(h).includes('energy'))) {
+      const hasName = row0.some((h: any) => lower(h).includes('name'));
+      const hasNutrition = row0.some((h: any) => NUTRITION_HEADERS.some((kw) => lower(h).includes(kw)));
+      if (hasName && hasNutrition) {
         foodSheet = sheet;
         break;
       }
@@ -689,6 +695,18 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
     );
     return filtered;
   }, [sheetData, searchTerm]);
+
+  // Debug info: which tabs are loaded and their header row, used when the
+  // food search comes back empty so the user can see why.
+  const sheetDebugTabs = useMemo(() => {
+    if (!sheetData || !Array.isArray(sheetData)) return [];
+    return sheetData.map((sheet: any) => {
+      const headers = sheet.data && Array.isArray(sheet.data) && sheet.data.length > 0
+        ? (sheet.data[0] as any[]).filter(Boolean).join(' | ')
+        : '(no header row)';
+      return { sheet: sheet.sheet || sheet.name || '(untitled)', headers };
+    });
+  }, [sheetData]);
 
   const addEntry = () => {
     if (!selectedFood || !time || !grams) return;
@@ -1570,18 +1588,43 @@ export default function NutrientTracker({ sheetData, onEntriesChange }: Props) {
           )}
           {searchTerm && filteredFoods.length === 0 && (!sheetData || !Array.isArray(sheetData) || sheetData.length === 0) && (
             <div className="mt-2 bg-gray-800 rounded border border-gray-600 p-4 text-center">
-              <p className="text-sm text-gray-400 mb-3">No food database configured.</p>
+              <p className="text-sm text-gray-400 mb-3">No food database configured or it failed to load.</p>
               <button
                 onClick={() => window.dispatchEvent(new CustomEvent('cloudhelper:open-api-settings'))}
                 className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-500 text-sm"
               >
-                Configure API Key
+                Check API Keys & Sheet ID
               </button>
             </div>
           )}
           {searchTerm && filteredFoods.length === 0 && sheetData && Array.isArray(sheetData) && sheetData.length > 0 && (
-            <div className="mt-2 bg-gray-800 rounded border border-gray-600 p-4 text-center">
-              <p className="text-sm text-gray-400">No foods match your search.</p>
+            <div className="mt-2 bg-gray-800 rounded border border-gray-600 p-4 text-left">
+              <p className="text-sm text-gray-300 font-medium mb-1">No foods match your search.</p>
+              <p className="text-xs text-gray-500 mb-3">
+                {sheetData.length} sheet(s) loaded, but no food tab found with a “Name” column plus nutritional data.
+              </p>
+
+              <div className="mb-3 space-y-2">
+                {sheetDebugTabs.map((tab, i) => (
+                  <div key={i} className="bg-gray-900/60 rounded p-2">
+                    <div className="text-xs text-gray-300 font-medium">Tab: {tab.sheet}</div>
+                    <div className="text-[11px] text-gray-500 break-words">Headers: {tab.headers}</div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-xs text-gray-500">
+                Tip: make sure the food sheet (the one with <span className="text-gray-300">Name</span>,{' '}
+                <span className="text-gray-300">Energy</span>, <span className="text-gray-300">Proteine</span>… columns) is being loaded.
+                If you only see the wrong columns here, the Sheets API key may be missing on this server (falling back
+                to the CSV export) or the configured Sheet ID points to the wrong spreadsheet.
+              </p>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('cloudhelper:open-api-settings'))}
+                className="mt-3 bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-500 text-sm"
+              >
+                Check API Keys & Sheet ID
+              </button>
             </div>
           )}
         </div>
