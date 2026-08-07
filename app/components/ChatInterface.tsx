@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import ChatHeader, { ChatHeaderRef } from './ChatHeader';
 import { createClient } from '@/utils/supabase/client';
-import { getApiKey, hasApiKey } from '../lib/api-keys';
+import { getApiKey } from '../lib/api-keys';
 import { ingestFile, searchQuery, removeDocument, getStats } from '../lib/browser-rag';
 import { saveChat, saveMessages, loadMessages } from '../lib/chat-storage';
 
@@ -142,6 +142,30 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // Whether the deployer configured a chat key server-side. null = unknown
+  // yet (treat as available so guests are never locked out while it loads).
+  const [serverKeys, setServerKeys] = useState<{ gemini: boolean | null; groq: boolean | null }>({
+    gemini: null,
+    groq: null,
+  });
+  useEffect(() => {
+    let active = true;
+    fetch('/api/ai-key-status')
+      .then((r) => r.json())
+      .then((d) => {
+        if (active) setServerKeys({ gemini: !!d?.gemini, groq: !!d?.groq });
+      })
+      .catch(() => {
+        // Ignore: keep unknown (assume available).
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  // A provider is usable when the user set their own key OR the server env has one.
+  const geminiAvailable = !!getApiKey('gemini') || serverKeys.gemini !== false;
+  const groqAvailable = !!getApiKey('groq') || serverKeys.groq !== false;
+  const anyProviderAvailable = geminiAvailable || groqAvailable;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isNewlyCreatedChatRef = useRef(false);
@@ -887,9 +911,9 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
             placeholder="Ask a question..."
             rows={1}
             className="min-h-[44px] max-h-32 flex-1 resize-none rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none placeholder:text-gray-500 focus:border-gray-500"
-            disabled={loading || (!hasApiKey('gemini') && !hasApiKey('groq'))}
+            disabled={loading || !anyProviderAvailable}
           />
-          {hasApiKey('gemini') || hasApiKey('groq') ? (
+          {anyProviderAvailable ? (
             <button
               onClick={sendMessage}
               disabled={loading || !input.trim()}
