@@ -6,6 +6,7 @@ import { createClient } from '@/utils/supabase/client';
 import { getApiKey } from '../lib/api-keys';
 import { ingestFile, searchQuery, removeDocument, getStats } from '../lib/browser-rag';
 import { saveChat, saveMessages, loadMessages } from '../lib/chat-storage';
+import TermsOfService from './TermsOfService';
 
 interface UploadedFile {
   id: string;
@@ -132,6 +133,7 @@ interface Props {
 export default function ChatInterface({ selectedContexts, notes, aiModel, aiProvider, sheetData, notionPages, workspacePrompt, workspaceId, calendarEvents, nutrientEntries }: Props) {
   const chatHeaderRef = useRef<ChatHeaderRef>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [showTerms, setShowTerms] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -177,7 +179,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
     uploadedFilesRef.current = uploadedFiles;
   }, [uploadedFiles]);
   const hasIndexedDbChunksRef = useRef(false);
-  useEffect(() => {
+  const refreshGuestChunkStats = useCallback(() => {
     if (isGuestRef.current) {
       getStats().then((s) => { hasIndexedDbChunksRef.current = s.chunks > 0; }).catch(() => {});
     }
@@ -189,18 +191,21 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
       setIsLoggedIn(!!session);
       isLoggedInRef.current = !!session;
       isGuestRef.current = !session;
+      refreshGuestChunkStats();
     });
     supabase.auth.getUser().then(({ data: { user } }) => {
       setIsLoggedIn(!!user);
       isLoggedInRef.current = !!user;
       isGuestRef.current = !user;
+      refreshGuestChunkStats();
     }).catch(() => {
       setIsLoggedIn(false);
       isLoggedInRef.current = false;
       isGuestRef.current = true;
+      refreshGuestChunkStats();
     });
     return () => subscription?.unsubscribe();
-  }, []);
+  }, [refreshGuestChunkStats]);
 
   // Memoize current messages to avoid recalculation on every render
   const currentMessages = messages;
@@ -938,7 +943,18 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
             </button>
           )}
         </div>
+        <p className="mt-2 text-center text-[11px] leading-snug text-gray-500">
+          This AI can make mistakes, including about people. By using this chat you agree to the{' '}
+          <button
+            type="button"
+            onClick={() => setShowTerms(true)}
+            className="text-gray-400 underline hover:text-gray-300 cursor-pointer"
+          >
+            Terms of Service
+          </button>.
+        </p>
       </div>
+      {showTerms && <TermsOfService onClose={() => setShowTerms(false)} />}
     </div>
   );
 }

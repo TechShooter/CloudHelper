@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
+import TermsOfService from '../components/TermsOfService';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,6 +13,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [showTerms, setShowTerms] = useState(false);
   const supabase = createClient();
 
   // Verifica se l'utente è già loggato
@@ -135,9 +137,19 @@ export default function LoginPage() {
             <p className="text-center text-gray-400 text-sm">
               This is a private application for authorized users only.
             </p>
+            <p className="text-center text-gray-500 text-xs mt-3">
+              <button
+                type="button"
+                onClick={() => setShowTerms(true)}
+                className="underline hover:text-gray-400 cursor-pointer"
+              >
+                Terms of Service
+              </button>
+            </p>
           </div>
         </div>
       </div>
+      {showTerms && <TermsOfService onClose={() => setShowTerms(false)} />}
     </div>
   );
 }

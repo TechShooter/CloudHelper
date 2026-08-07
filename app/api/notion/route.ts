@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
-let notionKey = process.env.NOTION_API_KEY || '';
+// Read-only fallback from env; per-request user token is resolved inside GET().
+const ENV_NOTION_KEY = process.env.NOTION_API_KEY || '';
 
 function extractProperty(prop: any): string {
   if (!prop) return '';
@@ -85,7 +86,7 @@ function extractProperty(prop: any): string {
 }
 
 // Helper function to process a database item (extracted for reuse)
-async function processDatabaseItem(item: any): Promise<any> {
+async function processDatabaseItem(item: any, apiKey: string): Promise<any> {
   // Database is a container - fetch its data sources
   const databaseId = item.id;
   const dbTitle = item.title?.[0]?.plain_text || 'Untitled Database';
@@ -99,7 +100,7 @@ async function processDatabaseItem(item: any): Promise<any> {
         // Fetch full data source details
         const dsResponse = await fetch(`https://api.notion.com/v1/data_sources/${dsRef.id}`, {
           headers: {
-            'Authorization': `Bearer ${notionKey}`,
+            'Authorization': `Bearer ${apiKey}`,
             'Notion-Version': '2026-03-11'
           }
         });
@@ -113,7 +114,7 @@ async function processDatabaseItem(item: any): Promise<any> {
         const queryResponse = await fetch(`https://api.notion.com/v1/data_sources/${dsRef.id}/query`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${notionKey}`,
+            'Authorization': `Bearer ${apiKey}`,
             'Notion-Version': '2026-03-11',
             'Content-Type': 'application/json'
           },
@@ -172,7 +173,7 @@ async function processDatabaseItem(item: any): Promise<any> {
       const queryResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${notionKey}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Notion-Version': '2026-03-11',
           'Content-Type': 'application/json'
         },
@@ -402,7 +403,7 @@ async function fetchWithRetry(
 }
 
 export async function GET(req: NextRequest) {
-  notionKey = req.headers.get('x-api-key-notion') || notionKey || '';
+  const notionKey = (req.headers.get('x-api-key-notion') || ENV_NOTION_KEY || '').trim();
   // Increase timeout for edge runtime - use 25 seconds instead of 15
   // This accounts for Notion API latency and multiple parallel requests
   const controller = new AbortController();
@@ -559,7 +560,7 @@ export async function GET(req: NextRequest) {
 
         if (dbResponse.ok) {
           const dbData = await dbResponse.json();
-          const forcedDb = await processDatabaseItem(dbData);
+          const forcedDb = await processDatabaseItem(dbData, notionKey);
           if (forcedDb) {
             forcedDatabaseResults.push(forcedDb);
           }
@@ -594,7 +595,7 @@ export async function GET(req: NextRequest) {
             console.log(`[NOTION-API] 🔄 Processing item ${globalIdx + 1}/${data.results.length}: ${item.object}...`);
             if (item.object === 'database') {
               console.log(`[NOTION-API] 📊 Processing database: ${item.id}`);
-              return await processDatabaseItem(item);
+              return await processDatabaseItem(item, notionKey);
             } else {
               // Handle regular page
               const pageId = item.id;
