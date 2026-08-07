@@ -4,10 +4,15 @@ import { useEffect, useState } from 'react';
 import { ALL_API_KEYS, type ApiKeyName, getApiKey, setApiKey, getKeyLabel, obfuscateKey, isResourceIdKey, syncApiKeysToSupabase, pushLocalApiKeysToSupabase, loadApiKeysFromSupabase } from '../lib/api-keys';
 import { createClient } from '@/utils/supabase/client';
 
+const HIDDEN_API_KEYS: ApiKeyName[] = ['google-sheets-api-key', 'google-sheet-id', 'google-calendar-id'];
+
 export default function ApiKeySettings() {
   const [isOpen, setIsOpen] = useState(false);
   const [keys, setKeys] = useState<Record<string, string>>({});
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  const visibleApiKeys = ALL_API_KEYS.filter((n) => !isResourceIdKey(n) && !HIDDEN_API_KEYS.includes(n));
+  const visibleResourceIdKeys = ALL_API_KEYS.filter((n) => isResourceIdKey(n) && !HIDDEN_API_KEYS.includes(n));
 
   useEffect(() => {
     const supabase = createClient();
@@ -88,7 +93,7 @@ export default function ApiKeySettings() {
 
             <div className="space-y-4">
               <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">API Keys</h4>
-              {ALL_API_KEYS.filter((n) => !isResourceIdKey(n)).map((name) => (
+              {visibleApiKeys.map((name) => (
                 <div key={name}>
                   <label className="mb-1 block text-sm font-medium text-gray-300">
                     {getKeyLabel(name)}
@@ -121,8 +126,10 @@ export default function ApiKeySettings() {
             </div>
 
             <div className="mt-6 space-y-4 border-t border-gray-700 pt-6">
-              <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Google Resource IDs</h4>
-              {ALL_API_KEYS.filter((n) => isResourceIdKey(n)).map((name) => (
+              {visibleResourceIdKeys.length > 0 && (
+                <>
+                  <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Google Resource IDs</h4>
+                  {visibleResourceIdKeys.map((name) => (
                 <div key={name}>
                   <label className="mb-1 block text-sm font-medium text-gray-300">
                     {getKeyLabel(name)}
@@ -150,7 +157,9 @@ export default function ApiKeySettings() {
                     )}
                   </div>
                 </div>
-              ))}
+                  ))}
+                </>
+              )}
             </div>
 
             <div className="mt-6 flex justify-end">
