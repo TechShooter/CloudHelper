@@ -8,32 +8,39 @@ async function fetchSheetAsCsv(sheetId: string, gid: number = 0): Promise<string
     const res = await fetch(url);
     if (!res.ok) return null;
     const csvText = await res.text();
-    const rows = csvText.split('\n').filter(r => r.trim());
-    return rows.map(r => {
-      const cols: string[] = [];
-      let current = '';
-      let inQuotes = false;
-      for (let i = 0; i < r.length; i++) {
-        const ch = r[i];
-        if (inQuotes) {
-          if (ch === '"') {
-            if (r[i + 1] === '"') { current += '"'; i++; continue; } // escaped quote
-            inQuotes = false;
-          } else {
-            current += ch;
-          }
-        } else if (ch === '"') {
-          inQuotes = true;
-        } else if (ch === ',') {
-          cols.push(current);
-          current = '';
+    // Proper CSV parse that keeps line breaks inside quoted cells intact.
+    // Splitting on "\n" first would corrupt any sheet whose cells wrap onto
+    // multiple lines (e.g. "Nutri\nScore"), shifting every column after it.
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let cur = '';
+    let inQuote = false;
+    for (let i = 0; i < csvText.length; i++) {
+      const ch = csvText[i];
+      if (inQuote) {
+        if (ch === '"') {
+          if (csvText[i + 1] === '"') { cur += '"'; i++; }
+          else { inQuote = false; }
         } else {
-          current += ch;
+          cur += ch;
         }
+      } else if (ch === '"') {
+        inQuote = true;
+      } else if (ch === ',') {
+        row.push(cur); cur = '';
+      } else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && csvText[i + 1] === '\n') i++;
+        row.push(cur); cur = '';
+        rows.push(row); row = [];
+      } else {
+        cur += ch;
       }
-      cols.push(current);
-      return cols;
-    });
+    }
+    if (cur !== '' || row.length > 0) {
+      row.push(cur);
+      rows.push(row);
+    }
+    return rows;
   } catch {
     return null;
   }

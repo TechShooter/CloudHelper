@@ -73,33 +73,36 @@ function matchesName(freeName: string, benchName: string): boolean {
 // Used when no key is configured so the sheet (which has a hardcoded ID) can
 // still be read. Loses cell background colors but keeps all the data.
 function parseCsv(text: string): string[][] {
-  return text
-    .split('\n')
-    .filter((r) => r.trim())
-    .map((r) => {
-      const cols: string[] = [];
-      let cur = '';
-      let inQ = false;
-      for (let i = 0; i < r.length; i++) {
-        const ch = r[i];
-        if (inQ) {
-          if (ch === '"') {
-            if (r[i + 1] === '"') { cur += '"'; i++; } else { inQ = false; }
-          } else {
-            cur += ch;
-          }
-        } else if (ch === '"') {
-          inQ = true;
-        } else if (ch === ',') {
-          cols.push(cur);
-          cur = '';
-        } else {
-          cur += ch;
-        }
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cur = '';
+  let inQuote = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuote) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { cur += '"'; i++; }
+        else { inQuote = false; }
+      } else {
+        cur += ch;
       }
-      cols.push(cur);
-      return cols;
-    });
+    } else if (ch === '"') {
+      inQuote = true;
+    } else if (ch === ',') {
+      row.push(cur); cur = '';
+    } else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(cur); cur = '';
+      rows.push(row); row = [];
+    } else {
+      cur += ch;
+    }
+  }
+  if (cur !== '' || row.length > 0) {
+    row.push(cur);
+    rows.push(row);
+  }
+  return rows;
 }
 
 interface CsvTab { name: string; gid: number; }
@@ -211,10 +214,12 @@ async function loadTabsFromCsvFallback(): Promise<{
     // tier columns; benchmarks have Intelligence/Speed or a bench marker.
     const headerKey = built.headers.join(' ').toLowerCase();
     const has = (kw: string) => headerKey.includes(kw);
-    // Main list: Name + Company AND a license/tier or privacy column. The
-    // "ModelSelector [Free tiers]" tab is the only one carrying those, which
-    // keeps the often first-in-list summary tabs from being picked instead.
-    const isMain = has('name') && has('company') && (has('licen') || has('privacy'));
+    // Main model list: the "ModelSelector [Free tiers]" tab. Its distinguishing
+    // column is the *decommission date*, which appears only on that tab (the
+    // first tab "gid 0" is a different/older export) — so we key off it rather
+    // than generic Name/Company headers.
+    const isMain = has('name') && has('decomm');
+    // Benchmarks: bench tables carry an Intelligence/Speed or "Bench" marker.
     const isBench = has('bench') || (has('intelligence') && (has('speed') || has('reasoning')));
 
     if (isMain && !freeTier) freeTier = { ...built, gid: tab.gid };
