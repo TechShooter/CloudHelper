@@ -1879,13 +1879,6 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider
                       >
                         🔗 Notion API
                       </a>
-                      <button
-                        onClick={reloadNotionPages}
-                        disabled={loadingNotion}
-                        className="text-sm bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 disabled:bg-gray-600 cursor-pointer"
-                      >
-                        {loadingNotion ? 'Loading...' : '↻ Reload'}
-                      </button>
                       {loadingNotion && onStopNotion && (
                         <button
                           onClick={onStopNotion}
