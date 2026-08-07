@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
         fibers: entry.fibers,
         sugars: entry.sugars,
         salt: entry.salt,
+        redMeat: entry.red_meat,
         vitaminA: entry.vitamin_a,
         vitaminB1: entry.vitamin_b1,
         vitaminB2: entry.vitamin_b2,
@@ -93,6 +94,8 @@ export async function GET(req: NextRequest) {
         fibers: goals.fibers,
         sugars: goals.sugars,
         salt: goals.salt,
+        redMeat: goals.red_meat,
+        redMeatLimit2: goals.red_meat_limit_2,
         vitaminA: goals.vitamin_a,
         vitaminB1: goals.vitamin_b1,
         vitaminB2: goals.vitamin_b2,
@@ -196,14 +199,12 @@ export async function POST(req: NextRequest) {
     const { type, data } = await req.json();
 
     if (type === 'entries') {
-      // Delete existing entries
-      await supabase
-        .from('nutrient_entries')
-        .delete()
-        .eq('user_id', user.id);
-
-      // Insert new entries
       if (data && Array.isArray(data) && data.length > 0) {
+        // Delete existing entries before re-inserting
+        await supabase
+          .from('nutrient_entries')
+          .delete()
+          .eq('user_id', user.id);
         const entriesToInsert = data.map((entry: any) => ({
           user_id: user.id,
           time: entry.time,
@@ -218,6 +219,7 @@ export async function POST(req: NextRequest) {
           fibers: entry.fibers,
           sugars: entry.sugars,
           salt: entry.salt,
+          red_meat: entry.redMeat,
           vitamin_a: entry.vitaminA,
           vitamin_b1: entry.vitaminB1,
           vitamin_b2: entry.vitaminB2,
@@ -271,6 +273,8 @@ export async function POST(req: NextRequest) {
           fibers: data.fibers,
           sugars: data.sugars,
           salt: data.salt,
+          red_meat: data.redMeat,
+          red_meat_limit_2: data.redMeatLimit2,
           vitamin_a: data.vitaminA,
           vitamin_b1: data.vitaminB1,
           vitamin_b2: data.vitaminB2,

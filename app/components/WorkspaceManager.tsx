@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, forwardRef, useImperativeHandle, Suspense, lazy } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle, Suspense, lazy, useRef } from 'react';
 import type { ReactNode, JSX } from 'react';
+import { createClient } from '@/utils/supabase/client';
+import { getApiKey } from '../lib/api-keys';
 
 // Dynamic imports to reduce bundle size - these components are huge!
 const ChatInterface = lazy(() => import('./ChatInterface'));
-const CalendarView = lazy(() => import('./CalendarView'));
 const NutrientTracker = lazy(() => import('./NutrientTracker'));
 const ModelTesting = lazy(() => import('./ModelTesting'));
 
@@ -136,6 +137,7 @@ const DEFAULT_WORKSPACES: Workspace[] = [
 interface Props {
   notes: { id: string, title: string, content: string }[];
   aiModel: string;
+  aiProvider?: string;
   sheetData: any;
   notionPages: any[];
   allNotionPages: any[];
@@ -146,17 +148,30 @@ interface Props {
   onStopNotion?: () => void;
 }
 
-export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData, notionPages, allNotionPages, hierarchicalNotionPages, notionError, isLoadingNotion, onReloadNotion, onStopNotion }: Props, ref) {
+export default forwardRef(function WorkspaceManager({ notes, aiModel, aiProvider, sheetData, notionPages, allNotionPages, hierarchicalNotionPages, notionError, isLoadingNotion, onReloadNotion, onStopNotion }: Props, ref) {
   const [activeWorkspace, setActiveWorkspace] = useState('general');
   const [activeTab, setActiveTab] = useState<'chat' | 'docs' | 'calendar' | 'nutrients'>('chat');
   const [workspaces] = useState<Workspace[]>(DEFAULT_WORKSPACES);
   const [showMenu, setShowMenu] = useState(false);
-  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
+  const [showTabMenu, setShowTabMenu] = useState(false);
   const [nutrientEntries, setNutrientEntries] = useState<any[]>([]);
+  const isGuestRef = useRef<boolean>(true);
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      isGuestRef.current = !session;
+      setAuthReady(true);
+    };
+    checkAuth();
+  }, []);
 
   // Load saved workspace and tab from Supabase on mount
   useEffect(() => {
-    const loadSettings = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch('/api/workspace-settings');
         if (res.ok) {
@@ -169,14 +184,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to load settings:', error);
       }
-    };
-
-    loadSettings();
+    })();
   }, []);
 
   // Save active workspace to Supabase on change
   useEffect(() => {
-    const saveWorkspace = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         await fetch('/api/workspace-settings', {
           method: 'POST',
@@ -190,14 +204,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to save workspace:', error);
       }
-    };
-
-    saveWorkspace();
-  }, [activeWorkspace]);
+    })();
+  }, [activeWorkspace, authReady]);
 
   // Save active tab to Supabase on change
   useEffect(() => {
-    const saveTab = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         await fetch('/api/workspace-settings', {
           method: 'POST',
@@ -211,10 +224,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to save tab:', error);
       }
-    };
-
-    saveTab();
-  }, [activeTab]);
+    })();
+  }, [activeTab, authReady]);
 
   // Prompt control state
   const [promptSettings, setPromptSettings] = useState({
@@ -235,7 +246,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
   // Load nutrient entries from Supabase on mount
   useEffect(() => {
-    const loadNutrientEntries = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch('/api/nutrients?type=entries');
         if (res.ok) {
@@ -247,14 +259,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to load nutrient entries:', error);
       }
-    };
-
-    loadNutrientEntries();
-  }, []);
+    })();
+  }, [authReady]);
 
   // Load default nutrient settings from Supabase on mount
   useEffect(() => {
-    const loadSettings = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch('/api/workspace-settings');
         if (res.ok) {
@@ -273,13 +284,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to load default nutrient settings:', error);
       }
-    };
-
-    loadSettings();
-  }, []);
+    })();
+  }, [authReady]);
 
   // Save default nutrient settings to Supabase
   useEffect(() => {
+    if (!authReady || isGuestRef.current) return;
     Object.entries(defaultNutrientSettings).forEach(async ([workspaceId, settings]) => {
       try {
         await fetch('/api/workspace-settings', {
@@ -295,7 +305,7 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         console.error('Failed to save nutrient settings:', error);
       }
     });
-  }, [defaultNutrientSettings]);
+  }, [defaultNutrientSettings, authReady]);
 
   // Auto-select default nutrient settings when workspace changes
   useEffect(() => {
@@ -543,7 +553,8 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
   // Load custom tags from Supabase
   useEffect(() => {
-    const loadCustomTags = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch('/api/workspace-settings?settingKey=notionCustomTags');
         if (res.ok) {
@@ -558,14 +569,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to load custom tags:', error);
       }
-    };
-
-    loadCustomTags();
-  }, []);
+    })();
+  }, [authReady]);
 
   // Save custom tags to Supabase
   useEffect(() => {
-    const saveCustomTags = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         await fetch('/api/workspace-settings', {
           method: 'POST',
@@ -579,14 +589,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to save custom tags:', error);
       }
-    };
-
-    saveCustomTags();
-  }, [customTags]);
+    })();
+  }, [customTags, authReady]);
 
   // Load default docs from Supabase on mount
   useEffect(() => {
-    const loadDefaultDocs = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch('/api/workspace-settings');
         if (res.ok) {
@@ -637,13 +646,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         });
         setDefaultDocs(initial);
       }
-    };
-
-    loadDefaultDocs();
-  }, [allNotionPages, sheetData, workspaces]);
+    })();
+  }, [allNotionPages, sheetData, workspaces, authReady]);
 
   // Save default docs to Supabase
   useEffect(() => {
+    if (!authReady || isGuestRef.current) return;
     Object.entries(defaultDocs).forEach(async ([workspaceId, docs]) => {
       try {
         await fetch('/api/workspace-settings', {
@@ -659,11 +667,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
         console.error('Failed to save default docs:', error);
       }
     });
-  }, [defaultDocs]);
+  }, [defaultDocs, authReady]);
 
   // Load page defaults for current workspace from Supabase
   useEffect(() => {
-    const loadPageDefaults = async () => {
+    if (!authReady || isGuestRef.current) return;
+    (async () => {
       try {
         const res = await fetch(`/api/chat-page-defaults?workspaceId=${activeWorkspace}`);
         if (res.ok) {
@@ -676,13 +685,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       } catch (error) {
         console.error('Failed to load page defaults:', error);
       }
-    };
-
-    loadPageDefaults();
-  }, [activeWorkspace]);
+    })();
+  }, [activeWorkspace, authReady]);
 
   // Toggle page as default for current workspace
   const togglePageDefault = async (pageId: string, pageTitle: string, isDefault: boolean) => {
+    if (isGuestRef.current) return;
     try {
       const res = await fetch('/api/chat-page-defaults', {
         method: 'POST',
@@ -749,10 +757,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
     setIsSearching(true);
     try {
+      const notionKey = getApiKey('notion');
       const res = await fetch('/api/notion-search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(notionKey && { 'x-api-key-notion': notionKey }),
         },
         body: JSON.stringify({
           query,
@@ -795,9 +805,13 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
     // Fetch full page content from server endpoint
     try {
+      const notionKey = getApiKey('notion');
       const res = await fetch('/api/notion-page', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(notionKey && { 'x-api-key-notion': notionKey }),
+        },
         body: JSON.stringify({ pageId }),
       });
       if (res.ok) {
@@ -1706,8 +1720,12 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
     return <>{renderHierarchicalPages(pages)}</>;
   };
 
+  // The Nutrients tab is only available to logged-in users (guests don't have
+  // persistent storage for it).
+  const visibleTabs = (isGuestRef.current ? (['chat', 'docs'] as const) : (['chat', 'docs', 'nutrients'] as const));
+
   return (
-    <div className="flex-1 flex min-w-0 sm:min-w-[800px]">
+    <div className="flex-1 flex min-w-0 min-h-0 sm:min-w-[800px]">
       {/* Sidebar */}
       <div className={`${showMenu ? 'w-64' : 'w-0 sm:w-16'} bg-gray-800 border-r border-gray-700 transition-all duration-200 flex-shrink-0 overflow-hidden`}>
         <button
@@ -1743,69 +1761,70 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-x-auto">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-x-auto">
         {/* Tab Navigation */}
-        <div className="bg-gray-800 border-b border-gray-700 flex-shrink-0">
-          <div className="flex items-center px-4 py-2">
-            {/* Mobile burger button */}
+        <div className="flex-shrink-0 border-b border-gray-800 bg-gray-950">
+          <div className="flex items-center gap-1.5 px-3 py-1.5">
+            {/* Mobile hamburger (sidebar toggle) */}
             <button
               onClick={() => setShowMenu(!showMenu)}
-              className="sm:hidden p-2 text-gray-400 hover:text-white hover:bg-gray-700 mr-2 cursor-pointer"
-              title={showMenu ? "Close menu" : "Open menu"}
+              className="sm:hidden flex h-7 w-7 items-center justify-center rounded-lg text-sm text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+              title={showMenu ? "Close sidebar" : "Open sidebar"}
             >
-              {showMenu ? '←' : '☰'}
+              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+              </svg>
             </button>
-            <div className="flex items-center gap-2 mr-6">
-              <span className="text-2xl">{currentWorkspace.icon}</span>
-              <div>
-                <h2 className="text-sm font-semibold text-white">{currentWorkspace.name}</h2>
-                <p className="text-xs text-gray-400">{currentWorkspace.description}</p>
-              </div>
+
+            {/* Mobile tab menu */}
+            <div className="sm:hidden relative">
+              <button
+                onClick={() => setShowTabMenu(!showTabMenu)}
+                className="flex items-center gap-1.5 rounded-lg border-l-2 border-blue-500/30 bg-gray-800/20 px-2.5 py-1.5 text-xs font-medium text-gray-200 hover:bg-gray-800/40"
+              >
+                <span>{activeTab === 'chat' ? '💬' : activeTab === 'docs' ? '📄' : '🥗'}</span>
+                <span className="capitalize">{activeTab}</span>
+                <svg className={`h-3 w-3 transition-transform ${showTabMenu ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                </svg>
+              </button>
+              {showTabMenu && (
+                <div className="absolute left-0 top-full z-30 mt-1 min-w-[160px] rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-2xl">
+                  {visibleTabs.map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => { setActiveTab(tab); setShowTabMenu(false); }}
+                      className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${activeTab === tab ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                    >
+                      <span>{tab === 'chat' ? '💬' : tab === 'docs' ? '📄' : '🥗'}</span>
+                      <span className="capitalize">{tab}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
-            <div className="flex gap-1">
-              <button
-                onClick={() => setActiveTab('chat')}
-                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'chat'
-                  ? 'bg-gray-700 text-white border-b-2 border-blue-500'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
+            {/* Desktop tabs */}
+            <div className="hidden sm:flex items-center gap-0.5">
+              {visibleTabs.map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                    activeTab === tab
+                      ? 'bg-gray-800 text-white'
+                      : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
                   }`}
-              >
-                💬 Chat
-              </button>
-              <button
-                onClick={() => setActiveTab('docs')}
-                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'docs'
-                  ? 'bg-gray-700 text-white border-b-2 border-blue-500'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                  }`}
-              >
-                📄 Docs
-              </button>
-              <button
-                onClick={() => setActiveTab('calendar')}
-                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'calendar'
-                  ? 'bg-gray-700 text-white border-b-2 border-blue-500'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                  }`}
-              >
-                📅 Calendar
-              </button>
-              <button
-                onClick={() => setActiveTab('nutrients')}
-                className={`px-4 py-2 text-sm font-medium rounded-t cursor-pointer ${activeTab === 'nutrients'
-                  ? 'bg-gray-700 text-white border-b-2 border-blue-500'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                  }`}
-              >
-                🥗 Nutrients
-              </button>
+                >
+                  {tab === 'chat' ? '💬' : tab === 'docs' ? '📄' : '🥗'} {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </button>
+              ))}
             </div>
           </div>
         </div>
 
         {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto min-w-0 min-h-0 sm:min-w-[800px]">
+        <div className="flex-1 overflow-hidden min-w-0 min-h-0 sm:min-w-[800px] flex flex-col">
           {activeTab === 'chat' && currentWorkspace.id === 'model-testing' && (
             <Suspense fallback={<div className="text-white p-4">Loading Model Testing...</div>}>
               <ModelTesting
@@ -1822,11 +1841,11 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                 selectedContexts={selectedContexts}
                 notes={notes}
                 aiModel={aiModel}
+                aiProvider={aiProvider || "gemini"}
                 sheetData={currentWorkspace.autoLoadSheets ? sheetData : null}
                 notionPages={getNotionPages()}
                 workspacePrompt={currentWorkspace.systemPrompt}
                 workspaceId={currentWorkspace.id}
-                calendarEvents={calendarEvents}
                 nutrientEntries={currentWorkspace.id === 'nutrition' ? nutrientEntries : []}
               />
             </Suspense>
@@ -1860,13 +1879,6 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                       >
                         🔗 Notion API
                       </a>
-                      <button
-                        onClick={reloadNotionPages}
-                        disabled={loadingNotion}
-                        className="text-sm bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 disabled:bg-gray-600 cursor-pointer"
-                      >
-                        {loadingNotion ? 'Loading...' : '↻ Reload'}
-                      </button>
                       {loadingNotion && onStopNotion && (
                         <button
                           onClick={onStopNotion}
@@ -1878,106 +1890,23 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                     </div>
                   </div>
 
-                  {/* Controls */}
-                  <div className="mb-4 space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-gray-800 rounded">
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                          <label className="text-sm text-gray-300">Sort:</label>
-                          <select
-                            value={sortOrder}
-                            onChange={(e) => setSortOrder(e.target.value as any)}
-                            className="text-sm bg-gray-700 text-white px-3 py-1 rounded border border-gray-600"
-                          >
-                            <option value="hierarchy">Hierarchy</option>
-                            <option value="title">Title</option>
-                            <option value="type">Type</option>
-                          </select>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <label className="flex items-center gap-2 text-sm text-gray-300">
-                            <input
-                              type="radio"
-                              name="grouping"
-                              checked={!groupByTags}
-                              onChange={() => {
-                                setGroupByParent(true);
-                                setGroupByTags(false);
-                              }}
-                              className="form-radio h-4 w-4"
-                            />
-                            Hierarchical
-                          </label>
-                          <label className="flex items-center gap-2 text-sm text-gray-300">
-                            <input
-                              type="radio"
-                              name="grouping"
-                              checked={groupByTags}
-                              onChange={() => {
-                                setGroupByParent(false);
-                                setGroupByTags(true);
-                              }}
-                              className="form-radio h-4 w-4"
-                            />
-                            By Tags
-                          </label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              // Expand all pages that have children in hierarchical structure
-                              const allPages = hierarchicalNotionPages || allNotionPages.map(p => ({ ...p, children: [] }));
-                              const pagesWithChildren = new Set<string>();
-                              const findPagesWithChildren = (pages: any[]) => {
-                                pages.forEach(page => {
-                                  if (page.children && page.children.length > 0) {
-                                    pagesWithChildren.add(page.id);
-                                    findPagesWithChildren(page.children);
-                                  }
-                                });
-                              };
-                              findPagesWithChildren(allPages);
-                              setExpandedPages(pagesWithChildren);
-                            }}
-                            className="text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 cursor-pointer"
-                          >
-                            Expand All
-                          </button>
-                          <button
-                            onClick={() => setExpandedPages(new Set())}
-                            className="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 cursor-pointer"
-                          >
-                            Collapse All
-                          </button>
-                        </div>
+                  {/* Notion API key missing notice — opens "API Keys & Sources Settings".
+                      Guests save the key to localStorage only (no Supabase sync). */}
+                  {!getApiKey('notion') && (
+                    <div className="p-3 bg-amber-900/30 border border-amber-600/40 rounded-lg mb-3 flex items-center justify-between gap-3">
+                      <div className="text-sm text-amber-200">
+                        No Notion API key set yet. Add one to search and load your pages.
                       </div>
+                      <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('cloudhelper:open-api-settings'))}
+                        className="text-sm bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-500 shrink-0 cursor-pointer"
+                      >
+                        ⚙️ Manage Notion API
+                      </button>
                     </div>
+                  )}
 
-                    {/* Local Search - Only if pages are loaded */}
-                    {(hierarchicalNotionPages && hierarchicalNotionPages.length > 0) && (
-                      <div className="p-3 bg-gray-800 rounded mb-3">
-                        <div className="text-xs text-gray-400 mb-2 font-semibold">📂 Loaded Pages</div>
-                        <div className="flex items-center gap-2">
-                          <label className="text-sm text-gray-300">Search:</label>
-                          <input
-                            type="text"
-                            placeholder="Search by page name..."
-                            value={notionSearchQuery}
-                            onChange={(e) => setNotionSearchQuery(e.target.value)}
-                            className="flex-1 text-sm bg-gray-700 text-white px-3 py-1 rounded border border-gray-600 placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                          />
-                          {notionSearchQuery && (
-                            <button
-                              onClick={() => setNotionSearchQuery('')}
-                              className="text-xs bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-500 cursor-pointer"
-                            >
-                              Clear
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
+                  <div className="mb-4 space-y-3">
                     {/* Notion API Search - Always available */}
                     <div className="p-3 bg-gray-800 rounded mb-3">
                       <div className="text-xs text-gray-400 mb-2 font-semibold">🔍 Search Notion</div>
@@ -2065,421 +1994,9 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                       )}
                     </div>
 
-                    {/* Tag Filter */}
-                    {(hierarchicalNotionPages || allNotionPages) && (
-                      <div className="p-3 bg-gray-800 rounded">
-                        <div className="flex items-center gap-2 mb-2">
-                          <label className="text-sm text-gray-300">Filter by tags:</label>
-                          <button
-                            onClick={() => setSelectedTags(new Set())}
-                            className="text-xs bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-500 cursor-pointer"
-                          >
-                            Clear All
-                          </button>
-                          <button
-                            onClick={() => {
-                              const allTags = getAllTags(hierarchicalNotionPages || allNotionPages);
-                              setSelectedTags(new Set(allTags));
-                            }}
-                            className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 cursor-pointer"
-                          >
-                            Select All
-                          </button>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {getAllTags(hierarchicalNotionPages || allNotionPages).map(tag => (
-                            <button
-                              key={tag}
-                              onClick={() => toggleTag(tag)}
-                              className={`text-xs px-3 py-1 rounded transition-colors cursor-pointer ${selectedTags.has(tag)
-                                ? 'bg-purple-600 text-white'
-                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                                }`}
-                            >
-                              {tag}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    
                   </div>
 
-                  <div className="space-y-3">
-                    {sheetData ? (
-                      <div className="flex items-center justify-between gap-2 text-sm text-green-300 p-3 bg-gray-800 rounded">
-                        <label className="flex items-center gap-2 flex-1">
-                          <input
-                            type="checkbox"
-                            checked={selectedContexts.includes('sheet')}
-                            onChange={() => toggleContext('sheet')}
-                            className="form-checkbox h-4 w-4"
-                          />
-                          Food I eat db (loaded)
-                        </label>
-                        <button
-                          onClick={() => toggleDefaultDoc('sheet')}
-                          className={`text-xs px-2 py-1 rounded cursor-pointer ${isDefaultDoc('sheet')
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                            }`}
-                          title="Mark as default for this chat"
-                        >
-                          {isDefaultDoc('sheet') ? '✓ Default' : 'Default'}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="text-sm text-gray-500 p-3 bg-gray-800 rounded">
-                        Google Sheet data is not loaded yet.
-                      </div>
-                    )}
-
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
-                        Notion Pages
-                        {loadingNotion && <span className="text-sm text-purple-400">(Loading...)</span>}
-                        {selectedTags.size > 0 && (
-                          <span className="text-xs text-purple-400">
-                            (filtered by {selectedTags.size} tag{selectedTags.size > 1 ? 's' : ''})
-                          </span>
-                        )}
-                        <span className="text-xs text-gray-500">
-                          (hierarchical: {hierarchicalNotionPages?.length || 0}, flat: {allNotionPages?.length || 0})
-                        </span>
-                      </h4>
-                      {allNotionPages && allNotionPages.length > 0 ? (
-                        <div className="space-y-1">
-                          {(() => {
-                            // Show hierarchical structure first (if available)
-                            const hierarchicalPages = hierarchicalNotionPages || [];
-                            const allFlatPages = allNotionPages.map(page => ({ ...page, children: [] }));
-
-                            // First, deduplicate the hierarchical structure itself
-                            const deduplicateHierarchical = (pages: any[]): any[] => {
-                              const seenIds = new Set();
-                              const deduplicated = [];
-
-                              const processPage = (page: any): any => {
-                                if (!page.id || typeof page.id !== 'string') return null;
-                                if (seenIds.has(page.id)) return null;
-
-                                seenIds.add(page.id);
-                                const dedupPage = { ...page };
-
-                                if (page.children && page.children.length > 0) {
-                                  dedupPage.children = page.children
-                                    .map(processPage)
-                                    .filter((child: any) => child !== null);
-                                }
-
-                                return dedupPage;
-                              };
-
-                              return pages
-                                .map(processPage)
-                                .filter(page => page !== null);
-                            };
-
-                            const deduplicatedHierarchicalPages = deduplicateHierarchical(hierarchicalPages);
-
-                            // Get IDs of pages actually in hierarchical structure (now properly deduplicated)
-                            const hierarchicalPageIds = new Set();
-                            const collectPageIds = (pages: any[]) => {
-                              pages.forEach(page => {
-                                if (page.id && typeof page.id === 'string') {
-                                  hierarchicalPageIds.add(page.id);
-                                }
-                                if (page.children && page.children.length > 0) {
-                                  collectPageIds(page.children);
-                                }
-                              });
-                            };
-                            collectPageIds(deduplicatedHierarchicalPages);
-
-                            // Filter out pages that are actually in hierarchy
-                            const standalonePages = allFlatPages.filter(page =>
-                              page.id &&
-                              typeof page.id === 'string' &&
-                              !hierarchicalPageIds.has(page.id)
-                            );
-
-                            // Debug: Show which pages are being marked as standalone vs hierarchical
-                            console.log('[RENDER DEBUG] Total pages in allNotionPages:', allFlatPages.length);
-                            console.log('[RENDER DEBUG] Hierarchical page IDs found:', Array.from(hierarchicalPageIds));
-                            console.log('[RENDER DEBUG] Standalone page IDs:', standalonePages.map(p => p.id));
-
-                            console.log('[RENDER DEBUG] Original hierarchical pages:', hierarchicalPages.length);
-                            console.log('[RENDER DEBUG] Deduplicated hierarchical pages:', deduplicatedHierarchicalPages.length);
-                            console.log('[RENDER DEBUG] Standalone pages:', standalonePages.length);
-
-                            // Check for "Cosa c'è in casa" in all pages
-                            const casaPageInHierarchical = deduplicatedHierarchicalPages.find(p => p.title.toLowerCase().includes('casa'));
-                            const casaPageInStandalone = standalonePages.find(p => p.title.toLowerCase().includes('casa'));
-                            console.log('[RENDER DEBUG] Casa page in hierarchical:', !!casaPageInHierarchical);
-                            console.log('[RENDER DEBUG] Casa page in standalone:', !!casaPageInStandalone);
-
-                            // Log all hierarchical page titles to see what's there
-                            console.log('[RENDER DEBUG] ========== COMPLETE HIERARCHY TREE ==========');
-                            const collectTitles = (pages: any[], depth = 0, pageNumbers = { count: 0 }) => {
-                              pages.forEach(page => {
-                                pageNumbers.count++;
-                                const indent = '  '.repeat(depth);
-                                const hasChildren = page.children && page.children.length > 0;
-                                const childCount = hasChildren ? ` [+${page.children.length}]` : '';
-                                console.log(`${indent}${pageNumbers.count}. "${page.title}" (${page.id}) ${childCount} [${page.object}]`);
-                                if (page.children && page.children.length > 0) {
-                                  collectTitles(page.children, depth + 1, pageNumbers);
-                                }
-                              });
-                            };
-                            collectTitles(deduplicatedHierarchicalPages);
-                            console.log('[RENDER DEBUG] ========== ROOT LEVEL PAGES ==========');
-                            deduplicatedHierarchicalPages.forEach((page, idx) => {
-                              const childCount = page.children?.length || 0;
-                              console.log(`${idx + 1}. ROOT: "${page.title}" (${page.id}) [${page.object}] with ${childCount} children`);
-                            });
-                            console.log('[RENDER DEBUG] ==========================================');
-
-
-
-
-                            return (
-                              <>
-                                {/* Hierarchical structure - contains all pages */}
-                                {deduplicatedHierarchicalPages.length > 0 && (
-                                  <div className="mb-4">
-                                    {renderGroupedPages(filterPagesByTags(deduplicatedHierarchicalPages))}
-                                  </div>
-                                )}
-                              </>
-                            );
-                          })()}
-                        </div>
-                      ) : loadingNotion ? (
-                        <div className="text-sm text-gray-400 p-4 bg-gray-800 rounded border border-gray-700">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="inline-block animate-spin">⟳</span>
-                            <span>Loading Notion pages...</span>
-                          </div>
-                          <div className="text-xs text-gray-500 ml-6">
-                            Processing and organizing your Notion data. Pages will appear below as they load.
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-sm text-gray-500 p-3 bg-gray-800 rounded">
-                          No Notion pages found. Click "↻ Reload" to fetch them.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Nutrients Section */}
-                  <div className="mt-6 p-4 bg-gray-800 rounded">
-                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                      🥗 Nutrients
-                      <span className="text-sm text-gray-400">(Include nutrient data from Nutrients tab)</span>
-                    </h3>
-
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-2 text-sm text-orange-300 p-3 bg-gray-800 rounded">
-                        <label className="flex items-center gap-2 flex-1 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={nutrientSettings.includeFoodEntries}
-                            onChange={(e) => setNutrientSettings(prev => ({ ...prev, includeFoodEntries: e.target.checked }))}
-                            className="form-checkbox h-4 w-4"
-                          />
-                          <span>Food Entries & Daily Nutrients (Last 24h)</span>
-                        </label>
-                        <button
-                          onClick={() => toggleDefaultNutrientSetting('includeFoodEntries')}
-                          className={`text-xs px-2 py-1 rounded cursor-pointer ${isDefaultNutrientSetting('includeFoodEntries')
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                            }`}
-                          title="Mark as default for this chat"
-                        >
-                          {isDefaultNutrientSetting('includeFoodEntries') ? '✓ Default' : 'Default'}
-                        </button>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 text-sm text-cyan-300 p-3 bg-gray-800 rounded">
-                        <label className="flex items-center gap-2 flex-1 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={nutrientSettings.includeVitaminsMinerals}
-                            onChange={(e) => setNutrientSettings(prev => ({ ...prev, includeVitaminsMinerals: e.target.checked }))}
-                            className="form-checkbox h-4 w-4"
-                          />
-                          <span>Vitamins & Minerals (Last 24h)</span>
-                        </label>
-                        <button
-                          onClick={() => toggleDefaultNutrientSetting('includeVitaminsMinerals')}
-                          className={`text-xs px-2 py-1 rounded cursor-pointer ${isDefaultNutrientSetting('includeVitaminsMinerals')
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                            }`}
-                          title="Mark as default for this chat"
-                        >
-                          {isDefaultNutrientSetting('includeVitaminsMinerals') ? '✓ Default' : 'Default'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Prompt Control Section */}
-                  <div className="mt-6 p-4 bg-gray-800 rounded">
-                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                      🔍 Prompt Control
-                      <span className="text-sm text-gray-400">(Manage what gets sent to AI)</span>
-                    </h3>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Data Sources */}
-                      <div className="space-y-3">
-                        <h4 className="text-white font-medium">Data Sources</h4>
-
-                        <label className="flex items-center gap-2 text-white">
-                          <input
-                            type="checkbox"
-                            checked={promptSettings.includeSheets}
-                            onChange={(e) => setPromptSettings(prev => ({ ...prev, includeSheets: e.target.checked }))}
-                            className="form-checkbox"
-                          />
-                          Google Sheets ({sheetData ? Array.isArray(sheetData) ? sheetData.length : 1 : 0} sheets)
-                        </label>
-
-                        {promptSettings.includeSheets && (
-                          <div className="ml-6">
-                            <label className="text-gray-300 text-sm">
-                              Max rows per sheet:
-                              <input
-                                type="number"
-                                value={promptSettings.maxSheetRows}
-                                onChange={(e) => setPromptSettings(prev => ({ ...prev, maxSheetRows: parseInt(e.target.value) || 0 }))}
-                                className="ml-2 w-20 px-2 py-1 bg-gray-700 rounded text-white"
-                                min="1"
-                                max="1000"
-                              />
-                            </label>
-                          </div>
-                        )}
-
-                        <label className="flex items-center gap-2 text-white">
-                          <input
-                            type="checkbox"
-                            checked={promptSettings.includeNotion}
-                            onChange={(e) => setPromptSettings(prev => ({ ...prev, includeNotion: e.target.checked }))}
-                            className="form-checkbox"
-                          />
-                          Notion Pages ({allNotionPages.length} pages)
-                        </label>
-
-                        {promptSettings.includeNotion && (
-                          <div className="ml-6">
-                            <label className="text-gray-300 text-sm">
-                              Max pages:
-                              <input
-                                type="number"
-                                value={promptSettings.maxNotionPages}
-                                onChange={(e) => setPromptSettings(prev => ({ ...prev, maxNotionPages: parseInt(e.target.value) || 0 }))}
-                                className="ml-2 w-20 px-2 py-1 bg-gray-700 rounded text-white"
-                                min="1"
-                                max="100"
-                              />
-                            </label>
-                          </div>
-                        )}
-
-                      </div>
-
-                      {/* Chat Control */}
-                      <div className="space-y-3">
-                        <h4 className="text-white font-medium">Chat Context</h4>
-
-                        <label className="flex items-center gap-2 text-white">
-                          <input
-                            type="checkbox"
-                            checked={promptSettings.includeChatHistory}
-                            onChange={(e) => setPromptSettings(prev => ({ ...prev, includeChatHistory: e.target.checked }))}
-                            className="form-checkbox"
-                          />
-                          Include Previous Messages
-                        </label>
-
-                        {promptSettings.includeChatHistory && (
-                          <div className="ml-6">
-                            <label className="text-gray-300 text-sm">
-                              Max previous messages:
-                              <input
-                                type="number"
-                                value={promptSettings.maxChatMessages}
-                                onChange={(e) => setPromptSettings(prev => ({ ...prev, maxChatMessages: parseInt(e.target.value) || 0 }))}
-                                className="ml-2 w-20 px-2 py-1 bg-gray-700 rounded text-white"
-                                min="1"
-                                max="20"
-                              />
-                            </label>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Quick Actions */}
-                    <div className="mt-4 pt-4 border-t border-gray-700">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => setPromptSettings({
-                            includeSheets: true,
-                            includeNotion: true,
-                            includeChatHistory: true,
-                            maxChatMessages: 6,
-                            maxSheetRows: 100,
-                            maxNotionPages: 50
-                          })}
-                          className="text-sm bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700"
-                        >
-                          ✅ Enable All
-                        </button>
-                        <button
-                          onClick={() => setPromptSettings({
-                            includeSheets: false,
-                            includeNotion: false,
-                            includeChatHistory: false,
-                            maxChatMessages: 6,
-                            maxSheetRows: 100,
-                            maxNotionPages: 50
-                          })}
-                          className="text-sm bg-red-600 text-white px-3 py-2 rounded hover:bg-red-700"
-                        >
-                          ❌ Disable All
-                        </button>
-                        <button
-                          onClick={() => setPromptSettings({
-                            includeSheets: false,
-                            includeNotion: false,
-                            includeChatHistory: true,
-                            maxChatMessages: 2,
-                            maxSheetRows: 100,
-                            maxNotionPages: 50
-                          })}
-                          className="text-sm bg-yellow-600 text-white px-3 py-2 rounded hover:bg-yellow-700"
-                        >
-                          ⚡ Groq Mode (Minimal)
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 flex justify-end gap-2">
-                    <button
-                      onClick={() => {
-                        setSelectedContexts(getAutoContexts());
-                      }}
-                      className="text-sm bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-600"
-                    >
-                      Reset to defaults
-                    </button>
-                  </div>
                 </div>
 
                 {/* Right Column - Prompt Preview */}
@@ -2493,33 +2010,16 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                       </h3>
 
                       <div className="space-y-4">
-                        {/* Selected Contexts Summary */}
+                        {/* Content Preview (merged with selection) */}
                         <div>
-                          <h4 className="text-sm font-medium text-gray-300 mb-2">Selected Contexts</h4>
-                          <div className="space-y-2">
-                            {/* Google Sheets toggle */}
-                            {(sheetData || selectedContexts.includes('sheet')) && (
-                              <div
-                                onClick={() => {
-                                  if (selectedContexts.includes('sheet')) {
-                                    setSelectedContexts(selectedContexts.filter(ctx => ctx !== 'sheet'));
-                                  } else {
-                                    setSelectedContexts([...selectedContexts, 'sheet']);
-                                  }
-                                }}
-                                className={`text-xs p-2 rounded cursor-pointer transition ${
-                                  selectedContexts.includes('sheet')
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                                }`}
-                              >
-                                {selectedContexts.includes('sheet') ? '☑' : '☐'} 📊 Google Sheets
-                              </div>
-                            )}
-
-                            {/* Default Notion pages - always show them with toggle */}
+                          <h4 className="text-sm font-medium text-gray-300 mb-2">Content Preview</h4>
+                          <div className="space-y-1">
+                            {/* Default Notion pages */}
                             {(() => {
                               const defaultPageIds = Array.from(pageDefaults[activeWorkspace] || []);
+                              if (defaultPageIds.length === 0) {
+                                return <span className="text-xs text-gray-500 block px-3 py-1">No default contexts. Set defaults to see them here!</span>;
+                              }
                               const rendered = new Set<string>();
                               const items: JSX.Element[] = [];
 
@@ -2529,36 +2029,15 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
 
                                 const ctx = `notion-${pageId}`;
                                 const isSelected = selectedContexts.includes(ctx);
+                                const isExpanded = expandedPreviewPages.has(pageId);
 
-                                // Try to find page in API results first
-                                let apiResult = selectedApiResults.find(p => p.id === pageId);
-                                if (apiResult) {
-                                  const icon = apiResult.object === 'database' ? '🗄️' : apiResult.object === 'data_source' ? '📊' : '📄';
-                                  items.push(
-                                    <div
-                                      key={ctx}
-                                      onClick={() => {
-                                        if (isSelected) {
-                                          setSelectedContexts(selectedContexts.filter(c => c !== ctx));
-                                        } else {
-                                          setSelectedContexts([...selectedContexts, ctx]);
-                                        }
-                                      }}
-                                      className={`text-xs p-2 rounded cursor-pointer transition ${
-                                        isSelected
-                                          ? 'bg-blue-600 text-white'
-                                          : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                                      }`}
-                                    >
-                                      {isSelected ? '☑' : '☐'} {icon} {apiResult.title || 'Untitled'}
-                                    </div>
-                                  );
-                                  return;
-                                }
+                                let icon = '📄';
+                                let label = 'Untitled';
+                                let displayContent = '';
+                                const needsTruncation = false;
 
-                                // Try to find in hierarchy
-                                let page = allNotionPages.find(p => p.id === pageId);
-                                if (!page && hierarchicalNotionPages) {
+                                const apiResult = selectedApiResults.find(p => p.id === pageId);
+                                const page = apiResult || allNotionPages.find(p => p.id === pageId) || (() => {
                                   const findInHierarchy = (pages: any[], targetId: string): any => {
                                     for (const p of pages) {
                                       if (p.id === targetId) return p;
@@ -2569,124 +2048,91 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
                                     }
                                     return null;
                                   };
-                                  page = findInHierarchy(hierarchicalNotionPages, pageId);
-                                }
+                                  return hierarchicalNotionPages ? findInHierarchy(hierarchicalNotionPages, pageId) : null;
+                                })();
 
                                 if (page) {
-                                  let label = page.title || 'Untitled';
-                                  let icon = '📄';
-
-                                  if (page.object === 'database') {
-                                    const countDescendants = (p: any): number => {
-                                      let count = 0;
-                                      if (p.children && p.children.length > 0) {
-                                        count += p.children.length;
-                                        p.children.forEach((child: any) => {
-                                          count += countDescendants(child);
-                                        });
-                                      }
-                                      return count;
-                                    };
-                                    const totalItems = countDescendants(page);
-                                    label = `${page.title} (+${totalItems} items)`;
-                                    icon = '🗄️';
-                                  } else if (page.object === 'data_source') {
-                                    const itemCount = page.children ? page.children.length : 0;
-                                    label = `${page.title} (+${itemCount} items)`;
-                                    icon = '📊';
-                                  }
-
-                                  items.push(
-                                    <div
-                                      key={ctx}
-                                      onClick={() => {
-                                        if (isSelected) {
-                                          setSelectedContexts(selectedContexts.filter(c => c !== ctx));
-                                        } else {
-                                          setSelectedContexts([...selectedContexts, ctx]);
+                                  if (apiResult) {
+                                    icon = apiResult.object === 'database' ? '🗄️' : apiResult.object === 'data_source' ? '📊' : '📄';
+                                    label = apiResult.title || 'Untitled';
+                                    displayContent = apiResult.content || '';
+                                  } else {
+                                    label = page.title || 'Untitled';
+                                    if (page.object === 'database') {
+                                      const countDescendants = (p: any): number => {
+                                        let count = 0;
+                                        if (p.children && p.children.length > 0) {
+                                          count += p.children.length;
+                                          p.children.forEach((child: any) => { count += countDescendants(child); });
                                         }
-                                      }}
-                                      className={`text-xs p-2 rounded cursor-pointer transition ${
-                                        isSelected
-                                          ? 'bg-blue-600 text-white'
-                                          : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                                      }`}
-                                    >
-                                      {isSelected ? '☑' : '☐'} {icon} {label}
-                                    </div>
-                                  );
+                                        return count;
+                                      };
+                                      const totalItems = countDescendants(page);
+                                      label = `${page.title} (+${totalItems} items)`;
+                                      icon = '🗄️';
+                                    } else if (page.object === 'data_source') {
+                                      const itemCount = page.children ? page.children.length : 0;
+                                      label = `${page.title} (+${itemCount} items)`;
+                                      icon = '📊';
+                                    }
+                                    displayContent = page.content || '';
+                                  }
                                 }
+
+                                items.push(
+                                  <div key={ctx} className="bg-gray-900 rounded">
+                                    <div className="flex items-center justify-between px-3 py-2">
+                                      <div
+                                        className={`text-xs font-medium cursor-pointer select-none transition ${
+                                          isSelected ? 'text-purple-400' : 'text-gray-400'
+                                        }`}
+                                        onClick={() => {
+                                          const newSet = new Set(expandedPreviewPages);
+                                          if (newSet.has(pageId)) newSet.delete(pageId);
+                                          else newSet.add(pageId);
+                                          setExpandedPreviewPages(newSet);
+                                        }}
+                                      >
+                                        {icon} {label}
+                                      </div>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (isSelected) {
+                                            setSelectedContexts(selectedContexts.filter(c => c !== ctx));
+                                          } else {
+                                            setSelectedContexts([...selectedContexts, ctx]);
+                                          }
+                                        }}
+                                        className="text-xs"
+                                      >
+                                        <span className={isSelected ? 'text-blue-400' : 'text-gray-500'}>
+                                          {isSelected ? '☑' : '☐'}
+                                        </span>
+                                      </button>
+                                    </div>
+                                    {isExpanded && displayContent && (
+                                      <div className="px-3 pb-2 text-xs text-gray-400 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                                        {displayContent.length > 500 ? displayContent.substring(0, 500) + '...' : displayContent}
+                                        {displayContent.length > 500 && (
+                                          <button
+                                            onClick={() => toggleExpandedPreview(pageId)}
+                                            className="ml-1 text-blue-400 hover:text-blue-300"
+                                          >
+                                            More
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
                               });
 
                               return items;
                             })()}
 
-                            {(() => {
-                              const defaultPageIds = Array.from(pageDefaults[activeWorkspace] || []);
-                              return defaultPageIds.length === 0 ? (
-                                <span className="text-sm text-gray-500">No default contexts. Set defaults to see them here!</span>
-                              ) : null;
-                            })()}
-                          </div>
-                        </div>
-
-                        {/* Content Preview */}
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-300 mb-2">Content Preview</h4>
-                          <div className="bg-gray-900 rounded p-3 max-h-96 overflow-y-auto text-xs font-mono text-gray-300">
-                            {selectedContexts.includes('sheet') && sheetData && (
-                              <div className="mb-3">
-                                <div className="text-green-400 font-bold mb-1">Google Sheets Data:</div>
-                                <div className="text-gray-400">
-                                  {Array.isArray(sheetData) ? `${sheetData.length} sheets loaded` : '1 sheet loaded'}
-                                </div>
-                              </div>
-                            )}
-
-                            {getNotionPages().map((page: any) => {
-                              const isExpanded = expandedPreviewPages.has(page.id);
-                              const displayContent = isExpanded ? page.content : page.content?.substring(0, 500);
-                              const needsTruncation = page.content?.length > 500;
-
-                              return (
-                                <div key={page.id} className="mb-3">
-                                  <div className="text-purple-400 font-bold mb-1">{page.title}:</div>
-                                  <div className="text-gray-400 whitespace-pre-wrap">
-                                    {displayContent}
-                                    {needsTruncation && !isExpanded && '...'}
-                                  </div>
-                                  {needsTruncation && (
-                                    <button
-                                      onClick={() => toggleExpandedPreview(page.id)}
-                                      className="mt-1 text-xs text-blue-400 hover:text-blue-300"
-                                    >
-                                      {isExpanded ? 'Show less' : 'More'}
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            })}
-
-                            {nutrientSettings.includeFoodEntries && (
-                              <div className="mb-3">
-                                <div className="text-orange-400 font-bold mb-1">🍽️ Food Entries & Daily Nutrients:</div>
-                                <div className="text-gray-400 whitespace-pre-wrap text-xs">
-                                  {formatFoodEntriesAndDailyNutrients()}
-                                </div>
-                              </div>
-                            )}
-
-                            {nutrientSettings.includeVitaminsMinerals && (
-                              <div className="mb-3">
-                                <div className="text-cyan-400 font-bold mb-1">💊 Vitamins & Minerals:</div>
-                                <div className="text-gray-400 whitespace-pre-wrap text-xs">
-                                  {formatVitaminsAndMinerals()}
-                                </div>
-                              </div>
-                            )}
-
-                            {selectedContexts.filter(ctx => ctx.startsWith('notion-')).length === 0 && !selectedContexts.includes('sheet') && !nutrientSettings.includeFoodEntries && !nutrientSettings.includeVitaminsMinerals && (
-                              <div className="text-gray-500">No content will be sent to AI</div>
+                            {selectedContexts.filter(ctx => ctx.startsWith('notion-')).length === 0 && (
+                              <div className="text-gray-500 text-xs px-3 py-2">No content will be sent to AI</div>
                             )}
                           </div>
                         </div>
@@ -2698,13 +2144,6 @@ export default forwardRef(function WorkspaceManager({ notes, aiModel, sheetData,
             </div>
           )}
 
-
-
-          {activeTab === 'calendar' && (
-            <Suspense fallback={<div className="text-white p-4">Loading Calendar...</div>}>
-              <CalendarView onEventsChange={setCalendarEvents} />
-            </Suspense>
-          )}
 
           {activeTab === 'nutrients' && (
             <Suspense fallback={<div className="text-white p-4">Loading Nutrients...</div>}>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { getApiKey } from '../lib/api-keys';
 
 interface Sheet {
   id: string;
@@ -22,17 +23,12 @@ export default function SheetManager({ onSheetLoad }: Props) {
   useEffect(() => {
     const saved = localStorage.getItem('googleSheets');
     if (saved) {
-      const parsed = JSON.parse(saved);
-      setSheets(parsed);
-    } else {
-      // Default sheet
-      const defaultSheet = {
-        id: '1',
-        name: 'Food Database',
-        sheetId: '1FvjfZ5a-OMM2ScO2lJewBFIrbnWvgQKJug_Ve32gAQA'
-      };
-      setSheets([defaultSheet]);
-      localStorage.setItem('googleSheets', JSON.stringify([defaultSheet]));
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) setSheets(parsed);
+      } catch {
+        // ignore
+      }
     }
   }, []);
 
@@ -58,9 +54,13 @@ export default function SheetManager({ onSheetLoad }: Props) {
     setLoading(true);
     setSelectedSheet(sheetId);
     try {
+      const sheetsKey = getApiKey('google-sheets-api-key');
       const res = await fetch('/api/sheets', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sheetsKey && { 'x-api-key-google-sheets': sheetsKey }),
+        },
         body: JSON.stringify({ action: 'getAllSheets', sheetId })
       });
       const data = await res.json();

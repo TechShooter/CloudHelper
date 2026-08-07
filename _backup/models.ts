@@ -67,6 +67,19 @@ export const MODELS: Model[] = [
     category: 'gemini'
   },
   {
+    id: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash',
+    provider: 'Google',
+    description: 'Frontier intelligence per agenti, coding e multi-step',
+    limits: {
+      requestsPerMinute: 15,
+      requestsPerDay: '250K',
+      tokensPerMinute: '250K',
+      tokensPerDay: '20'
+    },
+    category: 'gemini'
+  },
+  {
     id: 'gemini-flash-latest',
     name: 'Gemini Flash Latest',
     provider: 'Google',
@@ -177,6 +190,10 @@ export function getGroqModelIds(): string[] {
 
 // Helper function to check if a model is Gemini
 export function isGeminiModel(modelId: string): boolean {
+  // First check if the model is in our known list
   const model = MODELS.find(m => m.id === modelId);
-  return model?.category === 'gemini' || false;
+  if (model) return model.category === 'gemini';
+  // Fallback: treat any model ID starting with "gemini-" as a Gemini model
+  // This handles models from the Selector sheet that haven't been added yet
+  return modelId.startsWith('gemini-');
 }

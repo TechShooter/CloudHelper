@@ -1,17 +1,20 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense, lazy } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useRef, Suspense, lazy, useCallback } from 'react';
 
 // Dynamic imports to reduce initial bundle size
 const WorkspaceManager = lazy(() => import('../components/WorkspaceManager'));
-const ModelSelector = lazy(() => import('../components/ModelSelector'));
+const ModelSelectorV3 = lazy(() => import('../components/ModelSelectorV3'));
 const LogoutButton = lazy(() => import('../components/LogoutButton'));
+const ApiKeySettings = lazy(() => import('../components/ApiKeySettings'));
+
+import { getApiKey, loadApiKeysFromSupabase, pushLocalApiKeysToSupabase } from '../lib/api-keys';
+import { createClient } from '@/utils/supabase/client';
 
 export default function Home() {
-  const router = useRouter();
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [aiModel, setAiModel] = useState<string>('gemini-flash-latest');
+  const [aiProvider, setAiProvider] = useState<string>('gemini');
   const [sheetData, setSheetData] = useState<any>(null);
   const [notionPages, setNotionPages] = useState<any[]>([]);
   const [hierarchicalNotionPages, setHierarchicalNotionPages] = useState<any[]>([]);
@@ -25,24 +28,134 @@ export default function Home() {
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const notionAbortControllerRef = useRef<AbortController | null>(null);
   const workspaceManagerRef = useRef<any>(null);
+  const MODEL_STORAGE_KEY = 'cloudhelper.selectedModel';
 
-  // Check auth on mount - dynamic import of supabase
   useEffect(() => {
-    const checkAuth = async () => {
-      const { createClient } = await import('@/utils/supabase/client');
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/login');
-        return;
+    try {
+      const savedModel = localStorage.getItem(MODEL_STORAGE_KEY);
+      if (savedModel && savedModel !== aiModel) {
+        setAiModel(savedModel);
       }
-      setCheckingAuth(false);
-    };
-    checkAuth();
-  }, [router]);
+    } catch (error) {
+      console.error('Failed to load saved model:', error);
+    }
+  }, []);
 
-  // Function to build hierarchy from flat pages.
-  // If a page has a parent that isn't loaded yet, create a placeholder parent node so children still appear nested.
+  const loadSheets = useCallback(async () => {
+    const sheetsKey = getApiKey('google-sheets-api-key');
+    const sheetId = getApiKey('google-sheet-id');
+    console.debug('[sheet-load] sheetId:', sheetId, '| hasSheetsKey:', !!sheetsKey);
+    if (!sheetId) {
+      console.debug('[sheet-load] Aborting: hmm no Sheet ID configured (google-sheet-id).');
+      return;
+    }
+    try {
+      const res = await fetch('/api/sheets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sheetsKey && { 'x-api-key-google-sheets': sheetsKey }),
+        },
+        body: JSON.stringify({ action: 'getAllSheets', sheetId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        console.debug('[sheet-load] response usedFallback:', data?.usedFallback, '| tabs:', data?.sheets?.length, '| sheets:', data?.sheets?.map((s: any) => s.sheet));
+        if (data?.sheets) setSheetData(data.sheets);
+      } else {
+        const errTxt = await res.text();
+        console.warn('[sheet-load] HTTP', res.status, errTxt);
+      }
+    } catch (err) {
+      console.error('[sheet-load] Failed to load sheets:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    const syncKeysAndLoadSheets = () => {
+      loadApiKeysFromSupabase().then(() => {
+        pushLocalApiKeysToSupabase();
+        loadSheets();
+      });
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      // Only try to sync keys when logged in; otherwise the sync API returns
+      // 401 and there is nothing to load anyway.
+      if (session) syncKeysAndLoadSheets();
+      else loadSheets();
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, _session) => {
+      if (event === 'SIGNED_IN') {
+        syncKeysAndLoadSheets();
+      }
+    });
+
+    return () => subscription?.unsubscribe();
+  }, [loadSheets]);
+
+  useEffect(() => {
+    history.scrollRestoration = 'manual';
+    window.scrollTo(0, 0);
+
+    const setAppHeight = () => {
+      if (containerRef.current) {
+        const h = window.visualViewport?.height ?? window.innerHeight;
+        containerRef.current.style.height = `${h}px`;
+      }
+    };
+    setAppHeight();
+    window.visualViewport?.addEventListener('resize', setAppHeight);
+    window.addEventListener('resize', setAppHeight);
+    return () => {
+      window.visualViewport?.removeEventListener('resize', setAppHeight);
+      window.removeEventListener('resize', setAppHeight);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === MODEL_STORAGE_KEY && event.newValue) {
+        setAiModel(event.newValue);
+      }
+    };
+
+    const handleModelSync = (event: Event) => {
+      const customEvent = event as CustomEvent<string>;
+      if (typeof customEvent.detail === 'string' && customEvent.detail) {
+        setAiModel(customEvent.detail);
+      }
+    };
+
+    const handleProviderChange = (event: Event) => {
+      const customEvent = event as CustomEvent<string>;
+      if (typeof customEvent.detail === 'string') {
+        setAiProvider(customEvent.detail);
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('cloudhelper:model-change', handleModelSync as EventListener);
+    window.addEventListener('cloudhelper:provider-change', handleProviderChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('cloudhelper:model-change', handleModelSync as EventListener);
+      window.removeEventListener('cloudhelper:provider-change', handleProviderChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(MODEL_STORAGE_KEY, aiModel);
+    } catch (error) {
+      console.error('Failed to persist selected model:', error);
+    }
+  }, [aiModel]);
+
   const buildHierarchy = (pages: any[]) => {
     const pageMap = new Map<string, any>();
 
@@ -103,7 +216,6 @@ export default function Home() {
       }
     });
 
-    // Any placeholder parents that were created but never became real pages should also be roots if they have children.
     pageMap.forEach((page, id) => {
       if (page.__placeholder && page.children.length > 0 && !childIds.has(id)) {
         rootPages.push(page);
@@ -125,7 +237,7 @@ export default function Home() {
   const loadNotionStreaming = async () => {
     try {
       setIsLoadingNotion(true);
-      setHierarchicalNotionPages([]); // Clear old data
+      setHierarchicalNotionPages([]);
       setNotionPages([]);
       setNotionError(null);
       setDebugInfo(null);
@@ -135,7 +247,13 @@ export default function Home() {
 
       const controller = new AbortController();
       notionAbortControllerRef.current = controller;
-      const response = await fetch(`/api/notion-stream?t=${Date.now()}`, { signal: controller.signal });
+      const notionKey = getApiKey('notion');
+      const response = await fetch(`/api/notion-stream?t=${Date.now()}`, {
+        signal: controller.signal,
+        headers: {
+          ...(notionKey && { 'x-api-key-notion': notionKey }),
+        },
+      });
       console.log('[FRONTEND] ✅ [2/5] Stream response received:', response.status);
 
       if (!response.ok) {
@@ -250,35 +368,6 @@ export default function Home() {
     }
   };
 
-  // Load data on mount (but NOT Notion - only on button click)
-  useEffect(() => {
-    if (checkingAuth) return;
-
-    const loadData = async () => {
-      try {
-        // Load sheets separately
-        fetch('/api/sheets', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'getAllSheets',
-            sheetId: '1FvjfZ5a-OMM2ScO2lJewBFIrbnWvgQKJug_Ve32gAQA'
-          })
-        }).then(res => {
-          if (res.ok) return res.json();
-        }).then(data => {
-          if (data?.sheets) setSheetData(data.sheets);
-        }).catch(err => console.error('Failed to load sheets:', err));
-
-        // Note: Notion is NOT auto-loaded. User must click "Reload" button.
-      } catch (error) {
-        console.error('Failed to load data:', error);
-      }
-    };
-
-    loadData();
-  }, [checkingAuth]);
-
   const reloadNotion = async () => {
     setNotionPages([]);
     setHierarchicalNotionPages([]);
@@ -289,32 +378,26 @@ export default function Home() {
     stopNotionLoading();
   };
 
-  if (checkingAuth) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-white">Caricamento...</div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col h-screen bg-gray-900">
-      <header className="bg-gray-800 border-b border-gray-700 px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between">
-        <span className="text-lg sm:text-xl font-semibold text-white">☁️ CloudHelper</span>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <Suspense fallback={<div className="text-white">...</div>}>
-            <ModelSelector selectedModel={aiModel} onModelSelect={setAiModel} />
+    <div ref={containerRef} className="fixed top-0 left-0 right-0 flex flex-col bg-gray-900 overflow-hidden">
+      <header className="flex items-center justify-between border-b border-gray-800 bg-gray-950/80 px-2 py-1 sm:px-4 sm:py-2">
+        <span className="text-xs font-semibold text-white sm:text-base">☁️ CloudHelper</span>
+        <div className="flex items-center gap-1 sm:gap-2">
+          <Suspense fallback={<div className="text-white text-xs">...</div>}>
+            <ModelSelectorV3 selectedModel={aiModel} onModelSelect={setAiModel} />
+            <ApiKeySettings />
             <LogoutButton />
           </Suspense>
         </div>
       </header>
 
-      <div className="flex-1 flex overflow-x-auto">
+      <div className="flex-1 flex overflow-x-auto min-h-0">
         <Suspense fallback={<div className="text-white p-4">Caricamento...</div>}>
           <WorkspaceManager
             ref={workspaceManagerRef}
             notes={[]}
             aiModel={aiModel}
+            aiProvider={aiProvider}
             sheetData={sheetData}
             notionPages={notionPages}
             allNotionPages={notionPages}

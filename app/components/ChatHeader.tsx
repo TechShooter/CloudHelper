@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { listChats, saveChat, deleteChat as deleteChatStorage, clearAllData } from '../lib/chat-storage';
 
-interface Chat {
+interface LocalChat {
   id: string;
   title: string;
-  created_at: string;
-  updated_at: string;
+  updatedAt: string;
 }
 
 interface Props {
@@ -21,20 +21,17 @@ export interface ChatHeaderRef {
 }
 
 const ChatHeader = forwardRef<ChatHeaderRef, Props>(({ workspaceId, activeChatId, onChatSelect, onNewChat }, ref) => {
-  const [chats, setChats] = useState<Chat[]>([]);
+  const [chats, setChats] = useState<LocalChat[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearApiKeysToo, setClearApiKeysToo] = useState(false);
 
   const loadChats = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/chats?workspaceId=${workspaceId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.chats) {
-          setChats(data.chats);
-        }
-      }
+      const stored = await listChats(workspaceId);
+      setChats(stored.map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt })));
     } catch (error) {
       console.error('Failed to load chats:', error);
     } finally {
@@ -42,56 +39,35 @@ const ChatHeader = forwardRef<ChatHeaderRef, Props>(({ workspaceId, activeChatId
     }
   };
 
-  // Load chats from Supabase
   useEffect(() => {
     loadChats();
   }, [workspaceId]);
 
-  // Expose refresh function via ref
   useImperativeHandle(ref, () => ({
     refreshChats: loadChats
   }));
 
-  // Create new chat
   const handleCreateChat = async (title?: string) => {
-    try {
-      console.log('Creating chat with workspaceId:', workspaceId, 'title:', title || 'New Chat');
-      const res = await fetch('/api/chats', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId, title: title || 'New Chat' })
-      });
-      console.log('Response status:', res.status);
-      const data = await res.json();
-      console.log('Response data:', data);
-      if (res.ok) {
-        if (data.chat) {
-          setChats(prev => [data.chat, ...prev]);
-          onChatSelect(data.chat.id);
-        }
-      } else {
-        console.error('Failed to create chat:', data.error);
-      }
-    } catch (error) {
-      console.error('Failed to create chat:', error);
+    const chatId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const now = new Date().toISOString();
+    await saveChat({ id: chatId, workspaceId, title: title || 'New Chat', createdAt: now, updatedAt: now });
+    setChats(prev => [{ id: chatId, title: title || 'New Chat', updatedAt: now }, ...prev]);
+    onChatSelect(chatId);
+  };
+
+  const handleDeleteChat = async (chatId: string) => {
+    await deleteChatStorage(chatId);
+    setChats(prev => prev.filter(c => c.id !== chatId));
+    if (activeChatId === chatId) {
+      onNewChat();
     }
   };
 
-  // Delete chat
-  const handleDeleteChat = async (chatId: string) => {
-    try {
-      const res = await fetch(`/api/chats?chatId=${chatId}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        setChats(prev => prev.filter(c => c.id !== chatId));
-        if (activeChatId === chatId) {
-          onNewChat();
-        }
-      }
-    } catch (error) {
-      console.error('Failed to delete chat:', error);
-    }
+  const handleClearAllData = async () => {
+    await clearAllData(clearApiKeysToo);
+    setChats([]);
+    setShowClearConfirm(false);
+    onNewChat();
   };
 
   // Format date for display
@@ -144,7 +120,7 @@ const ChatHeader = forwardRef<ChatHeaderRef, Props>(({ workspaceId, activeChatId
                       {chat.title}
                     </div>
                     <div className="text-gray-400 text-xs truncate">
-                      {formatDate(chat.updated_at)}
+                      {formatDate(chat.updatedAt)}
                     </div>
                   </div>
                   {deleteConfirmId === chat.id ? (
@@ -185,7 +161,51 @@ const ChatHeader = forwardRef<ChatHeaderRef, Props>(({ workspaceId, activeChatId
             )}
           </div>
         </div>
+
+        {/* Delete all data button */}
+        <button
+          onClick={() => setShowClearConfirm(true)}
+          className="flex-shrink-0 rounded bg-red-600/20 px-2 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-600/40"
+          title="Delete all local data"
+        >
+          🗑
+        </button>
       </div>
+
+      {/* Clear all data confirmation dialog */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-xl border border-gray-700 bg-gray-800 p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-white mb-2">Delete all data?</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              This will permanently delete all your chats and messages.
+            </p>
+            <label className="flex items-center gap-2 mb-4 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={clearApiKeysToo}
+                onChange={(e) => setClearApiKeysToo(e.target.checked)}
+                className="accent-red-500"
+              />
+              <span className="text-sm text-gray-300">Also delete saved API keys</span>
+            </label>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => { setShowClearConfirm(false); setClearApiKeysToo(false); }}
+                className="rounded-lg bg-gray-700 px-4 py-2 text-sm text-gray-300 transition-colors hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearAllData}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
+              >
+                Delete{clearApiKeysToo ? ' everything' : ' chats'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 });

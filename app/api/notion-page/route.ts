@@ -188,7 +188,7 @@ export async function POST(req: NextRequest) {
     const { pageId } = body;
     if (!pageId) return NextResponse.json({ error: 'Missing pageId' }, { status: 400 });
 
-    const notionApiKey = process.env.NOTION_API_KEY;
+    const notionApiKey = req.headers.get('x-api-key-notion') || process.env.NOTION_API_KEY || '';
     if (!notionApiKey) return NextResponse.json({ error: 'Notion API key not configured' }, { status: 500 });
 
     // Try fetching as a page first

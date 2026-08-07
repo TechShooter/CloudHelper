@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { query = '', filter = null, page_size = 100 } = body;
 
-    const notionApiKey = process.env.NOTION_API_KEY;
+    const notionApiKey = req.headers.get('x-api-key-notion') || process.env.NOTION_API_KEY || '';
     if (!notionApiKey) {
       return NextResponse.json({ error: 'Notion API key not configured' }, { status: 500 });
     }

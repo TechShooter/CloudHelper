@@ -3,6 +3,12 @@ import { createClient } from '@/utils/supabase/server';
 
 export const runtime = 'edge';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidUUID(id: string): boolean {
+  return UUID_REGEX.test(id);
+}
+
 // GET: List all chats for a workspace
 export async function GET(req: NextRequest) {
   try {
@@ -89,6 +95,10 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'chatId is required' }, { status: 400 });
     }
 
+    if (!isValidUUID(chatId)) {
+      return NextResponse.json({ error: 'Invalid chat ID' }, { status: 400 });
+    }
+
     if (!title) {
       return NextResponse.json({ error: 'title is required' }, { status: 400 });
     }
@@ -126,6 +136,10 @@ export async function DELETE(req: NextRequest) {
 
     if (!chatId) {
       return NextResponse.json({ error: 'chatId is required' }, { status: 400 });
+    }
+
+    if (!isValidUUID(chatId)) {
+      return NextResponse.json({ success: true });
     }
 
     const { error } = await supabase

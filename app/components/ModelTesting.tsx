@@ -1,8 +1,13 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { getApiKey } from '../lib/api-keys';
 import ChatInterface from './ChatInterface';
-import { MODELS } from '../lib/models';
+
+interface SheetModel {
+  modelId: string;
+  modelName: string;
+}
 
 interface ModelChat {
   modelId: string;
@@ -19,31 +24,62 @@ interface Props {
 }
 
 export default function ModelTesting({ notes, sheetData, notionPages }: Props) {
+  const [models, setModels] = useState<SheetModel[]>([]);
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [modelChats, setModelChats] = useState<{ [key: string]: ModelChat }>({});
   const [currentMessage, setCurrentMessage] = useState('');
   const [isSendingAll, setIsSendingAll] = useState(false);
+  const [loadingModels, setLoadingModels] = useState(true);
   const chatEndRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
-  // Initialize selected models with first 5 models
+  // Fetch model data from the new Selector API
   useEffect(() => {
-    const firstFive = MODELS.slice(0, 5).map(m => m.id);
-    setSelectedModels(firstFive);
-    
-    const initialChats: { [key: string]: ModelChat } = {};
-    firstFive.forEach(modelId => {
-      const model = MODELS.find(m => m.id === modelId);
-      if (model) {
-        initialChats[modelId] = {
-          modelId,
-          modelName: model.name,
-          messages: [],
-          isLoading: false,
-          error: null
-        };
+    const fetchModels = async () => {
+      setLoadingModels(true);
+      try {
+        const sheetsKey = getApiKey('google-sheets-api-key');
+        const res = await fetch('/api/model-selector-v3', {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(sheetsKey && { 'x-api-key-google-sheets': sheetsKey }),
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.rows && data.rows.length > 0) {
+            const sheetModels: SheetModel[] = data.rows.map((row: any) => ({
+              modelId: row.Model || row.Name || '',
+              modelName: (row.Model || row.Name || '').replace(/^models\//i, '')
+            })).filter((m: SheetModel) => m.modelId);
+            setModels(sheetModels);
+
+            // Initialize with first 5 models
+            const firstFive = sheetModels.slice(0, 5).map(m => m.modelId);
+            setSelectedModels(firstFive);
+            
+            const initialChats: { [key: string]: ModelChat } = {};
+            firstFive.forEach(modelId => {
+              const model = sheetModels.find(m => m.modelId === modelId);
+              if (model) {
+                initialChats[modelId] = {
+                  modelId,
+                  modelName: model.modelName,
+                  messages: [],
+                  isLoading: false,
+                  error: null
+                };
+              }
+            });
+            setModelChats(initialChats);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load models from Selector API:', err);
+      } finally {
+        setLoadingModels(false);
       }
-    });
-    setModelChats(initialChats);
+    };
+    fetchModels();
   }, []);
 
   const toggleModel = (modelId: string) => {
@@ -66,11 +102,11 @@ export default function ModelTesting({ notes, sheetData, notionPages }: Props) {
       // Add new models
       newSelection.forEach(modelId => {
         if (!newChats[modelId]) {
-          const model = MODELS.find(m => m.id === modelId);
+          const model = models.find(m => m.modelId === modelId);
           if (model) {
             newChats[modelId] = {
               modelId,
-              modelName: model.name,
+              modelName: model.modelName,
               messages: [],
               isLoading: false,
               error: null
@@ -118,9 +154,15 @@ export default function ModelTesting({ notes, sheetData, notionPages }: Props) {
     // Send to all models simultaneously
     const promises = selectedModels.map(async (modelId) => {
       try {
+        const geminiKey = getApiKey('gemini');
+        const groqKey = getApiKey('groq');
         const response = await fetch('/api/chat', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(geminiKey && { 'x-api-key-gemini': geminiKey }),
+            ...(groqKey && { 'x-api-key-groq': groqKey }),
+          },
           body: JSON.stringify({
             aiModel: modelId,
             conversationHistory: [{ role: 'user', content: message }],
@@ -197,7 +239,7 @@ export default function ModelTesting({ notes, sheetData, notionPages }: Props) {
   };
 
   const selectAllModels = () => {
-    const allModelIds = MODELS.map(m => m.id);
+    const allModelIds = models.map(m => m.modelId);
     setSelectedModels(allModelIds);
     updateModelChats(allModelIds);
   };
@@ -226,19 +268,25 @@ export default function ModelTesting({ notes, sheetData, notionPages }: Props) {
         <div className="mb-3">
           <h3 className="text-sm font-medium text-white mb-2">Select Models to Test:</h3>
           <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
-            {MODELS.map(model => (
-              <button
-                key={model.id}
-                onClick={() => toggleModel(model.id)}
-                className={`px-3 py-1 rounded text-xs transition-colors ${
-                  selectedModels.includes(model.id)
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                {model.name}
-              </button>
-            ))}
+            {loadingModels ? (
+              <div className="text-gray-500 text-sm py-2">Loading models...</div>
+            ) : models.length === 0 ? (
+              <div className="text-gray-500 text-sm py-2">No models available</div>
+            ) : (
+              models.map(model => (
+                <button
+                  key={model.modelId}
+                  onClick={() => toggleModel(model.modelId)}
+                  className={`px-3 py-1 rounded text-xs transition-colors ${
+                    selectedModels.includes(model.modelId)
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  {model.modelName}
+                </button>
+              ))
+            )}
           </div>
         </div>
         

@@ -19,3 +19,11 @@ ALTER TABLE nutrient_goals
   ADD COLUMN IF NOT EXISTS iodine NUMERIC DEFAULT 150,
   ADD COLUMN IF NOT EXISTS molybdenum NUMERIC DEFAULT 45,
   ADD COLUMN IF NOT EXISTS sodium NUMERIC DEFAULT 2300;
+
+-- Add red_meat column for tracking red meat consumption
+ALTER TABLE nutrient_entries
+  ADD COLUMN IF NOT EXISTS red_meat NUMERIC DEFAULT 0;
+
+-- Add red_meat column to nutrient_goals table
+ALTER TABLE nutrient_goals
+  ADD COLUMN IF NOT EXISTS red_meat NUMERIC DEFAULT 0;

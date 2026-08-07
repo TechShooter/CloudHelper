@@ -3,6 +3,20 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import ChatHeader, { ChatHeaderRef } from './ChatHeader';
 import { createClient } from '@/utils/supabase/client';
+import { getApiKey } from '../lib/api-keys';
+import { ingestFile, searchQuery, removeDocument, getStats } from '../lib/browser-rag';
+import { saveChat, saveMessages, loadMessages } from '../lib/chat-storage';
+
+interface UploadedFile {
+  id: string;
+  name: string;
+  type: 'pdf' | 'docx' | 'txt' | 'md' | 'csv';
+  status: 'parsing' | 'uploading' | 'indexing' | 'ready' | 'error';
+  error?: string;
+  charCount?: number;
+  sourceId?: string;
+  documentId?: string;
+}
 
 // Lightweight markdown parser (replaces heavy react-markdown)
 function SimpleMarkdown({ content }: { content: string }) {
@@ -106,6 +120,7 @@ interface Props {
   selectedContexts: string[];
   notes: { id: string, title: string, content: string }[];
   aiModel: string;
+  aiProvider?: string;
   sheetData: any;
   notionPages: any[];
   workspacePrompt?: string;
@@ -114,7 +129,7 @@ interface Props {
   nutrientEntries?: any[];
 }
 
-export default function ChatInterface({ selectedContexts, notes, aiModel, sheetData, notionPages, workspacePrompt, workspaceId, calendarEvents, nutrientEntries }: Props) {
+export default function ChatInterface({ selectedContexts, notes, aiModel, aiProvider, sheetData, notionPages, workspacePrompt, workspaceId, calendarEvents, nutrientEntries }: Props) {
   const chatHeaderRef = useRef<ChatHeaderRef>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -125,9 +140,67 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [visibleMessageCount, setVisibleMessageCount] = useState(50);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // Whether the deployer configured a chat key server-side. null = unknown
+  // yet (treat as available so guests are never locked out while it loads).
+  const [serverKeys, setServerKeys] = useState<{ gemini: boolean | null; groq: boolean | null }>({
+    gemini: null,
+    groq: null,
+  });
+  useEffect(() => {
+    let active = true;
+    fetch('/api/ai-key-status')
+      .then((r) => r.json())
+      .then((d) => {
+        if (active) setServerKeys({ gemini: !!d?.gemini, groq: !!d?.groq });
+      })
+      .catch(() => {
+        // Ignore: keep unknown (assume available).
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  // A provider is usable when the user set their own key OR the server env has one.
+  const geminiAvailable = !!getApiKey('gemini') || serverKeys.gemini !== false;
+  const groqAvailable = !!getApiKey('groq') || serverKeys.groq !== false;
+  const anyProviderAvailable = geminiAvailable || groqAvailable;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isNewlyCreatedChatRef = useRef(false);
+  const isGuestRef = useRef<boolean | null>(null);
+  const isLoggedInRef = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadedFilesRef = useRef(uploadedFiles);
+  useEffect(() => {
+    uploadedFilesRef.current = uploadedFiles;
+  }, [uploadedFiles]);
+  const hasIndexedDbChunksRef = useRef(false);
+  useEffect(() => {
+    if (isGuestRef.current) {
+      getStats().then((s) => { hasIndexedDbChunksRef.current = s.chunks > 0; }).catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    const supabase = createClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(!!session);
+      isLoggedInRef.current = !!session;
+      isGuestRef.current = !session;
+    });
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setIsLoggedIn(!!user);
+      isLoggedInRef.current = !!user;
+      isGuestRef.current = !user;
+    }).catch(() => {
+      setIsLoggedIn(false);
+      isLoggedInRef.current = false;
+      isGuestRef.current = true;
+    });
+    return () => subscription?.unsubscribe();
+  }, []);
 
   // Memoize current messages to avoid recalculation on every render
   const currentMessages = messages;
@@ -142,6 +215,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     setActiveChatId(null);
     setMessages([]);
     setInput('');
+    setUploadedFiles([]);
   }, [workspaceId]);
 
   // Abort streaming response when activeChatId changes
@@ -153,29 +227,29 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     };
   }, [activeChatId]);
 
-  // Load messages from Supabase when activeChatId changes
+  // Load messages from IndexedDB (and Supabase if logged in) when activeChatId changes
   useEffect(() => {
-    const loadMessages = async () => {
-      if (!activeChatId) {
-        return;
-      }
-      // Skip loading if this is a newly created chat (messages are already in state)
+    const loadFromDB = async () => {
+      if (!activeChatId) return;
       if (isNewlyCreatedChatRef.current) {
         isNewlyCreatedChatRef.current = false;
         return;
       }
-      // Clear messages and load from Supabase when switching chats
       setMessages([]);
       setLoadingMessages(true);
       try {
-        const res = await fetch(`/api/chat-persistence?chatId=${activeChatId}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.messages) {
-            setMessages(data.messages);
+        const msgs = await loadMessages(activeChatId);
+        if (msgs.length > 0) {
+          setMessages(msgs);
+        } else if (isLoggedIn) {
+          const res = await fetch(`/api/chat-persistence?chatId=${encodeURIComponent(activeChatId)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.messages && data.messages.length > 0) {
+              setMessages(data.messages);
+              saveMessages(activeChatId, data.messages);
+            }
           }
-        } else {
-          console.error('Failed to load messages, status:', res.status);
         }
       } catch (error) {
         console.error('Failed to load messages:', error);
@@ -183,30 +257,28 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
         setLoadingMessages(false);
       }
     };
+    loadFromDB();
+  }, [activeChatId, isLoggedIn]);
 
-    loadMessages();
-  }, [activeChatId]);
-
-  // Save messages to Supabase with debounce (backup for non-streaming responses)
+  // Save messages to IndexedDB with debounce, sync to Supabase if logged in
   useEffect(() => {
-    if (!activeChatId) return;
+    if (!activeChatId || messages.length === 0) return;
     const timeoutId = setTimeout(async () => {
       try {
-        const res = await fetch('/api/chat-persistence', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chatId: activeChatId, messages })
-        });
-        if (!res.ok) {
-          console.error('Failed to save messages, status:', res.status);
+        await saveMessages(activeChatId, messages);
+        if (isLoggedIn) {
+          await fetch('/api/chat-persistence', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chatId: activeChatId, messages })
+          });
         }
       } catch (error) {
         console.error('Failed to save messages:', error);
       }
-    }, 5000); // Increased to 5 seconds since server handles streaming persistence
-
+    }, 2000);
     return () => clearTimeout(timeoutId);
-  }, [messages, activeChatId]);
+  }, [messages, activeChatId, isLoggedIn]);
 
   useEffect(() => {
     if (!userScrolledUp) {
@@ -258,46 +330,21 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     let chatIdToUse = currentActiveChatId;
     let isNewChat = false;
     if (!chatIdToUse) {
-      try {
-        // Generate title from first message (first 50 characters)
-        const title = input.trim().substring(0, 50) + (input.length > 50 ? '...' : '');
-        const res = await fetch('/api/chats', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ workspaceId, title })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.chat) {
-            chatIdToUse = data.chat.id;
-            isNewChat = true;
-            isNewlyCreatedChatRef.current = true;
-            setActiveChatId(chatIdToUse);
-            // Refresh chat header to show the new chat immediately
-            chatHeaderRef.current?.refreshChats();
-          }
-        }
-      } catch (error) {
-        console.error('Failed to create chat:', error);
-        return;
-      }
+      chatIdToUse = `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      isNewChat = true;
+      isNewlyCreatedChatRef.current = true;
+      const title = input.trim().substring(0, 50) + (input.length > 50 ? '...' : '');
+      const now = new Date().toISOString();
+      await saveChat({ id: chatIdToUse, workspaceId, title, createdAt: now, updatedAt: now });
+      setActiveChatId(chatIdToUse);
+      chatHeaderRef.current?.refreshChats();
     }
 
     if (!chatIdToUse) return;
 
-    // Update chat title if it's the first message in the chat
-    if (!isNewChat && currentMessages.length === 0) {
-      try {
-        const title = input.trim().substring(0, 50) + (input.length > 50 ? '...' : '');
-        await fetch('/api/chats', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chatId: chatIdToUse, title })
-        });
-        chatHeaderRef.current?.refreshChats();
-      } catch (error) {
-        console.error('Failed to update chat title:', error);
-      }
+    // Update chat title in IndexedDB if it's the first message
+    if (isNewChat) {
+      // Title already set above during creation
     }
 
     const controller = new AbortController();
@@ -320,6 +367,29 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
     // notionPages is already filtered by WorkspaceManager's getNotionPages()
     let notionContext = notionPages || [];
 
+    // ===================================================================
+    // Browser RAG: search indexed documents for relevant context (guests)
+    // ===================================================================
+    let ragContext: Array<{ sourceName: string; content: string; similarity: number }> | undefined;
+    if (isGuestRef.current && (uploadedFilesRef.current.some((f) => f.status === 'ready') || hasIndexedDbChunksRef.current)) {
+      const geminiKey = getApiKey('gemini');
+      if (geminiKey && input.trim()) {
+        try {
+          const results = await searchQuery(input, geminiKey, 3);
+          if (results.length > 0) {
+            ragContext = results.map((r) => ({
+              sourceName: r.chunk.enrichedContent.startsWith('Source: ')
+                ? r.chunk.enrichedContent.split('\n')[0].replace('Source: ', '')
+                : 'Uploaded document',
+              content: r.chunk.content,
+              similarity: r.similarity, // send raw for server formatting
+            }));
+          }
+        } catch {
+          // Browser RAG unavailable — silently continue
+        }
+      }
+    }
 
     let fullText = '';
     const requestStartTime = new Date();
@@ -332,32 +402,25 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
       workspacePrompt: workspacePrompt,
       conversationHistory: updatedMessages.slice(-6), // Use updatedMessages with the new user message
       aiModel: aiModel,
+      aiProvider: aiProvider || 'gemini',
       chatId: chatIdToUse, // Pass chatId for server-side persistence
       stream: true,
-      calendarEvents: calendarEvents
+      calendarEvents: calendarEvents,
+      ...(ragContext ? { ragContext } : {}),
     };
 
     try {
       setLoadingStatus('thinking');
 
-      // Get session token for Edge Function authentication
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      const geminiKey = getApiKey('gemini');
+      const groqKey = getApiKey('groq');
 
-      if (!token) {
-        throw new Error('No session token found');
-      }
-
-      // Call Supabase Edge Function for server-side streaming with persistence
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-      const edgeFunctionUrl = `${supabaseUrl}/functions/v1/chat-stream`
-      
-      const res = await fetch(edgeFunctionUrl, {
+      const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          ...(geminiKey && { 'x-api-key-gemini': geminiKey }),
+          ...(groqKey && { 'x-api-key-groq': groqKey }),
         },
         body: JSON.stringify(contextData),
         signal: controller.signal
@@ -480,7 +543,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
       setAbortController(null);
       setLoadingStatus('connecting');
     }
-  }, [input, loading, currentMessages, messages, workspaceId, notes, selectedContexts, sheetData, notionPages, workspacePrompt, aiModel, calendarEvents, nutrientEntries]);
+  }, [input, loading, currentMessages, messages, workspaceId, notes, selectedContexts, sheetData, notionPages, workspacePrompt, aiModel, aiProvider, calendarEvents, nutrientEntries]);
 
   // Memoize delete handler to prevent re-renders
   const handleDeleteMessage = useCallback((index: number) => {
@@ -504,6 +567,200 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
       sendMessage();
     }
   }, [sendMessage]);
+
+  // ===================================================================
+  // File Upload Handler
+  // ===================================================================
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+      
+      let fileType: UploadedFile['type'];
+      if (ext === 'pdf') fileType = 'pdf';
+      else if (ext === 'docx') fileType = 'docx';
+      else if (ext === 'txt') fileType = 'txt';
+      else if (ext === 'md') fileType = 'md';
+      else if (ext === 'csv') fileType = 'csv';
+      else continue; // Unsupported type
+
+      const fileId = `file-${Date.now()}-${i}`;
+      
+      // Add file with "parsing" status
+      setUploadedFiles(prev => [...prev, {
+        id: fileId,
+        name: file.name,
+        type: fileType,
+        status: 'parsing'
+      }]);
+
+      try {
+        // File size limit (20MB) to prevent browser freeze on large files
+        if (file.size > 20_000_000) {
+          throw new Error('File too large (max 20MB)');
+        }
+
+        // Parse file in browser
+        let content = '';
+        
+        if (fileType === 'txt' || fileType === 'md' || fileType === 'csv') {
+          content = await file.text();
+        } else if (fileType === 'docx') {
+          const mammoth = await import('mammoth');
+          const arrayBuffer = await file.arrayBuffer();
+          const result = await mammoth.extractRawText({ arrayBuffer });
+          content = result.value;
+        } else if (fileType === 'pdf') {
+          setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'parsing' } : f));
+          const pdfjsLib = await import('pdfjs-dist');
+          // Local copy from node_modules/pdfjs-dist/build/pdf.worker.min.mjs — update if upgrading pdfjs-dist
+          pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+          
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          
+          const textParts: string[] = [];
+          for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items
+              .map((item: any) => item.str)
+              .join(' ');
+            textParts.push(pageText);
+          }
+          content = textParts.join('\n\n');
+        }
+
+        if (!content || content.trim().length === 0) {
+          throw new Error('No text content could be extracted');
+        }
+
+        // ===================================================================
+        // Guest path: browser-only RAG (IndexedDB + Gemini embeddings)
+        // Logged-in path: server-side RAG (Supabase + Edge Function)
+        // ===================================================================
+        const isGuest = isGuestRef.current;
+
+        if (isGuest) {
+          // ---- Browser-only RAG ----
+          const geminiKey = getApiKey('gemini');
+          if (!geminiKey) {
+            throw new Error('Gemini API key is required to index files. Please add it in Settings.');
+          }
+
+          setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'indexing' as const, charCount: content.length } : f));
+
+          const result = await ingestFile(
+            file.name,
+            fileType,
+            content,
+            geminiKey,
+            (statusMsg) => {
+              console.log('[Browser RAG]', statusMsg);
+            }
+          );
+
+          setUploadedFiles(prev => prev.map(f => f.id === fileId ? {
+            ...f,
+            status: 'ready' as const,
+            documentId: result.documentId,
+            charCount: content.length,
+          } : f));
+
+        } else {
+          // ---- Server-side RAG (existing Supabase flow) ----
+          setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'uploading' as const, charCount: content.length } : f));
+
+          const res = await fetch('/api/rag/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileName: file.name,
+              fileType,
+              content,
+              workspaceId
+            })
+          });
+
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || 'Upload failed');
+          }
+
+          const uploadResult = await res.json();
+          const sourceId = uploadResult.document?.sourceId;
+
+          setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'indexing' as const, sourceId } : f));
+          
+          // Poll for real indexing status
+          const pollForStatus = async () => {
+            for (let attempt = 0; attempt < 30; attempt++) {
+              await new Promise(r => setTimeout(r, 2000));
+              try {
+                const statusRes = await fetch(`/api/rag/upload?sourceId=${sourceId}`);
+                if (statusRes.ok) {
+                  const statusData = await statusRes.json();
+                  const doc = statusData.documents?.find((d: any) => d.source_id === sourceId);
+                  if (doc?.status === 'indexed') {
+                    setUploadedFiles(prev => prev.map(f => f.id === fileId && f.status === 'indexing' ? { ...f, status: 'ready' as const } : f));
+                    return;
+                  } else if (doc?.status === 'error') {
+                    setUploadedFiles(prev => prev.map(f => f.id === fileId && f.status === 'indexing' ? { ...f, status: 'error' as const, error: doc.error_message || 'Indexing failed' } : f));
+                    return;
+                  }
+                }
+              } catch {
+                // Retry on network error
+              }
+            }
+            // Timeout: mark as ready anyway (optimistic)
+            setUploadedFiles(prev => prev.map(f => f.id === fileId && f.status === 'indexing' ? { ...f, status: 'ready' as const } : f));
+          };
+          pollForStatus();
+        }
+
+      } catch (err: any) {
+        setUploadedFiles(prev => prev.map(f => f.id === fileId ? { 
+          ...f, status: 'error' as const, error: err.message || 'Failed to process file' 
+        } : f));
+      }
+    }
+
+    // Reset file input so the same file can be selected again
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [workspaceId]);
+
+  const removeFile = useCallback(async (fileId: string) => {
+    const file = uploadedFiles.find(f => f.id === fileId);
+    if (!file) return;
+
+    if (file.documentId) {
+      // Browser RAG cleanup (guest)
+      try {
+        await removeDocument(file.documentId);
+      } catch {
+        // Best effort cleanup
+      }
+    } else if (file.sourceId) {
+      // Server-side cleanup (logged-in user)
+      try {
+        await fetch(`/api/rag/upload?sourceId=${file.sourceId}`, { method: 'DELETE' });
+      } catch {
+        // Best effort cleanup
+      }
+    }
+    setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
+  }, [uploadedFiles]);
+
+  useEffect(() => {
+    const el = document.getElementById('chat-input') as HTMLTextAreaElement | null;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 128) + 'px';
+  }, [input]);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
@@ -577,25 +834,109 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, sheetD
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="border-t border-gray-700 bg-gray-800 px-3 sm:px-4 py-3 sm:py-4">
-        <div className="flex gap-2 flex-col sm:flex-row">
+      <div className="border-t border-gray-800 bg-gray-900/80 px-4 py-3 backdrop-blur-sm">
+        {/* Uploaded file chips */}
+        {uploadedFiles.length > 0 && (
+          <div className="mx-auto mb-2 flex max-w-3xl flex-wrap gap-2">
+            {uploadedFiles.map(file => (
+              <div
+                key={file.id}
+                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors ${
+                  file.status === 'error'
+                    ? 'bg-red-900/40 text-red-300 border border-red-700/40'
+                    : file.status === 'ready'
+                    ? 'bg-emerald-900/30 text-emerald-300 border border-emerald-700/30'
+                    : 'bg-gray-700/60 text-gray-300 border border-gray-600/30'
+                }`}
+              >
+                {/* File type icon */}
+                <span className="text-[10px] opacity-70">
+                  {file.type === 'pdf' ? '📄' : file.type === 'docx' ? '📝' : '📃'}
+                </span>
+                <span className="max-w-[120px] truncate">{file.name}</span>
+                {/* Status indicator */}
+                {file.status === 'parsing' && (
+                  <span className="h-3 w-3 animate-spin rounded-full border border-indigo-400/40 border-t-indigo-400" />
+                )}
+                {file.status === 'uploading' && (
+                  <span className="h-3 w-3 animate-spin rounded-full border border-amber-400/40 border-t-amber-400" />
+                )}
+                {file.status === 'indexing' && (
+                  <span className="text-[10px] text-amber-400">⏳</span>
+                )}
+                {file.status === 'ready' && (
+                  <span className="text-[10px] text-emerald-400">✓</span>
+                )}
+                {file.status === 'error' && (
+                  <span className="text-[10px] text-red-400" title={file.error}>!</span>
+                )}
+                {/* Remove button */}
+                <button
+                  onClick={() => removeFile(file.id)}
+                  className="ml-0.5 text-gray-500 hover:text-gray-300"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="mx-auto flex max-w-3xl items-end gap-2">
+          {/* File upload button */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            onChange={handleFileSelect}
+            accept=".pdf,.docx,.txt,.md,.csv"
+            multiple
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loading}
+            className="flex h-11 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-700 bg-gray-800 text-gray-400 transition-colors hover:border-gray-500 hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Upload files (PDF, Word, text)"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
           <textarea
             id="chat-input"
             name="chat-input"
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="Ask a question... (Shift+Enter for newline)"
-            className="flex-1 px-3 sm:px-4 py-2 border border-gray-600 bg-gray-900 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none h-20 sm:h-24 text-sm sm:text-base"
-            disabled={loading}
+            placeholder="Ask a question..."
+            rows={1}
+            className="min-h-[44px] max-h-32 flex-1 resize-none rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none placeholder:text-gray-500 focus:border-gray-500"
+            disabled={loading || !anyProviderAvailable}
           />
-          <button
-            onClick={sendMessage}
-            disabled={loading}
-            className="bg-blue-600 text-white px-4 sm:px-6 py-2 rounded-lg disabled:bg-gray-600 hover:bg-blue-700 w-full sm:w-auto mt-2 sm:mt-0"
-          >
-            Send
-          </button>
+          {anyProviderAvailable ? (
+            <button
+              onClick={sendMessage}
+              disabled={loading || !input.trim()}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-gray-900 transition-colors hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                <path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                const event = new CustomEvent('cloudhelper:open-api-settings');
+                window.dispatchEvent(event);
+              }}
+              className="flex h-11 items-center gap-2 rounded-xl bg-amber-600 px-4 text-sm font-medium text-white transition-colors hover:bg-amber-500"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+                <path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
+              </svg>
+              Manage APIs
+            </button>
+          )}
         </div>
       </div>
     </div>

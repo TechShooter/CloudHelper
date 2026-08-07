@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface CalendarEvent {
   id: string;
@@ -19,9 +19,24 @@ export default function CalendarView({ onEventsChange }: Props) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
+  const [editingCalendarId, setEditingCalendarId] = useState(false);
 
   const [daysBack, setDaysBack] = useState(30);
   const [daysForward, setDaysForward] = useState(30);
+
+  const getCalendarId = useCallback(() => {
+    try {
+      return localStorage.getItem('cloudhelper.api-key.google-calendar-id') || '';
+    } catch {
+      return '';
+    }
+  }, []);
+
+  const [calendarId, setCalendarId] = useState('');
+
+  useEffect(() => {
+    setCalendarId(getCalendarId());
+  }, [getCalendarId]);
 
   // Load saved settings from localStorage on mount (client-side only)
   useEffect(() => {
@@ -31,8 +46,6 @@ export default function CalendarView({ onEventsChange }: Props) {
     if (savedDaysForward) setDaysForward(parseInt(savedDaysForward));
   }, []);
 
-  const calendarId = 'cb6cdb21570e9e868a7d76f47035cb71be5eb96eca6c9a47763093a587e106e7@group.calendar.google.com';
-
   // Save settings to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem('calendarDaysBack', daysBack.toString());
@@ -40,19 +53,18 @@ export default function CalendarView({ onEventsChange }: Props) {
   }, [daysBack, daysForward]);
 
   useEffect(() => {
-    loadEvents();
-  }, [daysBack, daysForward]);
+    if (calendarId) loadEvents();
+  }, [daysBack, daysForward, calendarId]);
 
   const loadEvents = async () => {
-    if (loading) return; // Prevent concurrent requests
+    if (loading || !calendarId) return;
     if (errorCount >= 3) {
       console.log('Calendar fetch error limit reached, stopping retries');
-      return; // Stop retrying after 3 consecutive errors
+      return;
     }
 
     setLoading(true);
     try {
-      console.log('Fetching calendar events...');
       const res = await fetch(`/api/calendar?calendarId=${encodeURIComponent(calendarId)}&daysBack=${daysBack}&daysForward=${daysForward}`);
 
       if (!res.ok) {
@@ -68,15 +80,23 @@ export default function CalendarView({ onEventsChange }: Props) {
         console.error('Calendar error:', data.error);
         setErrorCount(prev => prev + 1);
       } else if (data.events) {
-        console.log('Calendar events loaded:', data.events.length);
         setEvents(data.events);
         onEventsChange(data.events);
-        setErrorCount(0); // Reset error count on success
+        setErrorCount(0);
       }
     } catch (error: any) {
       console.error('Failed to load calendar:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveCalendarId = (id: string) => {
+    try {
+      localStorage.setItem('cloudhelper.api-key.google-calendar-id', id);
+      setCalendarId(id);
+    } catch {
+      // ignore
     }
   };
 
@@ -123,14 +143,48 @@ export default function CalendarView({ onEventsChange }: Props) {
       <div className="bg-gray-800 border-b border-gray-700 p-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold text-white">📅 CloudHelper Calendar</h2>
-          <button
-            onClick={loadEvents}
-            disabled={loading}
-            className="text-xs bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 disabled:bg-gray-600 cursor-pointer"
-          >
-            {loading ? 'Loading...' : '🔄 Refresh'}
-          </button>
+          <div className="flex items-center gap-2">
+            {calendarId && (
+              <button
+                onClick={loadEvents}
+                disabled={loading}
+                className="text-xs bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 disabled:bg-gray-600 cursor-pointer"
+              >
+                {loading ? 'Loading...' : '🔄 Refresh'}
+              </button>
+            )}
+            <button
+              onClick={() => setEditingCalendarId(!editingCalendarId)}
+              className="text-xs bg-gray-700 text-gray-300 px-3 py-2 rounded hover:bg-gray-600 cursor-pointer"
+            >
+              ⚙ Calendar ID
+            </button>
+          </div>
         </div>
+
+        {!calendarId && !editingCalendarId && (
+          <div className="mb-3 rounded bg-amber-500/20 px-4 py-3 text-sm text-amber-300">
+            No Google Calendar ID configured. Click "⚙ Calendar ID" to add yours.
+          </div>
+        )}
+
+        {editingCalendarId && (
+          <div className="mb-3 flex gap-2">
+            <input
+              value={calendarId}
+              onChange={(e) => setCalendarId(e.target.value)}
+              placeholder="Paste your Google Calendar ID"
+              className="flex-1 rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-white outline-none placeholder:text-gray-600"
+            />
+            <button
+              onClick={() => { saveCalendarId(calendarId); setEditingCalendarId(false); }}
+              className="rounded bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+            >
+              Save
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center gap-3 text-sm">
           <div className="flex items-center gap-2">
             <label className="text-gray-300">Days back:</label>

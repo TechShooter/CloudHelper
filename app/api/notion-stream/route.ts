@@ -327,7 +327,7 @@ export async function GET(req: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(payload) + '\n'));
       };
 
-      const apiKey = process.env.NOTION_API_KEY;
+      const apiKey = req.headers.get('x-api-key-notion') || process.env.NOTION_API_KEY || '';
       if (!apiKey || apiKey === 'your_notion_integration_token_here') {
         send({ type: 'error', message: 'Notion API key not configured' });
         controller.close();

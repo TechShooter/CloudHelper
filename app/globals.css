@@ -26,8 +26,10 @@
 
 html, body {
   width: 100%;
-  min-height: 100vh;
-  overflow-x: hidden;
+  height: 100%;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
 }
 
 body {
@@ -131,44 +133,50 @@ body {
   font-style: italic;
 }
 
-/* Modern button styles - high specificity to override Tailwind preflight */
-html body button,
-html button,
-body button,
-button {
-  cursor: pointer !important;
-  transition: all 0.15s ease-in-out !important;
-  -webkit-tap-highlight-color: transparent !important;
-  user-select: none !important;
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 10px;
 }
 
-html body button:hover,
-html button:hover,
-body button:hover,
-button:hover {
-  transform: translateY(-1px);
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-html body button:active,
-html button:active,
-body button:active,
-button:active {
-  transform: translateY(0);
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
 }
 
-html body button:focus-visible,
-html button:focus-visible,
-body button:focus-visible,
-button:focus-visible {
-  outline: 2px solid rgba(59, 130, 246, 0.5);
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Thicker scrollbar for data tables */
+.scrollbar-thick::-webkit-scrollbar {
+  width: 10px;
+  height: 14px;
+}
+
+.scrollbar-thick::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+}
+
+/* Focus ring */
+*:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.2);
   outline-offset: 2px;
 }
 
-html body button:disabled,
-html button:disabled,
-body button:disabled,
+/* Button reset - minimal interference with Tailwind */
+button {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
 button:disabled {
-  cursor: not-allowed !important;
-  opacity: 0.6;
-  transform: none;
+  cursor: not-allowed;
+  opacity: 0.5;
 }
