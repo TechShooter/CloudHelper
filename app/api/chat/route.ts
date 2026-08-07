@@ -205,6 +205,21 @@ export async function POST(req: NextRequest) {
     // Determine the API provider from the Sheet's API Link column, or fall back to isGeminiModel
     const apiProvider = aiProvider || (isGeminiModel(aiModel) ? 'gemini' : 'groq');
 
+    // Validate the provider key before making the upstream call. Calling the API
+    // with an empty key yields hard-to-debug 401/403s, so fail fast and clearly.
+    if (apiProvider === 'gemini' && !geminiKey) {
+      return NextResponse.json({
+        response: 'Gemini API key not configured. Add your key in Settings or set GEMINI_API_KEY on the server.',
+        error: { type: 'MISSING_API_KEY', message: 'Gemini key required' }
+      }, { status: 400 });
+    }
+    if (apiProvider !== 'gemini' && apiProvider !== 'openrouter' && !groqKey) {
+      return NextResponse.json({
+        response: 'Groq API key not configured. Add your key in Settings or set GROQ_API_KEY on the server.',
+        error: { type: 'MISSING_API_KEY', message: 'Groq key required' }
+      }, { status: 400 });
+    }
+
     if (apiProvider === 'gemini') {
       let geminiPrompt = '';
       if (systemPrompt) geminiPrompt += systemPrompt + '\n\n';

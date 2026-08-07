@@ -383,7 +383,7 @@ Deno.serve(async (req: Request) => {
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     
-    const { action, userId, documents, workspaceId } = await req.json()
+    const { action, userId, documents, workspaceId, queryText } = await req.json()
     
     // Validate auth
     const authHeader = req.headers.get('Authorization')
@@ -446,7 +446,6 @@ Deno.serve(async (req: Request) => {
     }
     
     if (action === 'indexQuery') {
-      const { queryText } = await req.json()
       if (!queryText) {
         return new Response(JSON.stringify({ error: 'queryText required' }), {
           status: 400,

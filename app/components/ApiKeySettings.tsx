@@ -88,7 +88,7 @@ export default function ApiKeySettings() {
             </div>
 
             <p className="mb-4 text-sm text-gray-400">
-              Provide your own API keys to enable features. Keys are saved locally in your browser and never sent to any server other than the respective API provider.
+              Keys are saved locally in your browser.
             </p>
 
             <div className="space-y-4">
