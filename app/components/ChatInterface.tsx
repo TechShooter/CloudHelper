@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import ChatHeader, { ChatHeaderRef } from './ChatHeader';
 import { createClient } from '@/utils/supabase/client';
+import type { Session } from '@supabase/supabase-js';
 import { getApiKey } from '../lib/api-keys';
 import { ingestFile, searchQuery, removeDocument, getStats } from '../lib/browser-rag';
 import { saveChat, saveMessages, loadMessages } from '../lib/chat-storage';
@@ -144,6 +145,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   // Whether the deployer configured a chat key server-side. null = unknown
   // yet (treat as available so guests are never locked out while it loads).
   const [serverKeys, setServerKeys] = useState<{ gemini: boolean | null; groq: boolean | null }>({
@@ -171,6 +173,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isNewlyCreatedChatRef = useRef(false);
+  const messagesReadyRef = useRef(false);
   const isGuestRef = useRef<boolean | null>(null);
   const isLoggedInRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -187,24 +190,27 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
 
   useEffect(() => {
     const supabase = createClient();
+    let mounted = true;
+
+    const applySession = (session: Session | null) => {
+      if (!mounted) return;
+      const loggedIn = !!session;
+      setIsLoggedIn(loggedIn);
+      isLoggedInRef.current = loggedIn;
+      isGuestRef.current = !loggedIn;
+      setAuthReady(true);
+      refreshGuestChunkStats();
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => applySession(session)).catch(() => applySession(null));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsLoggedIn(!!session);
-      isLoggedInRef.current = !!session;
-      isGuestRef.current = !session;
-      refreshGuestChunkStats();
+      applySession(session);
     });
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setIsLoggedIn(!!user);
-      isLoggedInRef.current = !!user;
-      isGuestRef.current = !user;
-      refreshGuestChunkStats();
-    }).catch(() => {
-      setIsLoggedIn(false);
-      isLoggedInRef.current = false;
-      isGuestRef.current = true;
-      refreshGuestChunkStats();
-    });
-    return () => subscription?.unsubscribe();
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, [refreshGuestChunkStats]);
 
   // Memoize current messages to avoid recalculation on every render
@@ -217,6 +223,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
 
   // Clear chat state when workspaceId changes
   useEffect(() => {
+    messagesReadyRef.current = false;
     setActiveChatId(null);
     setMessages([]);
     setInput('');
@@ -232,58 +239,63 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
     };
   }, [activeChatId]);
 
-  // Load messages from IndexedDB (and Supabase if logged in) when activeChatId changes
+  // Authenticated users load only from Supabase; guests load only from IndexedDB.
   useEffect(() => {
-    const loadFromDB = async () => {
-      if (!activeChatId) return;
-      if (isNewlyCreatedChatRef.current) {
-        isNewlyCreatedChatRef.current = false;
+    const loadMessagesForChat = async () => {
+      if (!authReady || !activeChatId) {
+        messagesReadyRef.current = false;
         return;
       }
+      if (isNewlyCreatedChatRef.current) {
+        isNewlyCreatedChatRef.current = false;
+        messagesReadyRef.current = true;
+        return;
+      }
+
+      messagesReadyRef.current = false;
       setMessages([]);
       setLoadingMessages(true);
       try {
-        const msgs = await loadMessages(activeChatId);
-        if (msgs.length > 0) {
-          setMessages(msgs);
-        } else if (isLoggedIn) {
+        if (isLoggedIn) {
           const res = await fetch(`/api/chat-persistence?chatId=${encodeURIComponent(activeChatId)}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.messages && data.messages.length > 0) {
-              setMessages(data.messages);
-              saveMessages(activeChatId, data.messages);
-            }
-          }
+          if (!res.ok) throw new Error(`Failed to load cloud messages (${res.status})`);
+          const data = await res.json();
+          setMessages(Array.isArray(data.messages) ? data.messages : []);
+        } else {
+          setMessages(await loadMessages(activeChatId));
         }
+        messagesReadyRef.current = true;
       } catch (error) {
         console.error('Failed to load messages:', error);
       } finally {
         setLoadingMessages(false);
       }
     };
-    loadFromDB();
-  }, [activeChatId, isLoggedIn]);
+    loadMessagesForChat();
+  }, [activeChatId, isLoggedIn, authReady]);
 
-  // Save messages to IndexedDB with debounce, sync to Supabase if logged in
+  // Save guest messages locally, or authenticated messages in Supabase only.
   useEffect(() => {
-    if (!activeChatId || messages.length === 0) return;
+    if (!authReady || !activeChatId || !messagesReadyRef.current) return;
     const timeoutId = setTimeout(async () => {
       try {
-        await saveMessages(activeChatId, messages);
         if (isLoggedIn) {
-          await fetch('/api/chat-persistence', {
+          const res = await fetch('/api/chat-persistence', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ chatId: activeChatId, messages })
           });
+          if (!res.ok) throw new Error(`Failed to save cloud messages (${res.status})`);
+          chatHeaderRef.current?.refreshChats();
+        } else {
+          await saveMessages(activeChatId, messages);
         }
       } catch (error) {
         console.error('Failed to save messages:', error);
       }
     }, 2000);
     return () => clearTimeout(timeoutId);
-  }, [messages, activeChatId, isLoggedIn]);
+  }, [messages, activeChatId, isLoggedIn, authReady]);
 
   useEffect(() => {
     if (!userScrolledUp) {
@@ -326,7 +338,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
   }, []);
 
   const sendMessage = useCallback(async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || !authReady) return;
 
     // Capture activeChatId at the start to prevent chat switching issues
     const currentActiveChatId = activeChatId;
@@ -335,12 +347,34 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
     let chatIdToUse = currentActiveChatId;
     let isNewChat = false;
     if (!chatIdToUse) {
-      chatIdToUse = `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       isNewChat = true;
       isNewlyCreatedChatRef.current = true;
       const title = input.trim().substring(0, 50) + (input.length > 50 ? '...' : '');
-      const now = new Date().toISOString();
-      await saveChat({ id: chatIdToUse, workspaceId, title, createdAt: now, updatedAt: now });
+
+      if (isLoggedIn) {
+        const res = await fetch('/api/chats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workspaceId, title }),
+        });
+        if (!res.ok) {
+          isNewlyCreatedChatRef.current = false;
+          console.error('Failed to create cloud chat:', res.status);
+          return;
+        }
+        const data = await res.json();
+        chatIdToUse = data.chat?.id || null;
+      } else {
+        chatIdToUse = `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+        const now = new Date().toISOString();
+        await saveChat({ id: chatIdToUse, workspaceId, title, createdAt: now, updatedAt: now });
+      }
+
+      if (!chatIdToUse) {
+        isNewlyCreatedChatRef.current = false;
+        messagesReadyRef.current = false;
+        return;
+      }
       setActiveChatId(chatIdToUse);
       chatHeaderRef.current?.refreshChats();
     }
@@ -548,7 +582,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
       setAbortController(null);
       setLoadingStatus('connecting');
     }
-  }, [input, loading, currentMessages, messages, workspaceId, notes, selectedContexts, sheetData, notionPages, workspacePrompt, aiModel, aiProvider, calendarEvents, nutrientEntries]);
+  }, [input, loading, currentMessages, messages, workspaceId, notes, selectedContexts, sheetData, notionPages, workspacePrompt, aiModel, aiProvider, calendarEvents, nutrientEntries, isLoggedIn, authReady]);
 
   // Memoize delete handler to prevent re-renders
   const handleDeleteMessage = useCallback((index: number) => {
@@ -562,6 +596,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
 
   // Handle new chat creation
   const handleNewChat = useCallback(() => {
+    messagesReadyRef.current = false;
     setActiveChatId(null);
     setMessages([]);
   }, []);
@@ -916,7 +951,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
             placeholder="Ask a question..."
             rows={1}
             className="min-h-[44px] max-h-32 flex-1 resize-none rounded-xl border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none placeholder:text-gray-500 focus:border-gray-500"
-            disabled={loading || !anyProviderAvailable}
+            disabled={loading || !anyProviderAvailable || !authReady}
           />
           {anyProviderAvailable ? (
             <button
