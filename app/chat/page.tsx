@@ -103,16 +103,37 @@ export default function Home() {
 
     const setAppHeight = () => {
       if (containerRef.current) {
-        const h = window.visualViewport?.height ?? window.innerHeight;
-        containerRef.current.style.height = `${h}px`;
+        // Position the fixed container inside the *visual* viewport. On mobile,
+        // opening the keyboard shrinks visualViewport.height and pans the visual
+        // viewport down (visualViewport.offsetTop > 0). If we only set height and
+        // keep top: 0, the chat input ends up with a black gap above the keyboard.
+        const vv = window.visualViewport;
+        const top = vv?.offsetTop ?? 0;
+        const height = vv?.height ?? window.innerHeight;
+        containerRef.current.style.top = `${top}px`;
+        containerRef.current.style.height = `${height}px`;
       }
     };
+
+    // Re-apply on the next frame: visualViewport reports intermediate sizes
+    // while the keyboard animation runs, and this guarantees a final settle.
+    const onViewportChange = () => {
+      requestAnimationFrame(setAppHeight);
+    };
+
     setAppHeight();
-    window.visualViewport?.addEventListener('resize', setAppHeight);
-    window.addEventListener('resize', setAppHeight);
+    window.visualViewport?.addEventListener('resize', onViewportChange);
+    // offsetTop changes are reported as scroll events on the visual viewport.
+    window.visualViewport?.addEventListener('scroll', onViewportChange);
+    window.addEventListener('resize', onViewportChange);
+    // Some mobile browsers only pan the visual viewport once the focus/keyboard
+    // sequence completes, so re-sync after focus as well.
+    window.addEventListener('focusin', onViewportChange);
     return () => {
-      window.visualViewport?.removeEventListener('resize', setAppHeight);
-      window.removeEventListener('resize', setAppHeight);
+      window.visualViewport?.removeEventListener('resize', onViewportChange);
+      window.visualViewport?.removeEventListener('scroll', onViewportChange);
+      window.removeEventListener('resize', onViewportChange);
+      window.removeEventListener('focusin', onViewportChange);
     };
   }, []);
 

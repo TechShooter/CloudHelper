@@ -28,6 +28,9 @@ export const viewport: Viewport = {
   minimumScale: 0.5,
   maximumScale: 5,
   userScalable: true,
+  // On Android Chrome, resize the layout viewport with the on-screen keyboard
+  // instead of panning, so the fixed chat input stays right above the keyboard.
+  interactiveWidget: 'resizes-content',
 };
 
 export default function RootLayout({
