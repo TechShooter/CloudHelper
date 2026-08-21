@@ -38,6 +38,117 @@ interface Message {
   content: string;
 }
 
+interface StreamResult {
+  text: string;
+  // Gemini puts the stop reason on candidates[0].finishReason (e.g. STOP, MAX_TOKENS, SAFETY).
+  finishReason: string | null;
+  // OpenAI-compatible providers (Groq/OpenRouter) use choices[0].finish_reason (e.g. stop, length).
+  finishReasonOpenAI: string | null;
+  // True when the stream emitted data: [DONE].
+  doneMarker: boolean;
+  // True when the stream ended without any completion signal (connection dropped mid-response).
+  interrupted: boolean;
+  // Error surfaced by the upstream stream, if any.
+  errorMessage: string | null;
+}
+
+/**
+ * Reads a server-sent-events stream from /api/chat and accumulates the text.
+ * Also surfaces the model's finish reason so the caller can detect truncation,
+ * safety blocks, or a connection that dropped before the response completed.
+ */
+async function readSseStream(
+  res: Response,
+  signal: AbortSignal,
+  onUpdate: (runningText: string) => void
+): Promise<StreamResult> {
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const data = await res.json().catch(() => null);
+    return {
+      text: data?.response || '',
+      finishReason: null,
+      finishReasonOpenAI: null,
+      doneMarker: false,
+      interrupted: false,
+      errorMessage: data?.error?.message || null,
+    };
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let text = '';
+  let finishReason: string | null = null;
+  let finishReasonOpenAI: string | null = null;
+  let doneMarker = false;
+  let errorMessage: string | null = null;
+  let readError: string | null = null;
+
+  const processLine = (rawLine: string) => {
+    const line = rawLine.replace(/\r$/, '');
+    if (!line.startsWith('data:')) return;
+    const jsonStr = line.slice(5).trim();
+    if (!jsonStr) return;
+    if (jsonStr === '[DONE]') {
+      doneMarker = true;
+      return;
+    }
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      return;
+    }
+    if (parsed.error) {
+      errorMessage = parsed.error.message || JSON.stringify(parsed.error);
+      return;
+    }
+    let content = parsed.content;
+    if (typeof content !== 'string') {
+      const parts = parsed.candidates?.[0]?.content?.parts;
+      content = Array.isArray(parts) ? parts.map((p: any) => p.text || '').join('') : '';
+    }
+    if (!content) content = parsed.choices?.[0]?.delta?.content || '';
+    if (content) {
+      text += content;
+      onUpdate(text);
+    }
+    if (parsed.candidates?.[0]?.finishReason) finishReason = parsed.candidates[0].finishReason;
+    if (parsed.choices?.[0]?.finish_reason) finishReasonOpenAI = parsed.choices[0].finish_reason;
+  };
+
+  try {
+    while (true) {
+      if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+      const { done, value } = await reader.read();
+      if (done) {
+        buffer += decoder.decode();
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+
+      let nl: number;
+      while ((nl = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, nl);
+        buffer = buffer.slice(nl + 1);
+        processLine(line);
+      }
+    }
+  } catch (e: any) {
+    if (e?.name === 'AbortError') throw e;
+    readError = e?.message || String(e);
+  }
+
+  // Flush any final line that arrived without a trailing newline.
+  if (buffer.trim()) processLine(buffer);
+
+  const completed = doneMarker || !!finishReason || !!finishReasonOpenAI;
+  const interrupted = !completed || !!readError;
+  if (readError) errorMessage = errorMessage || readError;
+
+  return { text, finishReason, finishReasonOpenAI, doneMarker, interrupted, errorMessage };
+}
+
 // Separate component for individual messages to prevent re-renders
 const MessageItem = React.memo(({ message, onDelete, index }: { message: Message; onDelete: (index: number) => void; index: number }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
@@ -454,113 +565,138 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
       const geminiKey = getApiKey('gemini');
       const groqKey = getApiKey('groq');
 
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(geminiKey && { 'x-api-key-gemini': geminiKey }),
-          ...(groqKey && { 'x-api-key-groq': groqKey }),
-        },
-        body: JSON.stringify(contextData),
-        signal: controller.signal
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ response: `API Error: ${res.status}` }));
+      // Update the live assistant message as text streams in.
+      const applyText = (text: string) => {
+        fullText = text;
         setMessages(prev => {
           const newMessages = [...prev];
-          newMessages[assistantIndex] = { role: 'assistant', content: errorData.response || errorData.error?.message || 'An error occurred while processing your request.' };
+          newMessages[assistantIndex] = { role: 'assistant', content: text };
           return newMessages;
         });
-        setLoading(false);
-        setLoadingStatus('error');
+      };
+
+      // One streaming round-trip to /api/chat. Returns stream metadata so we can
+      // detect truncation (MAX_TOKENS), safety blocks, or a dropped connection.
+      const doStream = async (ctx: any): Promise<{ result: StreamResult | null; errorText: string | null }> => {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(geminiKey && { 'x-api-key-gemini': geminiKey }),
+            ...(groqKey && { 'x-api-key-groq': groqKey }),
+          },
+          body: JSON.stringify(ctx),
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({ response: `API Error: ${res.status}` }));
+          return {
+            result: null,
+            errorText: errorData.response || errorData.error?.message || 'An error occurred while processing your request.',
+          };
+        }
+
+        setLoadingStatus('responding');
+
+        const isSSE = res.headers.get('content-type')?.includes('text/event-stream');
+        if (!isSSE) {
+          const data = await res.json().catch(() => ({}));
+          const text = typeof data.response === 'string' ? data.response : '';
+          if (text) applyText(text);
+          return {
+            result: { text, finishReason: null, finishReasonOpenAI: null, doneMarker: false, interrupted: false, errorMessage: null },
+            errorText: null,
+          };
+        }
+
+        const result = await readSseStream(res, controller.signal, applyText);
+        return { result, errorText: null };
+      };
+
+      // ---- Initial request ----
+      const first = await doStream(contextData);
+
+      if (first.errorText) {
+        applyText(first.errorText);
+        return;
+      }
+      if (!first.result) {
+        applyText('Error: Could not get response. Please try again.');
         return;
       }
 
-      setLoadingStatus('responding');
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      const isSSE = res.headers.get('content-type')?.includes('text/event-stream');
+      let result: StreamResult = first.result;
+      let baseText = result.text;
 
-      if (reader) {
-        let buffer = '';
-        while (true) {
-          if (controller.signal.aborted) break;
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value, { stream: true });
-          buffer += chunk;
-
-          if (isSSE) {
-            // Parse SSE format (Gemini or Groq)
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const jsonStr = line.slice(6);
-                if (jsonStr === '[DONE]') continue;
-                try {
-                  const parsed = JSON.parse(jsonStr);
-                  // Try Edge Function format first (from Supabase Edge Function)
-                  let textContent = parsed.content;
-                  // Try Gemini format if Edge Function format not found
-                  if (!textContent) {
-                    textContent = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-                  }
-                  // Try Groq format if Gemini format not found
-                  if (!textContent) {
-                    textContent = parsed.choices?.[0]?.delta?.content;
-                  }
-                  if (textContent) {
-                    fullText += textContent;
-                    setMessages(prev => {
-                      const newMessages = [...prev];
-                      newMessages[assistantIndex] = { role: 'assistant', content: fullText };
-                      return newMessages;
-                    });
-                  }
-                } catch (e) {
-                  // Skip invalid JSON
-                }
-              }
-            }
-          } else {
-            // Plain text for Groq
-            fullText += chunk;
-            setMessages(prev => {
-              const newMessages = [...prev];
-              newMessages[assistantIndex] = { role: 'assistant', content: fullText };
-              return newMessages;
-            });
-          }
-        }
-
-        // Check if response is empty after streaming
-        if (!fullText || fullText.trim() === '') {
-          setMessages(prev => {
-            const newMessages = [...prev];
-            newMessages[assistantIndex] = { role: 'assistant', content: 'No response from the AI model. This could be due to:\n• Invalid model name\n• API error or rate limit\n• Network issue\n\nPlease try again or use a different model.' };
-            return newMessages;
-          });
-        }
-      } else {
-        const data = await res.json();
-        fullText = data.response;
-
-        // Check if response is empty
-        if (!fullText || fullText.trim() === '') {
-          fullText = 'No response from the AI model. This could be due to:\n• Invalid model name\n• API error or rate limit\n• Network issue\n\nPlease try again or use a different model.';
-        }
-
-        setMessages(prev => {
-          const newMessages = [...prev];
-          newMessages[assistantIndex] = { role: 'assistant', content: fullText };
-          return newMessages;
-        });
+      if (!baseText || baseText.trim() === '') {
+        applyText('No response from the AI model. This could be due to:\n• Invalid model name\n• API error or rate limit\n• Network issue\n\nPlease try again or use a different model.');
+        return;
       }
 
+      // Figure out WHY the stream stopped early.
+      const truncated = result.finishReason === 'MAX_TOKENS' || result.finishReasonOpenAI === 'length';
+      const interrupted = result.interrupted;
+      const rawReason = result.finishReason || result.finishReasonOpenAI || null;
+      const stoppedEarly = !truncated && !interrupted && !!rawReason && rawReason !== 'STOP' && rawReason !== 'stop';
+
+      // Auto-continue once when the model hit its output limit or the connection dropped.
+      const shouldContinue = (truncated || interrupted) && !controller.signal.aborted && baseText.trim().length > 0;
+
+      let continued = false;
+
+      if (shouldContinue) {
+        const continueHistory = [
+          ...updatedMessages.slice(-6),
+          { role: 'assistant' as const, content: baseText },
+          { role: 'user' as const, content: 'Continue from where you left off. Do not repeat anything already written. Continue the response exactly from the last character.' },
+        ];
+        const cont = await doStream({ ...contextData, conversationHistory: continueHistory });
+
+        if (cont.result) {
+          const contText = cont.result.text;
+          if (contText && contText.trim()) {
+            baseText = baseText + contText;
+            applyText(baseText);
+            continued = true;
+          }
+          result = cont.result;
+        }
+      }
+
+      // Explain what happened so the user can see the cause.
+      let note = '';
+      if (continued) {
+        const contTruncated = result.finishReason === 'MAX_TOKENS' || result.finishReasonOpenAI === 'length';
+        const contInterrupted = result.interrupted;
+        const cause = truncated ? 'hit the output limit' : 'the connection was interrupted';
+        note = contTruncated || contInterrupted
+          ? `\n\n*⚠️ The response ${cause} and was auto-continued, but was interrupted again and may still be incomplete.*`
+          : `\n\n*ℹ️ The response ${cause} and was auto-continued.*`;
+      } else if (truncated) {
+        note = '\n\n*⚠️ The response hit the model\u2019s output limit and may be incomplete.*';
+      } else if (interrupted) {
+        note = result.errorMessage
+          ? `\n\n*⚠️ The connection to the AI was interrupted mid-response (${result.errorMessage}).*`
+          : '\n\n*⚠️ The connection to the AI was interrupted mid-response.*';
+      } else if (stoppedEarly) {
+        note = `\n\n*⚠️ The response was stopped early by the model (reason: \u201c${rawReason}\u201d).*`;
+      }
+
+      if (note) {
+        baseText = baseText + note;
+        applyText(baseText);
+      }
+
+      if (interrupted || truncated || stoppedEarly) {
+        console.warn('[Chat] stream ended early', {
+          finishReason: result.finishReason,
+          finishReasonOpenAI: result.finishReasonOpenAI,
+          interrupted: result.interrupted,
+          errorMessage: result.errorMessage,
+          continued,
+        });
+      }
     } catch (error: any) {
       setLoadingStatus('error');
       
