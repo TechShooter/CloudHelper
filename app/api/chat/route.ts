@@ -231,16 +231,35 @@ export async function POST(req: NextRequest) {
       geminiPrompt += `user: ${conversationHistory[conversationHistory.length - 1]?.content || ''}`;
 
       if (stream) {
-        response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:streamGenerateContent?alt=sse&key=${geminiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: geminiPrompt }] }]
-            })
+        // Time out only while waiting for the first byte (TTFB). Once headers
+        // arrive we clear the timer so the long-lived stream is never aborted.
+        // This turns Vercel's opaque 504 into a clear, actionable message.
+        const upstream = new AbortController();
+        const ttl = setTimeout(() => upstream.abort(), 30000);
+
+        try {
+          response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:streamGenerateContent?alt=sse&key=${geminiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: geminiPrompt }] }]
+              }),
+              signal: upstream.signal,
+            }
+          );
+        } catch (e: any) {
+          clearTimeout(ttl);
+          if (e?.name === 'AbortError') {
+            return NextResponse.json({
+              response: 'Gemini took too long to start responding (timed out after 30s). This usually means the model is busy or the selected context (notes/sheets/documents) is very large. Try again, or deselect some context.',
+              error: { type: 'UPSTREAM_TIMEOUT', message: 'Gemini streaming request timed out waiting for the first byte' }
+            }, { status: 504 });
           }
-        );
+          throw e;
+        }
+        clearTimeout(ttl);
 
         if (response.ok && response.body) {
           return new Response(response.body, {
@@ -285,7 +304,7 @@ export async function POST(req: NextRequest) {
           model: aiModel,
           messages: messages,
           temperature: 0.5,
-          max_tokens: 1024,
+          max_tokens: 8192,
           stream: stream
         })
       });
@@ -331,7 +350,7 @@ export async function POST(req: NextRequest) {
           model: aiModel,
           messages: messages,
           temperature: 0.5,
-          max_tokens: 1024,
+          max_tokens: 8192,
           stream: stream
         })
       });
@@ -368,7 +387,7 @@ export async function POST(req: NextRequest) {
           model: aiModel,
           messages: messages,
           temperature: 0.5,
-          max_tokens: 1024,
+          max_tokens: 8192,
           stream: stream
         })
       });

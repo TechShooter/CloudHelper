@@ -590,10 +590,31 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
         });
 
         if (!res.ok) {
-          const errorData = await res.json().catch(() => ({ response: `API Error: ${res.status}` }));
+          let errorText: string | null = null;
+          const rawBody = await res.text().catch(() => '');
+          try {
+            const data = JSON.parse(rawBody);
+            errorText = data.response || data.error?.message || (typeof data.error === 'string' ? data.error : null) || null;
+          } catch {
+            // Not JSON (e.g. an HTML error page from the platform).
+          }
+
+          // 502/503/504 usually come from the platform/gateway timing out or the
+          // provider being unavailable, not from our code — so explain the cause.
+          let friendly: string | null = null;
+          if (!errorText) {
+            if (res.status === 504) {
+              friendly = 'The AI provider took too long to respond (gateway timeout). This usually means the model is busy or the selected context (notes/sheets/documents) is very large. Try again, or deselect some context.';
+            } else if (res.status === 502) {
+              friendly = 'The AI provider returned a bad gateway error and may be temporarily unavailable. Please try again.';
+            } else if (res.status === 503) {
+              friendly = 'The AI provider is temporarily overloaded or unavailable. Please try again in a moment.';
+            }
+          }
+
           return {
             result: null,
-            errorText: errorData.response || errorData.error?.message || 'An error occurred while processing your request.',
+            errorText: errorText || friendly || rawBody.trim().slice(0, 300) || `Request failed with status ${res.status}.`,
           };
         }
 
@@ -670,9 +691,11 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
         const contTruncated = result.finishReason === 'MAX_TOKENS' || result.finishReasonOpenAI === 'length';
         const contInterrupted = result.interrupted;
         const cause = truncated ? 'hit the output limit' : 'the connection was interrupted';
-        note = contTruncated || contInterrupted
-          ? `\n\n*⚠️ The response ${cause} and was auto-continued, but was interrupted again and may still be incomplete.*`
-          : `\n\n*ℹ️ The response ${cause} and was auto-continued.*`;
+        note = contTruncated
+          ? `\n\n*⚠️ The response ${cause} and was auto-continued, but hit the output limit again and may still be incomplete.*`
+          : contInterrupted
+            ? `\n\n*⚠️ The response ${cause} and was auto-continued, but the connection was interrupted again and may still be incomplete.*`
+            : `\n\n*ℹ️ The response ${cause} and was auto-continued.*`;
       } else if (truncated) {
         note = '\n\n*⚠️ The response hit the model\u2019s output limit and may be incomplete.*';
       } else if (interrupted) {
