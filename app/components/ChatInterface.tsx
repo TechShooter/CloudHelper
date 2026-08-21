@@ -33,9 +33,122 @@ function SimpleMarkdown({ content }: { content: string }) {
   return <div dangerouslySetInnerHTML={{ __html: formatted }} />;
 }
 
+// Rough token estimate: ~4 characters per token (matches the RAG ingestion heuristic).
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+function formatChars(chars: number): string {
+  if (chars >= 1_000_000) return `${(chars / 1_000_000).toFixed(1)}M chars`;
+  if (chars >= 1_000) return `${(chars / 1_000).toFixed(1)}k chars`;
+  return `${chars} chars`;
+}
+
+/**
+ * Builds a best-effort breakdown of the payload that will be sent to /api/chat.
+ * Mirrors the server's system-prompt assembly so the user can see which context
+ * source is inflating the request (and causing e.g. Groq's 413 "payload too large").
+ */
+function buildPayloadInfo(ctx: any, model: string, provider: string): PayloadInfo {
+  const sources: PayloadSource[] = [];
+  const add = (label: string, text: string) => {
+    if (!text || text.length === 0) return;
+    sources.push({ label, chars: text.length, tokens: estimateTokens(text) });
+  };
+
+  const history = Array.isArray(ctx.conversationHistory) ? ctx.conversationHistory : [];
+  add('Conversation history', history.map((m: any) => `${m.role}: ${m.content}`).join('\n'));
+
+  if (Array.isArray(ctx.context) && ctx.context.length) {
+    add('Notes', ctx.context.map((n: any) => `[${n.title}]\n${n.content}`).join('\n\n'));
+  }
+
+  if (Array.isArray(ctx.sheetData) && ctx.sheetData.length) {
+    let sheetText = '';
+    ctx.sheetData.forEach((s: any) => {
+      sheetText += `=== ${s.sheet} (${s.rows} rows) ===\n`;
+      if (Array.isArray(s.data)) {
+        s.data.forEach((row: string[]) => { sheetText += row.join(' | ') + '\n'; });
+      }
+      sheetText += '\n';
+    });
+    add('Google Sheets', sheetText);
+  }
+
+  if (Array.isArray(ctx.notionData) && ctx.notionData.length) {
+    add('Notion pages', ctx.notionData.map((p: any) => `[${p.title}]\n${p.content}`).join('\n\n'));
+  }
+
+  if (Array.isArray(ctx.calendarEvents) && ctx.calendarEvents.length) {
+    add('Calendar events', ctx.calendarEvents.map((e: any) => e.summary || '').join('\n'));
+  }
+
+  if (Array.isArray(ctx.nutrientEntries) && ctx.nutrientEntries.length) {
+    add('Nutrient tracker', ctx.nutrientEntries.map((e: any) => `${e.food} (${e.grams}g)`).join('\n'));
+  }
+
+  if (Array.isArray(ctx.ragContext) && ctx.ragContext.length) {
+    add('Retrieved documents (RAG)', ctx.ragContext.map((r: any) => r.content || '').join('\n\n'));
+  }
+
+  if (ctx.workspacePrompt) {
+    add('Workspace prompt', ctx.workspacePrompt);
+  }
+
+  const totalChars = sources.reduce((sum, s) => sum + s.chars, 0);
+  const totalTokens = sources.reduce((sum, s) => sum + s.tokens, 0);
+
+  return {
+    totalChars,
+    totalTokens,
+    sources: [...sources].sort((a, b) => b.chars - a.chars),
+    model,
+    provider,
+    note: 'Estimate only (~4 characters per token). Server-side retrieved documents and the date/time line are not counted.',
+  };
+}
+
+function PayloadInfoPanel({ info }: { info: PayloadInfo }) {
+  return (
+    <div className="mt-2 space-y-1 border-t border-gray-600/40 pt-2 text-xs text-gray-300">
+      <div className="flex items-center justify-between gap-2 font-medium text-gray-200">
+        <span>Request payload</span>
+        <span className="tabular-nums">~{info.totalTokens.toLocaleString()} tokens · {formatChars(info.totalChars)}</span>
+      </div>
+      <div className="text-gray-400">{info.model} · {info.provider}</div>
+      <div className="space-y-0.5 pt-1">
+        {info.sources.map((s) => (
+          <div key={s.label} className="flex items-center justify-between gap-2">
+            <span className="text-gray-400">{s.label}</span>
+            <span className="tabular-nums text-gray-300">~{s.tokens.toLocaleString()} tok</span>
+          </div>
+        ))}
+      </div>
+      <p className="pt-1 leading-snug text-gray-500">{info.note}</p>
+    </div>
+  );
+}
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  // Best-effort breakdown of the request payload that produced this turn (user messages only).
+  payloadInfo?: PayloadInfo;
+}
+
+interface PayloadSource {
+  label: string;
+  chars: number;
+  tokens: number;
+}
+
+interface PayloadInfo {
+  totalChars: number;
+  totalTokens: number;
+  sources: PayloadSource[];
+  model: string;
+  provider: string;
+  note: string;
 }
 
 interface StreamResult {
@@ -153,6 +266,8 @@ async function readSseStream(
 const MessageItem = React.memo(({ message, onDelete, index }: { message: Message; onDelete: (index: number) => void; index: number }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
+  const [showInfo, setShowInfo] = React.useState(false);
+  const [showActions, setShowActions] = React.useState(false);
 
   // Guard clause to prevent crash if message becomes undefined during deletion
   if (!message) return null;
@@ -170,7 +285,7 @@ const MessageItem = React.memo(({ message, onDelete, index }: { message: Message
   }, [message.content]);
 
   return (
-    <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} group`}>
+    <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
       <div className={`max-w-[85%] sm:max-w-[80%] px-3 sm:px-4 py-2 rounded-lg relative ${message.role === 'user'
           ? 'bg-blue-600 text-white'
           : 'bg-gray-700 text-gray-100 prose-chat'
@@ -183,44 +298,73 @@ const MessageItem = React.memo(({ message, onDelete, index }: { message: Message
           )}
         </div>
 
-        {/* Action buttons */}
-        <div className="absolute top-1 right-1 flex gap-1">
-          {/* Copy button */}
-          <button
-            onClick={handleCopy}
-            className="text-gray-400 hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs p-1 rounded hover:bg-gray-600 cursor-pointer"
-            title="Copy message"
-          >
-            {copied ? 'Copied!' : '📋'}
-          </button>
+        {showInfo && message.payloadInfo && (
+          <PayloadInfoPanel info={message.payloadInfo} />
+        )}
 
-          {/* Delete button with confirmation */}
-          {showDeleteConfirm ? (
-            <div className="flex gap-1">
+        {/* Action toggle + buttons (shown only when toggled) */}
+        <div className="absolute top-1 right-1 flex items-center gap-1">
+          {showActions && (
+            <>
+              {/* Payload info button */}
+              {message.role === 'user' && message.payloadInfo && (
+                <button
+                  onClick={() => setShowInfo((s) => !s)}
+                  className={`text-xs p-1 rounded hover:bg-gray-600 cursor-pointer ${showInfo ? 'text-white bg-gray-600' : 'text-gray-300'}`}
+                  title="Request payload info"
+                >
+                  ℹ️
+                </button>
+              )}
+
+              {/* Copy button */}
               <button
-                onClick={handleDelete}
-                className="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700 cursor-pointer"
-                title="Confirm delete"
+                onClick={handleCopy}
+                className="text-gray-300 hover:text-white text-xs p-1 rounded hover:bg-gray-600 cursor-pointer"
+                title="Copy message"
               >
-                ✓
+                {copied ? '✓' : '📋'}
               </button>
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="bg-gray-600 text-white px-2 py-1 rounded text-xs hover:bg-gray-700 cursor-pointer"
-                title="Cancel"
-              >
-                ✗
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-sm p-1 rounded hover:bg-gray-600 cursor-pointer"
-              title="Delete message"
-            >
-              🗑️
-            </button>
+
+              {/* Delete button with confirmation */}
+              {showDeleteConfirm ? (
+                <div className="flex gap-1">
+                  <button
+                    onClick={handleDelete}
+                    className="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700 cursor-pointer"
+                    title="Confirm delete"
+                  >
+                    ✓
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="bg-gray-600 text-white px-2 py-1 rounded text-xs hover:bg-gray-700 cursor-pointer"
+                    title="Cancel"
+                  >
+                    ✗
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="text-gray-300 hover:text-red-400 text-sm p-1 rounded hover:bg-gray-600 cursor-pointer"
+                  title="Delete message"
+                >
+                  🗑️
+                </button>
+              )}
+            </>
           )}
+
+          {/* Toggle button */}
+          <button
+            onClick={() => setShowActions((s) => !s)}
+            className={`text-sm p-1 rounded cursor-pointer ${showActions ? 'text-white bg-gray-600' : 'text-gray-300 opacity-70 hover:opacity-100 hover:bg-gray-600'}`}
+            title="Message actions"
+            aria-label="Toggle message actions"
+          >
+            ⋮
+          </button>
         </div>
       </div>
     </div>
@@ -546,7 +690,7 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
     
     // Prepare context data - include the NEW message in conversationHistory
     const contextData = {
-      notes: contextNotes,
+      context: contextNotes,
       sheetData: sheetContext,
       notionData: notionContext,
       workspacePrompt: workspacePrompt,
@@ -556,8 +700,20 @@ export default function ChatInterface({ selectedContexts, notes, aiModel, aiProv
       chatId: chatIdToUse, // Pass chatId for server-side persistence
       stream: true,
       calendarEvents: calendarEvents,
+      nutrientEntries: nutrientEntries,
       ...(ragContext ? { ragContext } : {}),
     };
+
+    // Best-effort breakdown of what's being sent, shown via the ℹ️ button on the user message.
+    const payloadInfo = buildPayloadInfo(contextData, aiModel, aiProvider || 'gemini');
+    setMessages(prev => {
+      const next = [...prev];
+      const userIdx = assistantIndex - 1;
+      if (next[userIdx] && next[userIdx].role === 'user') {
+        next[userIdx] = { ...next[userIdx], payloadInfo };
+      }
+      return next;
+    });
 
     try {
       setLoadingStatus('thinking');

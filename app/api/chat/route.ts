@@ -198,9 +198,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    messages.push({ role: 'user', content: conversationHistory[conversationHistory.length - 1]?.content || '' });
-
     let response, data, aiResponse;
+    let lastRequestBodyBytes = 0;
 
     // Determine the API provider from the Sheet's API Link column, or fall back to isGeminiModel
     const apiProvider = aiProvider || (isGeminiModel(aiModel) ? 'gemini' : 'groq');
@@ -228,7 +227,6 @@ export async function POST(req: NextRequest) {
           geminiPrompt += `${msg.role}: ${msg.content}\n`;
         });
       }
-      geminiPrompt += `user: ${conversationHistory[conversationHistory.length - 1]?.content || ''}`;
 
       if (stream) {
         // Time out only while waiting for the first byte (TTFB). Once headers
@@ -294,19 +292,21 @@ export async function POST(req: NextRequest) {
       aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini';
     } else if (apiProvider === 'groq') {
       // Groq API (OpenAI-compatible)
+      const groqBody = JSON.stringify({
+        model: aiModel,
+        messages: messages,
+        temperature: 0.5,
+        max_tokens: 8192,
+        stream: stream
+      });
+      lastRequestBodyBytes = new TextEncoder().encode(groqBody).length;
       response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${groqKey}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          model: aiModel,
-          messages: messages,
-          temperature: 0.5,
-          max_tokens: 8192,
-          stream: stream
-        })
+        body: groqBody
       });
 
       if (response.ok && stream && response.body) {
@@ -423,11 +423,15 @@ export async function POST(req: NextRequest) {
       
       // Special handling for 413 (Payload Too Large)
       if (response.status === 413) {
+        const requestKb = lastRequestBodyBytes > 0 ? (lastRequestBodyBytes / 1024).toFixed(1) : null;
         return NextResponse.json({ 
-          response: `Groq Error: Payload too large. Try reducing context or using a different model.`,
+          response: requestKb
+            ? `Groq Error: Payload too large — the request body sent to Groq was ${requestKb} KB. Groq caps the raw request body size (not the model's context window), so reduce the context (deselect sheets/Notion/docs) or use a Gemini model.`
+            : `Groq Error: Payload too large. Try reducing context or using a different model.`,
           error: {
             type: 'PAYLOAD_TOO_LARGE',
             message: 'The prompt is too large for Groq API. Try using Gemini models or reduce the context.',
+            requestBodyBytes: lastRequestBodyBytes,
             retryAfter: response.headers.get('retry-after'),
             rateLimit: {
               requests: response.headers.get('x-ratelimit-limit-requests'),
