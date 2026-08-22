@@ -290,7 +290,7 @@ const MessageItem = React.memo(({ message, onDelete, index }: { message: Message
           ? 'bg-blue-600 text-white'
           : 'bg-gray-700 text-gray-100 prose-chat'
         }`}>
-        <div className="pr-16">
+        <div className={showActions ? 'pr-32' : 'pr-10'}>
           {message.role === 'assistant' ? (
             <SimpleMarkdown content={message.content} />
           ) : (
